@@ -10,7 +10,8 @@ defineProps({
   }
 })
 
-defineEmits(['row-click'])
+// defineEmits(['row-click'])
+
 </script>
 
 <template>

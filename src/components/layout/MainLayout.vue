@@ -33,7 +33,7 @@ const menuItems = computed(() => {
       ]
     case 'director':
       return [
-        { icon: 'fas fa-check-circle', text: 'Phê duyệt đề xuất', route: '/approve-proposals' },
+        { icon: 'fas fa-check-circle', text: 'Phê duyệt đề xuất', route: '/proposal-approval' },
         { icon: 'fas fa-chart-line', text: 'Xem báo cáo tiến độ thi công', route: '/progress-report' },
         { icon: 'fas fa-clipboard-list', text: 'Xem báo cáo các vấn đề kỹ thuật', route: '/technical-issues' }
       ]
@@ -42,10 +42,8 @@ const menuItems = computed(() => {
         { icon: 'fas fa-tasks', text: 'Cập nhật trạng thái nhiệm vụ thi công', route: '/task-status' },
         { icon: 'fas fa-exclamation-triangle', text: 'Báo cáo sự cố thi công', route: '/incident-report' },
         { icon: 'fas fa-boxes', text: 'Quản lý vật tư', route: '/material-management' },
-        { icon: 'fas fa-warehouse', text: 'Nhập kho', route: '/stock-in' },
+        { icon: 'fas fa-warehouse', text: 'Nhập kho', route: '/warehouse-entry' },
         { icon: 'fas fa-truck-loading', text: 'Xuất kho', route: '/stock-out' },
-        { icon: 'fas fa-user-clock', text: 'Chấm công', route: '/attendance' },
-        { icon: 'fas fa-users-cog', text: 'Phân công', route: '/task-assignment' }
       ]
     default:
       return []
@@ -85,6 +83,7 @@ const menuItems = computed(() => {
               <span class="ms-2">{{ item.text }}</span>
             </router-link>
           </li>
+          
         </ul>
         <div class="sidebar-footer">
         <button @click="logout" class="logout-btn">
