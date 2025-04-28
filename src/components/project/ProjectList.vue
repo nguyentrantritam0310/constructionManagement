@@ -14,7 +14,7 @@ import ChangeStatusButton from '../common/ChangeStatusButton.vue'
 const router = useRouter()
 const props = defineProps({
   projects: {
-    type: Array,
+    // type: Array,
     required: true
   }
 })
@@ -25,14 +25,14 @@ const showStatusDialog = ref(false)
 const showUpdateDialog = ref(false)
 const selectedProject = ref(null)
 const currentPage = ref(1)
-const itemsPerPage = 10
+const itemsPerPage = 5
 
 const columns = [
-  { key: 'projectCode', label: 'Mã công trình' },
-  { key: 'projectName', label: 'Tên công trình' },
+  { key: 'id', label: 'Mã công trình' },
+  { key: 'constructionName', label: 'Tên công trình' },
   { key: 'location', label: 'Địa điểm' },
   { key: 'startDate', label: 'Ngày khởi công' },
-  { key: 'endDate', label: 'Ngày dự kiến hoàn thành' },
+  { key: 'expectedCompletionDate', label: 'Ngày dự kiến hoàn thành' },
   { key: 'status', label: 'Trạng thái' }
 ]
 
@@ -78,6 +78,8 @@ const handleUpdateCancel = () => {
   showUpdateDialog.value = false
   selectedProject.value = null
 }
+
+
 
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString('vi-VN')
@@ -152,7 +154,8 @@ const formatDate = (date) => {
       <Pagination
         :total-items="props.projects.length"
         :items-per-page="itemsPerPage"
-        v-model:current-page="currentPage"
+        :current-page="currentPage"
+        @update:currentPage="currentPage = $event" 
       />
     </div>
 

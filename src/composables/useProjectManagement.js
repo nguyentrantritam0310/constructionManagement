@@ -1,33 +1,12 @@
 import { ref, computed } from 'vue'
+import api from '../api.js';
 
 export function useProjectManagement() {
-  const projects = ref([
-    {
-      projectCode: 'PRJ001',
-      projectName: 'Office Building Construction',
-      location: '123 Business Street, City',
-      status: 'Pending Start',
-      startDate: '2024-03-15',
-      estimatedCompletionDate: '2025-06-30'
-    },
-    {
-      projectCode: 'PRJ002',
-      projectName: 'Residential Complex',
-      location: '456 Housing Avenue, City',
-      status: 'In Progress',
-      startDate: '2024-02-01',
-      estimatedCompletionDate: '2025-12-31'
-    },
-    {
-      projectCode: 'PRJ003',
-      projectName: 'Shopping Mall Renovation',
-      location: '789 Retail Road, City',
-      status: 'Pending Start',
-      startDate: '2024-04-01',
-      estimatedCompletionDate: '2025-03-15'
-    },
-    
-  ])
+  const projects = ref([])
+  const fetchProjects = async () => {
+    const res = await api.get('/constructions');
+    projects.value = res.data;
+  };
 
   const showCreateForm = ref(false)
   const formData = ref({
@@ -136,6 +115,7 @@ export function useProjectManagement() {
 
   return {
     projects,
+    fetchProjects,
     showCreateForm,
     formData,
     constructionItem,

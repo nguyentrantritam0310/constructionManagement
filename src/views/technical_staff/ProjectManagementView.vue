@@ -1,13 +1,16 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useProjectManagement } from '../../composables/useProjectManagement'
 import ProjectList from '../../components/project/ProjectList.vue'
 import CreateProjectForm from '../../components/project/CreateProjectForm.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 
+
+
 const {
   projects,
+  fetchProjects,
   formData,
   constructionItem,
   handleCreateProject,
@@ -17,13 +20,19 @@ const {
   handleFileUpload
 } = useProjectManagement()
 
-const showCreateForm = ref(false)
 
-const handleUpdateProjectStatus = ({ projectId, newStatus }) => {
-  const project = projects.value.find(p => p.projectCode === projectId)
-  if (project) {
+
+
+onMounted(fetchProjects);
+  
+console.log(projects.value)
+  const showCreateForm = ref(false)
+  
+  const handleUpdateProjectStatus = ({ projectId, newStatus }) => {
+    const project = projects.value.find(p => p.projectCode === projectId)
+    if (project) {
     project.status = newStatus
-
+    
     // If project is suspended, update all related items
     if (newStatus === 'Suspended') {
       // Here you would typically update all related items in the database
@@ -45,6 +54,7 @@ const closeCreateForm = () => {
 </script>
 
 <template>
+   
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h1 class="h3 mb-0">Quản Lý Dự Án</h1>

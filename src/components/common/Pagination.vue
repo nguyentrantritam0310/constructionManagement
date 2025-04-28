@@ -30,10 +30,8 @@ const pages = computed(() => {
   return pages
 })
 
-const handlePageClick = (page) => {
-  if (page !== '...' && page !== props.currentPage) {
-    emit('page-change', page)
-  }
+const handlePageChange = (page) => {
+  emit('update:currentPage', page) 
 }
 </script>
 
