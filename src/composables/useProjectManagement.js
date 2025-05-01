@@ -26,7 +26,7 @@ export function useProjectManagement() {
       startDate: '2024-04-01',
       estimatedCompletionDate: '2025-03-15'
     },
-    
+
   ])
 
   const showCreateForm = ref(false)
@@ -147,4 +147,4 @@ export function useProjectManagement() {
     addConstructionItem,
     handleFileUpload
   }
-} 
+}

@@ -5,6 +5,7 @@ import MaterialPlanningView from '../views/technical_staff/MaterialPlanningView.
 import TechnicalReportView from '../views/technical_staff/TechnicalReportView.vue'
 import { useAuth } from '../composables/useAuth'
 import TaskStatusUpdateView from '@/views/construction_management/TaskStatusUpdateView.vue'
+import WeatherForecastView from '@/views/director/WeatherForecastView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -53,6 +54,11 @@ const router = createRouter({
           path: '/task-status',
           name: 'task-status',
           component: TaskStatusUpdateView
+        },
+        {
+          path: '/forecast-weather',
+          name: 'forecast-weather',
+          component: () => import('../views/director/WeatherForecastView.vue')
         }
       ]
     }
