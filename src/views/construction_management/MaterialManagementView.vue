@@ -1,35 +1,25 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useMaterialManagement } from '../../composables/useMaterialManagement'
 import DataTable from '../../components/common/DataTable.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 
-const materials = ref([
-  {
-    id: 1,
-    name: 'Xi măng',
-    unit: 'Bao',
-    type: 'Vật liệu xây dựng',
-    price: 80000,
-    status: 'Hết hàng'
-  },
-  {
-    id: 2,
-    name: 'Gạch',
-    unit: 'Viên',
-    type: 'Vật liệu xây dựng',
-    price: 5000,
-    status: 'Còn hàng'
-  }
-])
+const {
+  materials,
+  fetchMaterial
+} = useMaterialManagement()
+
+onMounted(fetchMaterial)
 
 const columns = [
   { key: 'id', label: 'Mã Vật Tư' },
-  { key: 'name', label: 'Tên Vật Tư' },
-  { key: 'unit', label: 'Đơn Vị Tính' },
-  { key: 'type', label: 'Loại Vật Tư' },
-  { key: 'price', label: 'Đơn Giá' },
+  { key: 'materialName', label: 'Tên Vật Tư' },
+  { key: 'stockQuantity', label: 'Tồn kho' },
+  { key: 'materialTypeName', label: 'Loại Vật Tư' },
+  { key: 'unitPrice', label: 'Đơn Giá' },
   { key: 'status', label: 'Trạng Thái' }
+
 ]
 
 const showForm = ref(false)
