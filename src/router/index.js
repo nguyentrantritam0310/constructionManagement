@@ -96,6 +96,11 @@ const router = createRouter({
           path: '/proposal-approval',
           name: 'ProposalApproval',
           component: ProposalApprovalView,
+        },
+        {
+          path: '/weather-forecast',
+          name: 'WeatherForecast',
+          component: () => import('../views/director/WeatherForecastView.vue')
         }
       ]
     }

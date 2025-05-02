@@ -35,7 +35,8 @@ const menuItems = computed(() => {
       return [
         { icon: 'fas fa-check-circle', text: 'Phê duyệt đề xuất', route: '/proposal-approval' },
         { icon: 'fas fa-chart-line', text: 'Xem báo cáo tiến độ thi công', route: '/progress-report' },
-        { icon: 'fas fa-clipboard-list', text: 'Xem báo cáo các vấn đề kỹ thuật', route: '/technical-issues' }
+        { icon: 'fas fa-clipboard-list', text: 'Xem báo cáo các vấn đề kỹ thuật', route: '/technical-issues' },
+        { icon: 'fas fa-clipboard-list', text: 'Xem dự báo thời tiết', route: '/weather-forecast' }
       ]
     case 'construction_leader':
       return [
@@ -83,7 +84,7 @@ const menuItems = computed(() => {
               <span class="ms-2">{{ item.text }}</span>
             </router-link>
           </li>
-          
+
         </ul>
         <div class="sidebar-footer">
         <button @click="logout" class="logout-btn">
