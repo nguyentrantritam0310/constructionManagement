@@ -4,8 +4,14 @@ import DashboardView from '../views/technical_staff/DashboardView.vue'
 import MaterialPlanningView from '../views/technical_staff/MaterialPlanningView.vue'
 import TechnicalReportView from '../views/technical_staff/TechnicalReportView.vue'
 import { useAuth } from '../composables/useAuth'
-import TaskStatusUpdateView from '@/views/construction_management/TaskStatusUpdateView.vue'
-import WeatherForecastView from '@/views/director/WeatherForecastView.vue'
+
+import IncidentReportListView from '../views/construction_management/IncidentReportListView.vue'
+import MaterialManagementView from '../views/construction_management/MaterialManagementView.vue'
+import WarehouseEntryView from '..//views/construction_management/WarehouseEntryView.vue'
+import StockOutView from '../views/construction_management/StockOutView.vue'
+import TaskDetailView from '@/views/construction_management/TaskDetailView.vue'
+import TaskStatusView from '@/views/construction_management/TaskStatusView.vue'
+import ProposalApprovalView from '@/views/director/ProposalApprovalView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -35,6 +41,12 @@ const router = createRouter({
           props: true
         },
         {
+          path: '/project-management-leader/:id',
+          name: 'project-management-leader',
+          component: () => import('../views/construction_management/ProjectDetailForLeaderView.vue'),
+          props: true
+        },
+        {
           path: '/construction-plan-management',
           name: 'construction-plan-management',
           component: () => import('../views/technical_staff/ConstructionPlanManagementView.vue'),
@@ -53,12 +65,37 @@ const router = createRouter({
         {
           path: '/task-status',
           name: 'task-status',
-          component: TaskStatusUpdateView
+          component: TaskStatusView
         },
         {
-          path: '/forecast-weather',
-          name: 'forecast-weather',
-          component: () => import('../views/director/WeatherForecastView.vue')
+          path: '/task-detail',
+          name: 'TaskDetail',
+          component: TaskDetailView
+        },
+        {
+          path: '/incident-report',
+          name: 'IncidentReportList',
+          component: IncidentReportListView
+        },
+        {
+          path: '/material-management',
+          name: 'MaterialManagement',
+          component: MaterialManagementView
+        },
+        {
+          path: '/warehouse-entry',
+          name: 'WarehouseEntry',
+          component: WarehouseEntryView
+        },
+        {
+          path: '/stock-out',
+          name: 'StockOut',
+          component: StockOutView
+        },
+        {
+          path: '/proposal-approval',
+          name: 'ProposalApproval',
+          component: ProposalApprovalView,
         }
       ]
     }
