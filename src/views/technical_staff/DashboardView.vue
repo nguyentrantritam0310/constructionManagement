@@ -2,49 +2,12 @@
 import { ref, onMounted } from 'vue'
 import { useProjectManagement } from '../../composables/useProjectManagement'
 
-const { pendingProjects, inProgressProjects } = useProjectManagement()
+const { fetchProjects, dashboardStats, projectTypesStats, upcomingDeadlines } = useProjectManagement()
 
-// Thêm các thống kê mới
-const totalProjects = ref(0)
-const completedProjects = ref(0)
-const delayedProjects = ref(0)
-
-// Dữ liệu dự án sắp đến hạn
-const upcomingDeadlines = ref([
-  {
-    name: 'Dự án xây dựng cầu ABC',
-    deadline: '2024-04-20',
-    progress: 75,
-    status: 'Đang thi công'
-  },
-  {
-    name: 'Dự án đường cao tốc XYZ',
-    deadline: '2024-04-25',
-    progress: 60,
-    status: 'Đang thi công'
-  },
-  {
-    name: 'Dự án chung cư MNP',
-    deadline: '2024-04-30',
-    progress: 45,
-    status: 'Đang thi công'
-  }
-])
-
-// Dữ liệu thống kê theo loại dự án
-const projectTypes = ref([
-  { type: 'Cầu đường', count: 12, color: '#0d6efd' },
-  { type: 'Nhà ở', count: 8, color: '#198754' },
-  { type: 'Công nghiệp', count: 6, color: '#dc3545' },
-  { type: 'Thủy lợi', count: 4, color: '#ffc107' }
-])
-
-onMounted(() => {
-  // Giả lập dữ liệu thống kê
-  totalProjects.value = pendingProjects.length + inProgressProjects.length + 15
-  completedProjects.value = 8
-  delayedProjects.value = 3
+onMounted(async () => {
+  await fetchProjects() // Gọi API để lấy danh sách dự án
 })
+
 
 // Hàm format ngày
 const formatDate = (dateString) => {
@@ -65,47 +28,75 @@ const formatDate = (dateString) => {
 
     <!-- Thống kê tổng quan -->
     <div class="stats-grid">
+      <!-- Tổng Số Dự Án -->
       <div class="stats-card primary">
         <div class="stats-icon">
           <i class="fas fa-project-diagram"></i>
         </div>
         <div class="stats-info">
           <h3>Tổng Số Dự Án</h3>
-          <span class="number">{{ totalProjects }}</span>
+          <span class="number">{{ dashboardStats.totalProjects }}</span>
           <p>Dự án</p>
         </div>
       </div>
 
+      <!-- Đang Chờ -->
       <div class="stats-card warning">
         <div class="stats-icon">
           <i class="fas fa-clock"></i>
         </div>
         <div class="stats-info">
           <h3>Đang Chờ</h3>
-          <span class="number">{{ pendingProjects.length }}</span>
+          <span class="number">{{ dashboardStats.pendingProjects }}</span>
           <p>Dự án chờ khởi công</p>
         </div>
       </div>
 
+      <!-- Đang Thi Công -->
       <div class="stats-card info">
         <div class="stats-icon">
           <i class="fas fa-hammer"></i>
         </div>
         <div class="stats-info">
           <h3>Đang Thi Công</h3>
-          <span class="number">{{ inProgressProjects.length }}</span>
+          <span class="number">{{ dashboardStats.inProgressProjects }}</span>
           <p>Dự án đang thực hiện</p>
         </div>
       </div>
 
+      <!-- Đã Hoàn Thành -->
       <div class="stats-card success">
         <div class="stats-icon">
           <i class="fas fa-check-circle"></i>
         </div>
         <div class="stats-info">
           <h3>Đã Hoàn Thành</h3>
-          <span class="number">{{ completedProjects }}</span>
+          <span class="number">{{ dashboardStats.completedProjects }}</span>
           <p>Dự án hoàn thành</p>
+        </div>
+      </div>
+
+      <!-- Tạm Dừng -->
+      <div class="stats-card secondary">
+        <div class="stats-icon">
+          <i class="fas fa-pause-circle"></i>
+        </div>
+        <div class="stats-info">
+          <h3>Tạm Dừng</h3>
+          <span class="number">{{ dashboardStats.pausedProjects }}</span>
+          <p>Dự án tạm dừng</p>
+        </div>
+      </div>
+
+      <!-- Hủy Bỏ -->
+      <div class="stats-card danger">
+        <div class="stats-icon">
+          <i class="fas fa-times-circle"></i>
+        </div>
+        <div class="stats-info">
+          <h3>Hủy Bỏ</h3>
+          <span class="number">{{ dashboardStats.canceledProjects }}</span>
+          <p>Dự án hủy bỏ</p>
         </div>
       </div>
     </div>
@@ -117,10 +108,8 @@ const formatDate = (dateString) => {
         <div class="section-header">
           <h3><i class="fas fa-calendar-alt"></i> Dự Án Sắp Đến Hạn</h3>
         </div>
-        <div class="deadline-list">
-          <div v-for="(project, index) in upcomingDeadlines"
-               :key="index"
-               class="deadline-item">
+        <div v-if="upcomingDeadlines.length > 0" class="deadline-list">
+          <div v-for="(project, index) in upcomingDeadlines" :key="index" class="deadline-item">
             <div class="deadline-info">
               <h4>{{ project.name }}</h4>
               <div class="deadline-meta">
@@ -141,6 +130,9 @@ const formatDate = (dateString) => {
             </div>
           </div>
         </div>
+        <div v-else class="no-deadlines">
+          <p>Hiện không có dự án nào sắp đến hạn.</p>
+        </div>
       </div>
 
       <!-- Thống kê theo loại dự án -->
@@ -149,10 +141,8 @@ const formatDate = (dateString) => {
           <h3><i class="fas fa-chart-pie"></i> Thống Kê Theo Loại</h3>
         </div>
         <div class="types-grid">
-          <div v-for="(type, index) in projectTypes"
-               :key="index"
-               class="type-card"
-               :style="{ borderColor: type.color }">
+          <div v-for="(type, index) in projectTypesStats" :key="index" class="type-card"
+            :style="{ borderColor: type.color }">
             <div class="type-info">
               <h4>{{ type.type }}</h4>
               <span class="type-count">{{ type.count }}</span>
@@ -246,6 +236,16 @@ const formatDate = (dateString) => {
   color: #198754;
 }
 
+.stats-card.secondary .stats-icon {
+  background: rgba(108, 117, 125, 0.1);
+  color: #6c757d;
+}
+
+.stats-card.danger .stats-icon {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+}
+
 .stats-info h3 {
   font-size: 0.9rem;
   color: #6c757d;
@@ -284,7 +284,8 @@ const formatDate = (dateString) => {
   gap: 0.75rem;
 }
 
-.upcoming-deadlines, .project-types {
+.upcoming-deadlines,
+.project-types {
   background: white;
   border-radius: 12px;
   padding: 1.5rem;
@@ -397,6 +398,16 @@ const formatDate = (dateString) => {
   align-items: center;
   justify-content: center;
   color: white;
+}
+
+.no-deadlines {
+  text-align: center;
+  color: #6c757d;
+  font-size: 1rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 @media (max-width: 1200px) {

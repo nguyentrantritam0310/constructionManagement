@@ -1,35 +1,41 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useTechnicalReport } from '../../composables/useTechnicalReport'
 import DataTable from '../../components/common/DataTable.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import UpdateReportForm from '../../components/technical-report/UpdateReportForm.vue'
+import FilterSearch from '../../components/common/FilterSearch.vue'
+import Pagination from '../../components/common/Pagination.vue'
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
 const selectedReport = ref(null)
 
-const reports = ref([
-  {
-    id: 1,
-    projectCode: 'PRJ001',
-    projectName: 'Khu chung cư The Sun',
-    issueType: 'equipment',
-    description: 'Máy trộn bê tông gặp sự cố',
-    severity: 'high',
-    status: 'Pending',
-    reportDate: '2024-03-15',
-    images: [],
-    updates: []
-  }
-])
+const searchQuery = ref('')
+const statusFilter = ref('all')
+const dateRangeFilter = ref({ start: null, end: null })
+
+const {
+  reports,
+  loading,
+  error,
+  fetchReports,
+  createReport,
+  updateReport,
+  updateReportStatus
+} = useTechnicalReport()
+
+onMounted(() => {
+  fetchReports()
+})
 
 const columns = [
   { key: 'projectName', label: 'Công trình' },
-  { key: 'issueType', label: 'Loại vấn đề' },
-  { key: 'description', label: 'Mô tả' },
-  { key: 'severity', label: 'Mức độ' },
+  { key: 'reportType', label: 'Loại vấn đề' },
+  { key: 'content', label: 'Mô tả' },
+  { key: 'level', label: 'Mức độ' },
   { key: 'status', label: 'Trạng thái' },
   { key: 'reportDate', label: 'Ngày báo cáo' }
 ]
@@ -59,29 +65,26 @@ const newReport = ref({
 
 const validateForm = () => {
   if (!newReport.value.projectCode || !newReport.value.issueType ||
-      !newReport.value.description || !newReport.value.severity) {
+    !newReport.value.description || !newReport.value.severity) {
     return false
   }
   return true
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (!validateForm()) {
     alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
     return
   }
 
-  const report = {
-    ...newReport.value,
-    id: Date.now(),
-    status: 'Pending',
-    reportDate: new Date().toISOString().split('T')[0],
-    updates: []
+  try {
+    await createReport(newReport.value)
+    showCreateForm.value = false
+    alert('Báo cáo đã được gửi thành công')
+  } catch (err) {
+    console.error('Error creating report:', err)
+    alert('Có lỗi xảy ra khi gửi báo cáo')
   }
-
-  reports.value.unshift(report)
-  showCreateForm.value = false
-  alert('Báo cáo đã được gửi thành công')
 }
 
 const handleUpdateStatus = (report) => {
@@ -89,18 +92,44 @@ const handleUpdateStatus = (report) => {
   showUpdateForm.value = true
 }
 
+const handleUpdateSubmit = async (updatedReport) => {
+  try {
+    await updateReport(updatedReport.id, updatedReport)
+    showUpdateForm.value = false
+    selectedReport.value = null
+    alert('Cập nhật báo cáo thành công')
+  } catch (err) {
+    console.error('Error updating report:', err)
+    alert('Có lỗi xảy ra khi cập nhật báo cáo')
+  }
+}
+
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString('vi-VN')
 }
 
-const handleUpdateSubmit = (updatedReport) => {
-  const index = reports.value.findIndex(r => r.id === updatedReport.id)
-  if (index !== -1) {
-    reports.value[index] = updatedReport
-    showUpdateForm.value = false
-    selectedReport.value = null
-    alert('Cập nhật báo cáo thành công')
-  }
+const filteredReports = computed(() => {
+  return reports.value.filter(report => {
+    const matchesSearch = searchQuery.value === '' || report.projectName.toLowerCase().includes(searchQuery.value.toLowerCase())
+    const matchesStatus = statusFilter.value === 'all' || report.status === statusFilter.value
+    const matchesDateRange = !dateRangeFilter.value.start || !dateRangeFilter.value.end ||
+      (new Date(report.reportDate) >= new Date(dateRangeFilter.value.start) &&
+        new Date(report.reportDate) <= new Date(dateRangeFilter.value.end))
+    return matchesSearch && matchesStatus && matchesDateRange
+  })
+})
+
+const currentPage = ref(1)
+const itemsPerPage = 5
+
+const paginatedReports = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredReports.value.slice(start, end)
+})
+
+const handlePageChange = (page) => {
+  currentPage.value = page
 }
 </script>
 
@@ -108,33 +137,44 @@ const handleUpdateSubmit = (updatedReport) => {
   <div class="technical-report">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h2>Báo Cáo Vấn Đề Kỹ Thuật</h2>
-      <ActionButton
-        type="primary"
-        icon="fas fa-plus"
-        @click="showCreateForm = true"
-      >
+      <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
         Tạo báo cáo mới
       </ActionButton>
     </div>
 
-    <DataTable
-      :columns="columns"
-      :data="reports"
-      class="report-table"
-    >
+    <!-- Bộ lọc và tìm kiếm -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <FilterSearch :searchQuery="searchQuery" :statusFilter="statusFilter" :dateRangeFilter="dateRangeFilter"
+          @update:searchQuery="searchQuery = $event" @update:statusFilter="statusFilter = $event"
+          @update:dateRangeFilter="dateRangeFilter = $event" @resetFilters="resetFilters" />
+      </div>
+    </div>
+
+    <div v-if="loading" class="text-center py-4">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+
+    <div v-else-if="error" class="alert alert-danger" role="alert">
+      {{ error }}
+    </div>
+
+    <DataTable v-else :columns="columns" :data="paginatedReports" class="report-table">
       <template #issueType="{ item }">
         <span :class="'badge bg-' + (item.issueType === 'equipment' ? 'warning' :
-                                   item.issueType === 'material' ? 'info' :
-                                   item.issueType === 'construction' ? 'danger' : 'secondary')">
-          {{ issueTypes.find(t => t.value === item.issueType)?.label }}
+          item.issueType === 'material' ? 'info' :
+            item.issueType === 'construction' ? 'danger' : 'secondary')">
+          {{issueTypes.find(t => t.value === item.issueType)?.label}}
         </span>
       </template>
 
       <template #severity="{ item }">
         <span :class="'badge bg-' + (item.severity === 'critical' ? 'danger' :
-                                   item.severity === 'high' ? 'warning' :
-                                   item.severity === 'medium' ? 'info' : 'success')">
-          {{ severityLevels.find(s => s.value === item.severity)?.label }}
+          item.severity === 'high' ? 'warning' :
+            item.severity === 'medium' ? 'info' : 'success')">
+          {{severityLevels.find(s => s.value === item.severity)?.label}}
         </span>
       </template>
 
@@ -147,21 +187,22 @@ const handleUpdateSubmit = (updatedReport) => {
       </template>
 
       <template #actions="{ item }">
-        <ActionButton
-          type="primary"
-          icon="fas fa-edit"
-          tooltip="Cập nhật trạng thái"
-          @click="handleUpdateStatus(item)"
-        />
+        <ActionButton type="primary" icon="fas fa-edit" tooltip="Cập nhật trạng thái"
+          @click="handleUpdateStatus(item)" />
       </template>
     </DataTable>
 
+    <!-- Phân trang -->
+    <div class="d-flex justify-content-between align-items-center mt-4">
+      <div class="text-muted">
+        Hiển thị {{ paginatedReports.length }} trên {{ filteredReports.length }} báo cáo
+      </div>
+      <Pagination :total-items="filteredReports.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        @update:currentPage="handlePageChange" />
+    </div>
+
     <!-- Form tạo báo cáo mới -->
-    <ModalDialog
-      v-model:show="showCreateForm"
-      title="Tạo Báo Cáo Mới"
-      size="lg"
-    >
+    <ModalDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới" size="lg">
       <div class="p-3">
         <div class="mb-3">
           <label class="form-label">Công trình</label>
@@ -194,12 +235,8 @@ const handleUpdateSubmit = (updatedReport) => {
 
         <div class="mb-3">
           <label class="form-label">Mô tả vấn đề</label>
-          <textarea
-            v-model="newReport.description"
-            class="form-control"
-            rows="4"
-            placeholder="Mô tả chi tiết vấn đề..."
-          ></textarea>
+          <textarea v-model="newReport.description" class="form-control" rows="4"
+            placeholder="Mô tả chi tiết vấn đề..."></textarea>
         </div>
 
         <div class="mb-3">
@@ -208,16 +245,10 @@ const handleUpdateSubmit = (updatedReport) => {
         </div>
 
         <div class="d-flex justify-content-end gap-2">
-          <ActionButton
-            type="secondary"
-            @click="showCreateForm = false"
-          >
+          <ActionButton type="secondary" @click="showCreateForm = false">
             Hủy
           </ActionButton>
-          <ActionButton
-            type="primary"
-            @click="handleSubmit"
-          >
+          <ActionButton type="primary" @click="handleSubmit">
             Gửi báo cáo
           </ActionButton>
         </div>
@@ -225,17 +256,8 @@ const handleUpdateSubmit = (updatedReport) => {
     </ModalDialog>
 
     <!-- Form cập nhật báo cáo -->
-    <ModalDialog
-      v-if="selectedReport"
-      v-model:show="showUpdateForm"
-      title="Cập Nhật Báo Cáo"
-      size="lg"
-    >
-      <UpdateReportForm
-        :report="selectedReport"
-        @submit="handleUpdateSubmit"
-        @cancel="showUpdateForm = false"
-      />
+    <ModalDialog v-if="selectedReport" v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo" size="lg">
+      <UpdateReportForm :report="selectedReport" @submit="handleUpdateSubmit" @cancel="showUpdateForm = false" />
     </ModalDialog>
   </div>
 </template>
@@ -250,7 +272,12 @@ const handleUpdateSubmit = (updatedReport) => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 </style>

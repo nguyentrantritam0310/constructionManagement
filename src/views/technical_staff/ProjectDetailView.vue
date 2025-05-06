@@ -9,6 +9,7 @@ import ChangeStatusButton from '../../components/common/ChangeStatusButton.vue'
 import ChangeStatusDialog from '../../components/common/ChangeStatusDialog.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ChangeStatusForm from '../../components/common/ChangeStatusForm.vue'
+import { useProjectManagement } from '../../composables/useProjectManagement'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,48 +18,18 @@ const project = ref(null)
 const activeTab = ref('info')
 const showStatusDialog = ref(false)
 const selectedItem = ref(null)
+const { selectedProject, fetchProjectDetail } = useProjectManagement()
 
 const breadcrumbItems = computed(() => [
   { text: 'Trang chủ', to: '/' },
   { text: 'Quản lý dự án', to: '/project-management' },
-  { text: project.value?.projectName || 'Chi tiết dự án' }
+  { text: selectedProject.value?.constructionName || 'Chi tiết dự án' }
 ])
 
-// Giả lập dữ liệu dự án
 onMounted(async () => {
-  project.value = {
-    id: projectId,
-    projectName: 'Khu chung cư cao cấp The Sun',
-    projectType: 'Chung cư cao tầng',
-    location: '123 Đường ABC, Quận XYZ, TP.HCM',
-    totalArea: '5000 m²',
-    startDate: '2024-01-01',
-    endDate: '2024-12-31',
-    status: 'In Progress',
-    designFile: 'thietke.pdf',
-    constructionItems: [
-      {
-        id: 1,
-        name: 'Móng Block A',
-        description: 'Đổ móng cho Block A',
-        startDate: '2024-01-15',
-        endDate: '2024-03-15',
-        totalVolume: 1000,
-        unit: 'm³',
-        status: 'In Progress'
-      },
-      {
-        id: 2,
-        name: 'Tường Block A',
-        description: 'Xây tường Block A',
-        startDate: '2024-03-16',
-        endDate: '2024-05-15',
-        totalVolume: 2000,
-        unit: 'm²',
-        status: 'Not Started'
-      }
-    ]
-  }
+  console.log('Project ID:', projectId) // Debug projectId
+  await fetchProjectDetail(projectId) // Gọi API để lấy thông tin chi tiết dự án
+  console.log('Selected Project:', selectedProject.value) // Debug dữ liệu sau khi gọi API
 })
 
 const constructionItemColumns = [
@@ -108,29 +79,37 @@ const downloadDesign = () => {
   // Xử lý tải bản thiết kế
   console.log('Downloading design file:', project.value.designFile)
 }
+
+const calculateRemainingDays = (endDate) => {
+  const today = new Date()
+  const end = new Date(endDate)
+  const diffTime = end - today
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays > 0 ? diffDays : 0
+}
 </script>
 
 <template>
   <div class="container-fluid py-4">
-    <div v-if="project" class="project-detail">
+    <div v-if="selectedProject" class="project-detail">
       <!-- Header Section -->
       <div class="header-section mb-4">
         <div class="d-flex justify-content-between align-items-start">
           <div>
-            <h1 class="project-title mb-2">{{ project.projectName }}</h1>
+            <h1 class="project-title mb-2">{{ selectedProject.constructionName }}</h1>
             <div class="project-meta">
               <span class="meta-item">
                 <i class="fas fa-map-marker-alt"></i>
-                {{ project.location }}
+                {{ selectedProject.location }}
               </span>
               <span class="meta-item">
                 <i class="fas fa-calendar"></i>
-                {{ project.startDate }} - {{ project.endDate }}
+                {{ selectedProject.startDate }} - {{ selectedProject.expectedCompletionDate }}
               </span>
             </div>
           </div>
           <div class="d-flex flex-column align-items-end">
-            <StatusBadge :status="project.status" class="mb-2" />
+            <StatusBadge :status="selectedProject.statusName" class="mb-2" />
             <button class="btn btn-outline-primary btn-sm">
               <i class="fas fa-file-download me-1"></i>
               Tải bản thiết kế
@@ -148,7 +127,7 @@ const downloadDesign = () => {
             </div>
             <div class="stat-content">
               <h3>Loại công trình</h3>
-              <p>{{ project.projectType }}</p>
+              <p>{{ selectedProject.projectType || 'Chưa xác định' }}</p> <!-- Nếu không có projectType -->
             </div>
           </div>
         </div>
@@ -159,7 +138,7 @@ const downloadDesign = () => {
             </div>
             <div class="stat-content">
               <h3>Tổng diện tích</h3>
-              <p>{{ project.totalArea }}</p>
+              <p>{{ selectedProject.totalArea }}</p>
             </div>
           </div>
         </div>
@@ -170,7 +149,7 @@ const downloadDesign = () => {
             </div>
             <div class="stat-content">
               <h3>Số hạng mục</h3>
-              <p>{{ project.constructionItems.length }} hạng mục</p>
+              <!-- <p>{{ selectedProject.constructionItems.length }} hạng mục</p> -->
             </div>
           </div>
         </div>
@@ -181,7 +160,7 @@ const downloadDesign = () => {
             </div>
             <div class="stat-content">
               <h3>Thời gian còn lại</h3>
-              <p>180 ngày</p>
+              <p>{{ calculateRemainingDays(selectedProject.expectedCompletionDate) }} ngày</p>
             </div>
           </div>
         </div>
@@ -191,23 +170,14 @@ const downloadDesign = () => {
       <div class="content-tabs">
         <ul class="nav nav-tabs nav-tabs-custom">
           <li class="nav-item">
-            <a
-              class="nav-link"
-              :class="{ active: activeTab === 'info' }"
-              @click.prevent="activeTab = 'info'"
-              href="#"
-            >
+            <a class="nav-link" :class="{ active: activeTab === 'info' }" @click.prevent="activeTab = 'info'" href="#">
               <i class="fas fa-info-circle me-2"></i>
               Thông tin chung
             </a>
           </li>
           <li class="nav-item">
-            <a
-              class="nav-link"
-              :class="{ active: activeTab === 'items' }"
-              @click.prevent="activeTab = 'items'"
-              href="#"
-            >
+            <a class="nav-link" :class="{ active: activeTab === 'items' }" @click.prevent="activeTab = 'items'"
+              href="#">
               <i class="fas fa-list me-2"></i>
               Hạng mục thi công
             </a>
@@ -228,23 +198,23 @@ const downloadDesign = () => {
                   <div class="info-grid">
                     <div class="info-item">
                       <label>Loại công trình</label>
-                      <p>{{ project.projectType }}</p>
+                      <p>{{ selectedProject.projectType || 'Chưa xác định' }}</p> <!-- Nếu không có projectType -->
                     </div>
                     <div class="info-item">
                       <label>Tổng diện tích</label>
-                      <p>{{ project.totalArea }}</p>
+                      <p>{{ selectedProject.totalArea }}</p>
                     </div>
                     <div class="info-item">
                       <label>Ngày khởi công</label>
-                      <p>{{ project.startDate }}</p>
+                      <p>{{ selectedProject.startDate }}</p>
                     </div>
                     <div class="info-item">
                       <label>Ngày dự kiến hoàn thành</label>
-                      <p>{{ project.endDate }}</p>
+                      <p>{{ selectedProject.expectedCompletionDate }}</p>
                     </div>
                     <div class="info-item full-width">
                       <label>Địa điểm xây dựng</label>
-                      <p>{{ project.location }}</p>
+                      <p>{{ selectedProject.location }}</p>
                     </div>
                   </div>
                 </div>
@@ -261,7 +231,7 @@ const downloadDesign = () => {
                     </div>
                     <div class="document-info">
                       <h4>Bản thiết kế</h4>
-                      <p>{{ project.designFile }}</p>
+                      <p>{{ selectedProject.designBlueprint }}</p>
                       <button class="btn btn-sm btn-primary" @click="downloadDesign">
                         <i class="fas fa-download me-1"></i>
                         Tải xuống
@@ -281,12 +251,8 @@ const downloadDesign = () => {
                 Danh sách hạng mục
               </h2>
             </div>
-            <DataTable
-              :columns="constructionItemColumns"
-              :data="project.constructionItems"
-              @row-click="handleItemClick"
-              class="custom-table"
-            >
+            <DataTable :columns="constructionItemColumns" :data="selectedProject.constructionItems"
+              @row-click="handleItemClick" class="custom-table">
               <template #name="{ item }">
                 <div class="fw-medium text-primary">{{ item.name }}</div>
               </template>
@@ -318,12 +284,8 @@ const downloadDesign = () => {
 
               <template #actions="{ item }">
                 <div class="d-flex justify-content-center gap-2">
-                  <UpdateButton
-                    @click="(e) => handleUpdateItem(item, e)"
-                  />
-                  <ChangeStatusButton
-                    @click="(e) => handleStatusChange(item, e)"
-                  />
+                  <UpdateButton @click="(e) => handleUpdateItem(item, e)" />
+                  <ChangeStatusButton @click="(e) => handleStatusChange(item, e)" />
                 </div>
               </template>
             </DataTable>
@@ -339,19 +301,10 @@ const downloadDesign = () => {
     </div>
 
     <!-- Dialog đổi trạng thái -->
-    <ModalDialog
-      v-if="selectedItem"
-      :show="showStatusDialog"
-      @update:show="showStatusDialog = $event"
-      title="Đổi Trạng Thái Hạng Mục"
-      size="md"
-    >
-      <ChangeStatusForm
-        :current-status="selectedItem.status"
-        type="construction"
-        @submit="handleStatusSubmit"
-        @cancel="showStatusDialog = false"
-      />
+    <ModalDialog v-if="selectedItem" :show="showStatusDialog" @update:show="showStatusDialog = $event"
+      title="Đổi Trạng Thái Hạng Mục" size="md">
+      <ChangeStatusForm :current-status="selectedItem.status" type="construction" @submit="handleStatusSubmit"
+        @cancel="showStatusDialog = false" />
     </ModalDialog>
   </div>
 </template>
@@ -365,7 +318,7 @@ const downloadDesign = () => {
   background: linear-gradient(to right, #ffffff, #f8f9fa);
   padding: 2rem;
   border-radius: 0.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .project-title {
@@ -390,7 +343,7 @@ const downloadDesign = () => {
   background: white;
   padding: 1.5rem;
   border-radius: 0.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -441,7 +394,7 @@ const downloadDesign = () => {
 
 .nav-tabs-custom .nav-link:hover {
   color: #007bff;
-  background: rgba(0,123,255,0.05);
+  background: rgba(0, 123, 255, 0.05);
 }
 
 .nav-tabs-custom .nav-link.active {
@@ -533,7 +486,7 @@ const downloadDesign = () => {
 }
 
 .custom-table :deep(tr:hover) {
-  background-color: rgba(0,123,255,0.05);
+  background-color: rgba(0, 123, 255, 0.05);
 }
 
 .date-info {
@@ -570,7 +523,12 @@ const downloadDesign = () => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 </style>

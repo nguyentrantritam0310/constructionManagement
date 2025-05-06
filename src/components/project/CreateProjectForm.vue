@@ -16,11 +16,15 @@ const props = defineProps({
 const emit = defineEmits(['cancel', 'submit', 'add-item', 'file-upload'])
 
 const handleSubmit = () => {
-  emit('submit')
+  emit('submit') // Phát sự kiện submit ra ngoài
 }
 
 const handleFileUpload = (event) => {
-  emit('file-upload', event)
+  const file = event.target.files[0]
+  if (file) {
+    formData.value.designBlueprint = file.name // Lưu tên file
+    // Bạn có thể thêm logic upload file tại đây
+  }
 }
 
 const handleAddItem = () => {
@@ -32,98 +36,38 @@ const handleAddItem = () => {
   <form @submit.prevent="handleSubmit" class="p-3">
     <div class="row g-3">
       <div class="col-md-6">
-        <FormField
-          label="Tên Dự Án"
-          v-model="formData.projectName"
-          required
-        />
+        <FormField label="Tên Dự Án" v-model="formData.constructionName" required />
       </div>
       <div class="col-md-6">
-        <FormField
-          label="Loại Dự Án"
-          v-model="formData.projectType"
-          required
-        />
+        <FormField label="Loại Dự Án" type="select" v-model="formData.constructionTypeID" :options="[
+          { value: 1, label: 'Cầu đường' },
+          { value: 2, label: 'Nhà ở' },
+          { value: 3, label: 'Công nghiệp' },
+          { value: 4, label: 'Thủy lợi' }
+        ]" required />
       </div>
       <div class="col-12">
-        <FormField
-          label="Địa Điểm Thi Công"
-          v-model="formData.constructionLocation"
-          required
-        />
+        <FormField label="Địa Điểm Thi Công" v-model="formData.location" required />
       </div>
       <div class="col-md-6">
-        <FormField
-          label="Tổng Diện Tích (m²)"
-          type="number"
-          v-model="formData.totalArea"
-          required
-        />
+        <FormField label="Tổng Diện Tích (m²)" type="number" v-model="formData.totalArea" required />
       </div>
       <div class="col-md-6">
-        <FormField
-          label="Ngày Bắt Đầu"
-          type="date"
-          v-model="formData.startDate"
-          required
-        />
+        <FormField label="Ngày Bắt Đầu" type="date" v-model="formData.startDate" required />
       </div>
       <div class="col-md-6">
-        <FormField
-          label="Ngày Hoàn Thành Dự Kiến"
-          type="date"
-          v-model="formData.estimatedCompletionDate"
-          required
-        />
+        <FormField label="Ngày Hoàn Thành Dự Kiến" type="date" v-model="formData.expectedCompletionDate" required />
       </div>
       <div class="col-12">
-        <FormField
-          label="Tài Liệu Thiết Kế"
-          type="file"
-          @change="handleFileUpload"
-        />
-      </div>
-    </div>
-
-    <div class="card mt-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Hạng Mục Thi Công</h5>
-        <ActionButton
-          icon="fas fa-plus"
-          type="success"
-          tooltip="Thêm hạng mục"
-          @click="$emit('add-item')"
-        />
-      </div>
-      <div class="card-body">
-        <!-- Construction Items List -->
-        <div class="list-group">
-          <div
-            v-for="(item, index) in formData.constructionItems"
-            :key="index"
-            class="list-group-item"
-          >
-            <h6>Hạng Mục #{{ index + 1 }}</h6>
-            <p class="mb-1">{{ item.name }}</p>
-            <small class="text-muted">{{ item.description }}</small>
-          </div>
-        </div>
+        <FormField label="Tài Liệu Thiết Kế" type="file" v-model="formData.designBlueprint" />
       </div>
     </div>
 
     <div class="d-flex justify-content-end gap-2 mt-4">
-      <ActionButton
-        type="secondary"
-        icon="fas fa-times"
-        @click="$emit('cancel')"
-      >
+      <ActionButton type="secondary" icon="fas fa-times" @click="$emit('cancel')">
         Hủy
       </ActionButton>
-      <ActionButton
-        type="primary"
-        icon="fas fa-save"
-        @click="handleSubmit"
-      >
+      <ActionButton type="primary" icon="fas fa-save" @click="handleSubmit">
         Xác Nhận
       </ActionButton>
     </div>
@@ -151,7 +95,8 @@ label {
   color: #333;
 }
 
-input, textarea {
+input,
+textarea {
   width: 100%;
   padding: 8px;
   border: 1px solid #ddd;
@@ -219,7 +164,8 @@ textarea {
   cursor: pointer;
 }
 
-h2, h3 {
+h2,
+h3 {
   color: #333;
   margin-bottom: 20px;
 }

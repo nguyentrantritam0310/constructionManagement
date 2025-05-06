@@ -55,6 +55,8 @@ defineProps({
 .table th {
   background-color: #f8f9fa;
   border-bottom: 2px solid #dee2e6;
+  white-space: nowrap;
+  min-width: 100px;
 }
 
 .table td, .table th {
@@ -73,5 +75,38 @@ defineProps({
 .table-responsive {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.date-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #6c757d;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.date-info i {
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Column width utilities */
+.col-date {
+  min-width: 120px;
+  max-width: 120px;
+}
+
+.col-status {
+  min-width: 120px;
+  max-width: 120px;
+}
+
+.col-actions {
+  min-width: 100px;
+  max-width: 100px;
+  text-align: center;
 }
 </style>

@@ -150,12 +150,25 @@ const metricLabels = {
 const isNumber = (val) => typeof val === 'number' && !isNaN(val)
 const formatNumber = (val) => isNumber(val) ? val.toFixed(2) : val
 
+const formatDate = (dateStr) => {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('vi-VN', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+}
+
 const roundedForecast = computed(() =>
   forecast.value.slice(0, 7).map(row => {
     const newRow = { ...row }
     for (const key in newRow) {
-      if (isNumber(newRow[key])) newRow[key] = parseFloat(newRow[key].toFixed(2))
+      if (isNumber(newRow[key])) {
+        newRow[key] = parseFloat(newRow[key].toFixed(2))
+      }
     }
+    newRow.date = formatDate(newRow.date)
     return newRow
   })
 )
@@ -171,7 +184,12 @@ async function fetchForecast() {
   try {
     const lat = selectedLocation.value.lat
     const lng = selectedLocation.value.lng
-    const res = await api.get('/Weather/predict', { params: { lat, lng } })
+    const res = await api.get('/Weather/predict', {
+      params: {
+        lat: lat.toFixed(4),
+        lng: lng.toFixed(4)
+      }
+    })
     forecast.value = res.data.forecast
     metrics.value = res.data.metrics
   } catch (err) {

@@ -1,8 +1,10 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
+import FilterSearch from '../../components/common/FilterSearch.vue'
+import Pagination from '../../components/common/Pagination.vue'
 
 const orders = ref([
   {
@@ -38,6 +40,31 @@ const showDetails = ref(false)
 const selectedOrder = ref(null)
 const actualQuantities = ref([])
 
+const searchQuery = ref('')
+const statusFilter = ref('all')
+const dateRangeFilter = ref({ start: null, end: null })
+
+const filteredOrders = computed(() => {
+  return orders.value.filter(order => {
+    const matchesSearch = searchQuery.value === '' || order.supplier.toLowerCase().includes(searchQuery.value.toLowerCase())
+    const matchesStatus = statusFilter.value === 'all' || order.status === statusFilter.value
+    return matchesSearch && matchesStatus
+  })
+})
+
+const currentPage = ref(1)
+const itemsPerPage = 5
+
+const paginatedOrders = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredOrders.value.slice(start, end)
+})
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
+
 const openDetails = (order) => {
   selectedOrder.value = order
   actualQuantities.value = order.materials.map(material => ({
@@ -66,6 +93,12 @@ const handleConfirmEntry = () => {
 const handleReportIssue = (material) => {
   alert(`Báo cáo sự cố cho vật tư: ${material.name}`)
 }
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = 'all'
+  dateRangeFilter.value = { start: null, end: null }
+}
 </script>
 
 <template>
@@ -74,11 +107,17 @@ const handleReportIssue = (material) => {
       <h1 class="h3 mb-0">Nhập Kho</h1>
     </div>
 
-    <DataTable
-      :columns="columns"
-      :data="orders"
-      @row-click="openDetails"
-    >
+    <!-- Bộ lọc và tìm kiếm -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <FilterSearch :searchQuery="searchQuery" :statusFilter="statusFilter" :dateRangeFilter="dateRangeFilter"
+          @update:searchQuery="searchQuery = $event" @update:statusFilter="statusFilter = $event"
+          @update:dateRangeFilter="dateRangeFilter = $event" @resetFilters="resetFilters" />
+      </div>
+    </div>
+
+    <!-- Danh sách đơn hàng -->
+    <DataTable :columns="columns" :data="paginatedOrders" @row-click="openDetails">
       <template #actions="{ item }">
         <button class="btn btn-primary btn-sm" @click="openDetails(item)">
           Nhập Kho
@@ -86,12 +125,17 @@ const handleReportIssue = (material) => {
       </template>
     </DataTable>
 
+    <!-- Phân trang -->
+    <div class="d-flex justify-content-between align-items-center mt-4">
+      <div class="text-muted">
+        Hiển thị {{ paginatedOrders.length }} trên {{ filteredOrders.length }} đơn hàng
+      </div>
+      <Pagination :total-items="filteredOrders.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        @update:currentPage="handlePageChange" />
+    </div>
+
     <!-- Modal for Order Details -->
-    <ModalDialog
-      v-model:show="showDetails"
-      title="Chi Tiết Đơn Hàng"
-      size="lg"
-    >
+    <ModalDialog v-model:show="showDetails" title="Chi Tiết Đơn Hàng" size="lg">
       <div v-if="selectedOrder">
         <h5>Nhà Cung Cấp: {{ selectedOrder.supplier }}</h5>
         <p>Ngày Đặt: {{ selectedOrder.date }}</p>
@@ -111,26 +155,14 @@ const handleReportIssue = (material) => {
               <td>{{ material.name }}</td>
               <td>{{ material.expected }}</td>
               <td>
-                <input
-                  type="number"
-                  v-model="material.actual"
-                  class="form-control"
-                />
+                <input type="number" v-model="material.actual" class="form-control" />
               </td>
               <td>{{ material.unit }}</td>
               <td>
-                <input
-                  type="text"
-                  v-model="material.note"
-                  class="form-control"
-                  placeholder="Ghi chú (nếu có)"
-                />
+                <input type="text" v-model="material.note" class="form-control" placeholder="Ghi chú (nếu có)" />
               </td>
               <td>
-                <button
-                  class="btn btn-danger btn-sm"
-                  @click="handleReportIssue(material)"
-                >
+                <button class="btn btn-danger btn-sm" @click="handleReportIssue(material)">
                   Báo Cáo Sự Cố
                 </button>
               </td>
@@ -138,18 +170,10 @@ const handleReportIssue = (material) => {
           </tbody>
         </table>
         <div class="text-end">
-          <ActionButton
-            icon="fas fa-check"
-            type="primary"
-            @click="handleConfirmEntry"
-          >
+          <ActionButton icon="fas fa-check" type="primary" @click="handleConfirmEntry">
             Hoàn Tất Nhập Kho
           </ActionButton>
-          <ActionButton
-            icon="fas fa-times"
-            type="secondary"
-            @click="closeDetails"
-          >
+          <ActionButton icon="fas fa-times" type="secondary" @click="closeDetails">
             Hủy
           </ActionButton>
         </div>
@@ -167,6 +191,7 @@ const handleReportIssue = (material) => {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }

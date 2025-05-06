@@ -11,15 +11,15 @@
 
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="form-group">
-          <label for="username">
+          <label for="email">
             <i class="fas fa-user"></i>
-            Tên đăng nhập
+            Email
           </label>
           <input
-            id="username"
-            v-model="username"
-            type="text"
-            placeholder="Nhập tên đăng nhập"
+            id="email"
+            v-model="email"
+            type="email"
+            placeholder="Nhập email của bạn"
             required
           >
         </div>
@@ -43,9 +43,9 @@
           {{ error }}
         </div>
 
-        <button type="submit" class="login-btn">
+        <button type="submit" class="login-btn" :disabled="loading">
           <i class="fas fa-sign-in-alt"></i>
-          Đăng nhập
+          {{ loading ? 'Đang đăng nhập...' : 'Đăng nhập' }}
         </button>
       </form>
     </div>
@@ -54,20 +54,25 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useAuth } from '../composables/useAuth'
+import { useAuth } from '@/composables/useAuth'
 
 const { login } = useAuth()
-
-const username = ref('')
+const email = ref('')
 const password = ref('')
 const error = ref('')
+const loading = ref(false)
 
-const handleLogin = () => {
-  if (login(username.value, password.value)) {
-    error.value = ''
-  } else {
-    error.value = 'Tên đăng nhập hoặc mật khẩu không đúng'
+const handleLogin = async () => {
+  loading.value = true
+  error.value = ''
+
+  const result = await login(email.value, password.value)
+
+  if (!result.success) {
+    error.value = result.message
   }
+
+  loading.value = false
 }
 </script>
 
@@ -178,13 +183,18 @@ input:focus {
   transition: all 0.3s ease;
 }
 
-.login-btn:hover {
+.login-btn:hover:not(:disabled) {
   background: #2980b9;
   transform: translateY(-1px);
 }
 
-.login-btn:active {
+.login-btn:active:not(:disabled) {
   transform: translateY(0);
+}
+
+.login-btn:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
 }
 
 @media (max-width: 480px) {

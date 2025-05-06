@@ -1,6 +1,8 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import FilterSearch from '../../components/common/FilterSearch.vue'
+import Pagination from '../../components/common/Pagination.vue'
 
 const router = useRouter()
 
@@ -23,6 +25,31 @@ const projects = ref([
   }
 ])
 
+const searchQuery = ref('')
+const statusFilter = ref('all')
+const dateRangeFilter = ref({ start: null, end: null })
+
+const filteredProjects = computed(() => {
+  return projects.value.filter(project => {
+    const matchesSearch = searchQuery.value === '' || project.projectName.toLowerCase().includes(searchQuery.value.toLowerCase())
+    const matchesStatus = statusFilter.value === 'all' || project.status === statusFilter.value
+    return matchesSearch && matchesStatus
+  })
+})
+
+const currentPage = ref(1)
+const itemsPerPage = 5
+
+const paginatedProjects = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredProjects.value.slice(start, end)
+})
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
+
 const handleViewProject = (project) => {
   router.push(`/project-management-leader/${project.projectCode}`)
 }
@@ -38,6 +65,16 @@ const formatDate = (date) => {
       <h1 class="h3 mb-0">Cập Nhật Trạng Thái Nhiệm Vụ</h1>
     </div>
 
+    <!-- Bộ lọc và tìm kiếm -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <FilterSearch :searchQuery="searchQuery" :statusFilter="statusFilter" :dateRangeFilter="dateRangeFilter"
+          @update:searchQuery="searchQuery = $event" @update:statusFilter="statusFilter = $event"
+          @update:dateRangeFilter="dateRangeFilter = $event" @resetFilters="resetFilters" />
+      </div>
+    </div>
+
+    <!-- Danh sách nhiệm vụ -->
     <div class="card">
       <div class="card-body p-0">
         <table class="table table-hover mb-0">
@@ -53,7 +90,8 @@ const formatDate = (date) => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="project in projects" :key="project.projectCode" @click="handleViewProject(project)" style="cursor: pointer;">
+            <tr v-for="project in paginatedProjects" :key="project.projectCode" @click="handleViewProject(project)"
+              style="cursor: pointer;">
               <td>{{ project.projectCode }}</td>
               <td>{{ project.projectName }}</td>
               <td>{{ project.location }}</td>
@@ -73,6 +111,15 @@ const formatDate = (date) => {
           </tbody>
         </table>
       </div>
+    </div>
+
+    <!-- Phân trang -->
+    <div class="d-flex justify-content-between align-items-center mt-4">
+      <div class="text-muted">
+        Hiển thị {{ paginatedProjects.length }} trên {{ filteredProjects.length }} nhiệm vụ
+      </div>
+      <Pagination :total-items="filteredProjects.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        @update:currentPage="handlePageChange" />
     </div>
   </div>
 </template>
@@ -112,6 +159,7 @@ const formatDate = (date) => {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }

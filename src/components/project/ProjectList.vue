@@ -10,6 +10,8 @@ import UpdateProjectForm from './UpdateProjectForm.vue'
 import ModalDialog from '../common/ModalDialog.vue'
 import UpdateButton from '../common/UpdateButton.vue'
 import ChangeStatusButton from '../common/ChangeStatusButton.vue'
+import { useProjectManagement } from '../../composables/useProjectManagement'
+const { selectedProject, fetchProjectDetail } = useProjectManagement()
 
 const router = useRouter()
 const props = defineProps({
@@ -19,11 +21,10 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update-status', 'update-project'])
+const emit = defineEmits(['update-status', 'update-project', 'open-update-form', 'refresh-projects'])
 
 const showStatusDialog = ref(false)
 const showUpdateDialog = ref(false)
-const selectedProject = ref(null)
 const currentPage = ref(1)
 const itemsPerPage = 5
 
@@ -31,9 +32,10 @@ const columns = [
   { key: 'id', label: 'Mã công trình' },
   { key: 'constructionName', label: 'Tên công trình' },
   { key: 'location', label: 'Địa điểm' },
-  { key: 'startDate', label: 'Ngày khởi công' },
-  { key: 'expectedCompletionDate', label: 'Ngày dự kiến hoàn thành' },
-  { key: 'status', label: 'Trạng thái' }
+  { key: 'startDate', label: 'Ngày BĐ', class: 'col-date' },
+  { key: 'expectedCompletionDate', label: 'Ngày KTDK', class: 'col-date' },
+  { key: 'actualCompletionDate', label: 'Ngày KTTT', class: 'col-date' },
+  { key: 'statusName', label: 'Trạng thái', class: 'col-status' }
 ]
 
 // Phân trang
@@ -44,44 +46,57 @@ const paginatedProjects = computed(() => {
 })
 
 const handleRowClick = (project) => {
-  router.push(`/project-management/${project.id}`)
+  router.push(`/project-management/${project.id}`) // Chuyển đến trang chi tiết dự án
 }
 
 const handleStatusClick = (project, event) => {
   event.stopPropagation()
   selectedProject.value = { ...project }
-  showStatusDialog.value = true
+  showStatusDialog.value = true // Hiển thị modal đổi trạng thái
+}
+
+const closeStatusDialog = () => {
+  showStatusDialog.value = false
 }
 
 const handleStatusSubmit = (newStatus) => {
-  emit('update-status', {
-    project: selectedProject.value,
+  emit('update-project-status', {
+    projectId: selectedProject.value.id,
     newStatus
   })
-  showStatusDialog.value = false
-  selectedProject.value = null
+  closeStatusDialog()
 }
 
-const handleUpdateClick = (project, event) => {
+const handleUpdateClick = async (project, event) => {
   event.stopPropagation()
-  selectedProject.value = project
-  showUpdateDialog.value = true
+  await fetchProjectDetail(project.id) // Gọi API để lấy thông tin chi tiết dự án
+  showUpdateDialog.value = true // Hiển thị modal sửa
 }
 
-const handleUpdateSubmit = (updatedData) => {
-  emit('update-project', updatedData)
+const closeUpdateDialog = () => {
   showUpdateDialog.value = false
-  selectedProject.value = null
 }
 
-const handleUpdateCancel = () => {
-  showUpdateDialog.value = false
-  selectedProject.value = null
+const handleUpdateSubmit = async () => {
+  try {
+    await api.put(`/constructions/${selectedProject.value.id}`, selectedProject.value) // Gửi dữ liệu cập nhật
+    alert('Cập nhật dự án thành công!')
+    closeUpdateDialog()
+    emit('refresh-projects') // Phát sự kiện để làm mới danh sách dự án
+  } catch (error) {
+    console.error('Error updating project:', error)
+    alert('Cập nhật dự án thất bại!')
+  }
 }
 
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
 
-
-const formatDate = (date) => {
+const formatDate = (date, isActualCompletion = false) => {
+  if (!date) {
+    return isActualCompletion ? '(Chưa cập nhật)' : '-'
+  }
   return new Date(date).toLocaleDateString('vi-VN')
 }
 </script>
@@ -91,55 +106,52 @@ const formatDate = (date) => {
     <!-- Projects Table -->
     <div class="card">
       <div class="card-body p-0">
-        <DataTable
-          :columns="columns"
-          :data="paginatedProjects"
-          @row-click="handleRowClick"
-          class="project-table"
-        >
-          <template #projectCode="{ item }">
-            <span class="project-code">{{ item.projectCode }}</span>
+        <DataTable :columns="columns" :data="paginatedProjects" @row-click="handleRowClick" class="project-table">
+          <template #id="{ item }">
+            <span class="fw-medium text-primary">{{ item.id }}</span>
           </template>
 
-          <template #projectName="{ item }">
-            <div class="project-name">
-              <span class="name">{{ item.projectName }}</span>
+          <template #constructionName="{ item }">
+            <div>
+              <div class="fw-medium">{{ item.constructionName }}</div>
             </div>
           </template>
 
           <template #location="{ item }">
-            <div class="location">
-              <i class="fas fa-map-marker-alt text-muted me-1"></i>
+            <div class="d-flex align-items-center">
+              <i class=" text-muted me-1"></i>
               {{ item.location }}
             </div>
           </template>
-
           <template #startDate="{ item }">
             <div class="date-info">
-              <i class="fas fa-calendar text-muted me-1"></i>
+              <i class="fas fa-calendar text-muted"></i>
               {{ formatDate(item.startDate) }}
             </div>
           </template>
 
-          <template #endDate="{ item }">
+          <template #expectedCompletionDate="{ item }">
             <div class="date-info">
-              <i class="fas fa-calendar-check text-muted me-1"></i>
-              {{ formatDate(item.endDate) }}
+              <i class="fas fa-calendar-check text-muted"></i>
+              {{ formatDate(item.expectedCompletionDate) }}
             </div>
           </template>
 
-          <template #status="{ item }">
-            <StatusBadge :status="item.status" />
+          <template #actualCompletionDate="{ item }">
+            <div class="date-info">
+              <i class="fas fa-calendar-check text-muted"></i>
+              {{ formatDate(item.actualCompletionDate) }}
+            </div>
+          </template>
+
+          <template #statusName="{ item }">
+            <StatusBadge :status="item.statusName" />
           </template>
 
           <template #actions="{ item }">
             <div class="d-flex justify-content-center gap-2">
-              <UpdateButton
-                @click.stop="handleUpdateClick(item, $event)"
-              />
-              <ChangeStatusButton
-                @click.stop="handleStatusClick(item, $event)"
-              />
+              <UpdateButton @click.stop="handleUpdateClick(item, $event)" />
+              <ChangeStatusButton @click.stop="handleStatusClick(item, $event)" />
             </div>
           </template>
         </DataTable>
@@ -151,35 +163,18 @@ const formatDate = (date) => {
       <div class="text-muted">
         Hiển thị {{ paginatedProjects.length }} trên {{ props.projects.length }} dự án
       </div>
-      <Pagination
-        :total-items="props.projects.length"
-        :items-per-page="itemsPerPage"
-        :current-page="currentPage"
-        @update:currentPage="currentPage = $event" 
-      />
+      <Pagination :total-items="props.projects.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        @update:currentPage="handlePageChange" />
     </div>
 
     <!-- Change Status Dialog -->
-    <ChangeStatusDialog
-      v-if="selectedProject"
-      :show="showStatusDialog"
-      :project="selectedProject"
-      @update:show="showStatusDialog = $event"
-      @submit="handleStatusSubmit"
-    />
+    <ChangeStatusDialog v-if="selectedProject" :show="showStatusDialog" :project="selectedProject"
+      @update:show="showStatusDialog = $event" @submit="handleStatusSubmit" />
 
-    <!-- Thêm Modal cho form cập nhật -->
-    <ModalDialog
-      v-model:show="showUpdateDialog"
-      title="Cập Nhật Dự Án"
-      size="lg"
-    >
-      <UpdateProjectForm
-        v-if="selectedProject"
-        :project="selectedProject"
-        @update="handleUpdateSubmit"
-        @cancel="handleUpdateCancel"
-      />
+    <!-- Modal Sửa -->
+    <ModalDialog v-model:show="showUpdateDialog" title="Cập Nhật Dự Án" size="lg">
+      <UpdateProjectForm v-if="selectedProject" :project="selectedProject" @cancel="closeUpdateDialog"
+        @submit="handleUpdateSubmit" />
     </ModalDialog>
   </div>
 </template>
@@ -192,7 +187,7 @@ const formatDate = (date) => {
 .card {
   border: none;
   border-radius: 0.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
 
@@ -218,7 +213,7 @@ const formatDate = (date) => {
 }
 
 .project-table :deep(tr:hover) {
-  background-color: rgba(0,123,255,0.05);
+  background-color: rgba(0, 123, 255, 0.05);
 }
 
 .project-code {
@@ -238,13 +233,29 @@ const formatDate = (date) => {
 }
 
 .date-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #6c757d;
   font-size: 0.875rem;
-  color: #495057;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.date-info i {
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .gap-2 {

@@ -1,18 +1,25 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import Breadcrumb from './Breadcrumb.vue'
 import { computed } from 'vue'
 import { useAuth } from '../../composables/useAuth'
 
 const router = useRouter()
+const { currentUser, logout } = useAuth()
+
+// Debug logs
+console.log('Current User:', currentUser.value)
+console.log('User Role:', currentUser.value?.role)
+
 const isSidebarOpen = ref(true)
 
 const toggleSidebar = () => {
   isSidebarOpen.value = !isSidebarOpen.value
 }
 
-const { currentUser, logout } = useAuth()
+// Watch for changes in currentUser and redirect to appropriate default page
+
 
 // const menuItems = [
 //   { title: 'Bảng Điều Khiển', icon: 'fas fa-chart-line', path: '/' },
@@ -38,7 +45,7 @@ const menuItems = computed(() => {
         { icon: 'fas fa-clipboard-list', text: 'Xem báo cáo các vấn đề kỹ thuật', route: '/technical-issues' },
         { icon: 'fas fa-clipboard-list', text: 'Xem dự báo thời tiết', route: '/weather-forecast' }
       ]
-    case 'construction_leader':
+    case 'manager':
       return [
         { icon: 'fas fa-tasks', text: 'Cập nhật trạng thái nhiệm vụ thi công', route: '/task-status' },
         { icon: 'fas fa-exclamation-triangle', text: 'Báo cáo sự cố thi công', route: '/incident-report' },

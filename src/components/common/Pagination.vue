@@ -13,6 +13,10 @@ const props = defineProps({
   currentPage: {
     type: Number,
     required: true
+  },
+  maxVisiblePages: {
+    type: Number,
+    default: 4 // Số lượng ô phân trang tối đa hiển thị
   }
 })
 
@@ -24,44 +28,36 @@ const totalPages = computed(() => {
 
 const pages = computed(() => {
   const pages = []
-  for (let i = 1; i <= totalPages.value; i++) {
+  const startPage = Math.max(1, props.currentPage - Math.floor(props.maxVisiblePages / 2))
+  const endPage = Math.min(totalPages.value, startPage + props.maxVisiblePages - 1)
+
+  for (let i = startPage; i <= endPage; i++) {
     pages.push(i)
   }
   return pages
 })
 
 const handlePageChange = (page) => {
-  emit('update:currentPage', page) 
+  if (page >= 1 && page <= totalPages.value) {
+    emit('update:currentPage', page)
+  }
 }
 </script>
 
 <template>
   <div class="pagination">
-    <button
-      class="pagination-btn"
-      :disabled="currentPage === 1"
-      @click="handlePageChange(currentPage - 1)"
-    >
+    <button class="pagination-btn" :disabled="currentPage === 1" @click="handlePageChange(currentPage - 1)">
       Trước
     </button>
 
     <div class="page-numbers">
-      <button
-        v-for="page in pages"
-        :key="page"
-        class="pagination-btn"
-        :class="{ active: page === currentPage }"
-        @click="handlePageChange(page)"
-      >
+      <button v-for="page in pages" :key="page" class="pagination-btn" :class="{ active: page === currentPage }"
+        @click="handlePageChange(page)">
         {{ page }}
       </button>
     </div>
 
-    <button
-      class="pagination-btn"
-      :disabled="currentPage === totalPages"
-      @click="handlePageChange(currentPage + 1)"
-    >
+    <button class="pagination-btn" :disabled="currentPage === totalPages" @click="handlePageChange(currentPage + 1)">
       Sau
     </button>
   </div>

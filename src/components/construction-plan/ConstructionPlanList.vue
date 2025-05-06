@@ -27,13 +27,14 @@ const currentPage = ref(1)
 const itemsPerPage = 10
 
 const columns = [
-  { key: 'planName', label: 'Tên Kế Hoạch' },
-  { key: 'projectCode', label: 'Mã Công Trình' },
-  { key: 'itemCode', label: 'Mã Hạng Mục' },
-  { key: 'supervisor', label: 'Chỉ Huy Phụ Trách' },
-  { key: 'startDate', label: 'Ngày Bắt Đầu' },
-  { key: 'endDate', label: 'Ngày Kết Thúc' },
-  { key: 'status', label: 'Trạng Thái' }
+  { key: 'id', label: 'Mã KH' },
+  { key: 'constructionName', label: 'Tên Công Trình' },
+  { key: 'constructionItemName', label: 'Tên Hạng Mục' },
+  { key: 'employeeName', label: 'Chỉ Huy Phụ Trách' },
+  { key: 'startDate', label: 'Ngày BĐ', class: 'col-date' },
+  { key: 'expectedCompletionDate', label: 'Ngày KTDK', class: 'col-date' },
+  { key: 'actualCompletionDate', label: 'Ngày KTTT', class: 'col-date' },
+  { key: 'statusName', label: 'Trạng Thái', class: 'col-status' }
 ]
 
 // Tính toán dữ liệu cho trang hiện tại
@@ -85,79 +86,138 @@ const handleDetailSubmit = (updatedPlan) => {
 const handlePageChange = (page) => {
   currentPage.value = page
 }
+
+const formatDate = (date, isActualCompletion = false) => {
+  if (!date) {
+    return isActualCompletion ? '(Chưa cập nhật)' : '-'
+  }
+  return new Date(date).toLocaleDateString('vi-VN')
+}
 </script>
 
 <template>
   <div class="plan-list">
-    <DataTable
-      :columns="columns"
-      :data="paginatedPlans"
-      @row-click="handleRowClick"
-    >
-      <template #status="{ item }">
-        <StatusBadge :status="item.status" type="construction" />
+    <DataTable :columns="columns" :data="paginatedPlans" @row-click="handleRowClick" class="plan-table">
+      <template #id="{ item }">
+        <span class="fw-medium text-primary">{{ item.id }}</span>
+      </template>
+
+      <template #constructionName="{ item }">
+        <div>
+          <div class="fw-medium">{{ item.constructionName }}</div>
+        </div>
+      </template>
+
+      <template #constructionItemName="{ item }">
+        <div>
+          <div class="fw-medium">{{ item.constructionItemName }}</div>
+        </div>
+      </template>
+
+      <template #startDate="{ item }">
+        <div class="date-info">
+          <i class="fas fa-calendar text-muted"></i>
+          {{ formatDate(item.startDate) }}
+        </div>
+      </template>
+
+      <template #expectedCompletionDate="{ item }">
+        <div class="date-info">
+          <i class="fas fa-calendar-check text-muted"></i>
+          {{ formatDate(item.expectedCompletionDate) }}
+        </div>
+      </template>
+
+      <template #actualCompletionDate="{ item }">
+        <div class="date-info">
+          <i class="fas fa-calendar-check text-muted"></i>
+          {{ formatDate(item.actualCompletionDate, true) }}
+        </div>
+      </template>
+
+      <template #statusName="{ item }">
+        <StatusBadge :status="item.statusName" />
       </template>
 
       <template #actions="{ item }">
-        <div class="d-flex gap-2" @click.stop>
-          <UpdateButton
-            @click="(e) => handleUpdateClick(item, e)"
-          />
-          <ChangeStatusButton
-            @click="(e) => handleStatusClick(item, e)"
-          />
+        <div class="d-flex justify-content-center gap-2">
+          <UpdateButton @click.stop="handleUpdateClick(item, $event)" />
+          <ChangeStatusButton @click.stop="handleStatusClick(item, $event)" />
         </div>
       </template>
     </DataTable>
 
-    <!-- Pagination -->
-    <div class="d-flex justify-content-center mt-4">
-      <Pagination
-        :total-items="plans.length"
-        :items-per-page="itemsPerPage"
-        :current-page="currentPage"
-        @page-change="handlePageChange"
-      />
-    </div>
-
     <!-- Dialogs -->
-    <PlanDetailDialog
-      v-if="selectedPlan"
-      :show="showDetailDialog"
-      :plan="selectedPlan"
-      @update:show="showDetailDialog = $event"
-      @submit="handleDetailSubmit"
-    />
+    <PlanDetailDialog v-if="selectedPlan" :show="showDetailDialog" :plan="selectedPlan"
+      @update:show="showDetailDialog = $event" @submit="handleDetailSubmit" />
 
-    <UpdatePlanDialog
-      v-if="selectedPlan"
-      :show="showUpdateDialog"
-      :plan="selectedPlan"
-      @update:show="showUpdateDialog = $event"
-      @submit="handleUpdateSubmit"
-    />
+    <UpdatePlanDialog v-if="selectedPlan" :show="showUpdateDialog" :plan="selectedPlan"
+      @update:show="showUpdateDialog = $event" @submit="handleUpdateSubmit" />
 
-    <ChangeStatusDialog
-      v-if="selectedPlan"
-      :show="showStatusDialog"
-      :plan="selectedPlan"
-      @update:show="showStatusDialog = $event"
-      @submit="handleStatusSubmit"
-    />
+    <ChangeStatusDialog v-if="selectedPlan" :show="showStatusDialog" :plan="selectedPlan"
+      @update:show="showStatusDialog = $event" @submit="handleStatusSubmit" />
   </div>
 </template>
 
 <style scoped>
 .plan-list {
   position: relative;
+  animation: fadeIn 0.3s ease-out;
 }
 
-:deep(.table) {
-  transition: opacity 0.3s ease;
+.plan-table {
+  margin: 0;
 }
 
-:deep(.table.loading) {
-  opacity: 0.6;
+.plan-table :deep(th) {
+  background: #f8f9fa;
+  font-weight: 600;
+  padding: 1rem;
+  white-space: nowrap;
+}
+
+.plan-table :deep(td) {
+  padding: 1rem;
+  vertical-align: middle;
+}
+
+.plan-table :deep(tr) {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.plan-table :deep(tr:hover) {
+  background-color: rgba(0, 123, 255, 0.05);
+}
+
+.date-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #6c757d;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.date-info i {
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.gap-2 {
+  gap: 0.5rem;
 }
 
 /* Add transition for page changes */
