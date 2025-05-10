@@ -1,18 +1,92 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useProjectManagement } from '../../composables/useProjectManagement'
+import { ref, onMounted, computed } from 'vue'
+import { useConstructionManagement } from '../../composables/useConstructionManagement'
 
-const { fetchProjects, dashboardStats, projectTypesStats, upcomingDeadlines } = useProjectManagement()
+const { constructions, fetchConstructions } = useConstructionManagement()
 
-onMounted(async () => {
-  await fetchProjects() // Gọi API để lấy danh sách dự án
+// Computed properties for dashboard statistics
+const dashboardStats = computed(() => {
+  const total = constructions.value.length
+  const pending = constructions.value.filter(c => c.statusName === 'Chờ khởi công').length
+  const inProgress = constructions.value.filter(c => c.statusName === 'Đang thi công').length
+  const completed = constructions.value.filter(c => c.statusName === 'Hoàn thành').length
+  const paused = constructions.value.filter(c => c.statusName === 'Tạm dừng').length
+  const canceled = constructions.value.filter(c => c.statusName === 'Hủy bỏ').length
+
+  return {
+    totalProjects: total,
+    pendingProjects: pending,
+    inProgressProjects: inProgress,
+    completedProjects: completed,
+    pausedProjects: paused,
+    canceledProjects: canceled
+  }
 })
 
+const constructionTypesStats = computed(() => {
+  const types = {}
+  constructions.value.forEach(construction => {
+    const type = construction.constructionType || construction.type || 'Không xác định'
+    if (!types[type]) {
+      types[type] = 0
+    }
+    types[type]++
+  })
+
+  const colors = {
+    'Chung cư': '#0d6efd',
+    'Nhà phố': '#198754',
+    'Biệt thự': '#ffc107',
+    'Công trình công cộng': '#dc3545',
+    'Công trình công nghiệp': '#ffc107',
+    'Công trình giao thông': '#dc3545',
+    'Công trình thủy lợi': '#0dcaf0',
+    'Không xác định': '#6c757d'
+  }
+
+  return Object.entries(types).map(([type, count]) => ({
+    type,
+    count,
+    color: colors[type] || '#6c757d'
+  }))
+})
+
+const upcomingDeadlines = computed(() => {
+  const now = new Date()
+  const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+  return constructions.value
+    .filter(construction => {
+      const endDate = new Date(construction.endDate)
+      return endDate > now && endDate <= thirtyDaysFromNow
+    })
+    .map(construction => ({
+      name: construction.constructionName,
+      deadline: construction.endDate,
+      status: construction.statusName,
+      progress: construction.progress || 0
+    }))
+    .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
+})
+
+onMounted(async () => {
+  try {
+    await fetchConstructions()
+  } catch (error) {
+    console.error('Error fetching constructions:', error)
+  }
+})
 
 // Hàm format ngày
-const formatDate = (dateString) => {
-  const date = new Date(dateString)
-  return new Intl.DateTimeFormat('vi-VN').format(date)
+const formatDate = (date) => {
+  return new Date(date).toLocaleDateString('vi-VN')
+}
+
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND'
+  }).format(value)
 }
 </script>
 
@@ -28,15 +102,15 @@ const formatDate = (dateString) => {
 
     <!-- Thống kê tổng quan -->
     <div class="stats-grid">
-      <!-- Tổng Số Dự Án -->
+      <!-- Tổng Số Công trình -->
       <div class="stats-card primary">
         <div class="stats-icon">
           <i class="fas fa-project-diagram"></i>
         </div>
         <div class="stats-info">
-          <h3>Tổng Số Dự Án</h3>
+          <h3>Tổng Số Công trình</h3>
           <span class="number">{{ dashboardStats.totalProjects }}</span>
-          <p>Dự án</p>
+          <p>Công trình</p>
         </div>
       </div>
 
@@ -48,7 +122,7 @@ const formatDate = (dateString) => {
         <div class="stats-info">
           <h3>Đang Chờ</h3>
           <span class="number">{{ dashboardStats.pendingProjects }}</span>
-          <p>Dự án chờ khởi công</p>
+          <p>Công trình chờ khởi công</p>
         </div>
       </div>
 
@@ -60,7 +134,7 @@ const formatDate = (dateString) => {
         <div class="stats-info">
           <h3>Đang Thi Công</h3>
           <span class="number">{{ dashboardStats.inProgressProjects }}</span>
-          <p>Dự án đang thực hiện</p>
+          <p>Công trình đang thực hiện</p>
         </div>
       </div>
 
@@ -72,7 +146,7 @@ const formatDate = (dateString) => {
         <div class="stats-info">
           <h3>Đã Hoàn Thành</h3>
           <span class="number">{{ dashboardStats.completedProjects }}</span>
-          <p>Dự án hoàn thành</p>
+          <p>Công trình hoàn thành</p>
         </div>
       </div>
 
@@ -84,7 +158,7 @@ const formatDate = (dateString) => {
         <div class="stats-info">
           <h3>Tạm Dừng</h3>
           <span class="number">{{ dashboardStats.pausedProjects }}</span>
-          <p>Dự án tạm dừng</p>
+          <p>Công trình tạm dừng</p>
         </div>
       </div>
 
@@ -96,17 +170,17 @@ const formatDate = (dateString) => {
         <div class="stats-info">
           <h3>Hủy Bỏ</h3>
           <span class="number">{{ dashboardStats.canceledProjects }}</span>
-          <p>Dự án hủy bỏ</p>
+          <p>Công trình hủy bỏ</p>
         </div>
       </div>
     </div>
 
     <!-- Phần thông tin chi tiết -->
     <div class="dashboard-content">
-      <!-- Dự án sắp đến hạn -->
+      <!-- Công trình sắp đến hạn -->
       <div class="upcoming-deadlines">
         <div class="section-header">
-          <h3><i class="fas fa-calendar-alt"></i> Dự Án Sắp Đến Hạn</h3>
+          <h3><i class="fas fa-calendar-alt"></i> Công trình Sắp Đến Hạn</h3>
         </div>
         <div v-if="upcomingDeadlines.length > 0" class="deadline-list">
           <div v-for="(project, index) in upcomingDeadlines" :key="index" class="deadline-item">
@@ -131,17 +205,17 @@ const formatDate = (dateString) => {
           </div>
         </div>
         <div v-else class="no-deadlines">
-          <p>Hiện không có dự án nào sắp đến hạn.</p>
+          <p>Hiện không có Công trình nào sắp đến hạn.</p>
         </div>
       </div>
 
-      <!-- Thống kê theo loại dự án -->
+      <!-- Thống kê theo loại Công trình -->
       <div class="project-types">
         <div class="section-header">
           <h3><i class="fas fa-chart-pie"></i> Thống Kê Theo Loại</h3>
         </div>
         <div class="types-grid">
-          <div v-for="(type, index) in projectTypesStats" :key="index" class="type-card"
+          <div v-for="(type, index) in constructionTypesStats" :key="index" class="type-card"
             :style="{ borderColor: type.color }">
             <div class="type-info">
               <h4>{{ type.type }}</h4>
@@ -376,6 +450,11 @@ const formatDate = (dateString) => {
   align-items: center;
   border-left: 4px solid;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease;
+}
+
+.type-card:hover {
+  transform: translateY(-2px);
 }
 
 .type-info h4 {

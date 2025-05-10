@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import Breadcrumb from '@/components/common/Breadcrumb.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import UpdateButton from '../../components/common/UpdateButton.vue'
@@ -9,36 +8,48 @@ import ChangeStatusButton from '../../components/common/ChangeStatusButton.vue'
 import ChangeStatusDialog from '../../components/common/ChangeStatusDialog.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ChangeStatusForm from '../../components/common/ChangeStatusForm.vue'
-import { useProjectManagement } from '../../composables/useProjectManagement'
+import { useConstructionManagement } from '../../composables/useConstructionManagement'
+import { useToast } from '../../composables/useToast'
+import ActionButton from '../../components/common/ActionButton.vue'
+import FormDialog from '../../components/common/FormDialog.vue'
+import ConstructionItemForm from '../../components/construction/ConstructionItemForm.vue'
 
 const route = useRoute()
 const router = useRouter()
-const projectId = route.params.id
-const project = ref(null)
+const constructionId = route.params.id
+const construction = ref(null)
 const activeTab = ref('info')
 const showStatusDialog = ref(false)
 const selectedItem = ref(null)
-const { selectedProject, fetchProjectDetail } = useProjectManagement()
-
-const breadcrumbItems = computed(() => [
-  { text: 'Trang chủ', to: '/' },
-  { text: 'Quản lý dự án', to: '/project-management' },
-  { text: selectedProject.value?.constructionName || 'Chi tiết dự án' }
-])
+const { selectedConstruction, fetchConstructionDetail } = useConstructionManagement()
+const { showSuccess, showError } = useToast()
+const showItemForm = ref(false)
+const formMode = ref('add')
 
 onMounted(async () => {
-  console.log('Project ID:', projectId) // Debug projectId
-  await fetchProjectDetail(projectId) // Gọi API để lấy thông tin chi tiết dự án
-  console.log('Selected Project:', selectedProject.value) // Debug dữ liệu sau khi gọi API
+  console.log('construction ID:', constructionId) // Debug constructionId
+  await fetchConstructionDetail(constructionId) // Gọi API để lấy thông tin chi tiết công trình
+  console.log('Selected construction:', selectedConstruction.value) // Debug dữ liệu sau khi gọi API
+  try {
+    console.log('Construction ID:', constructionId) // Debug constructionId
+    await fetchConstructionDetail(constructionId) // Gọi API để lấy thông tin chi tiết công trình
+    console.log('Selected Construction:', selectedConstruction.value) // Debug dữ liệu sau khi gọi API
+    construction.value = selectedConstruction.value
+    construction.value.constructionItems = selectedConstruction.value.constructionItems
+  } catch (error) {
+    console.error('Error fetching construction details:', error)
+    showError('Không thể tải thông tin công trình')
+  }
 })
 
 const constructionItemColumns = [
-  { key: 'name', label: 'Tên hạng mục' },
+  { key: 'id', label: 'Mã hạng mục' },
+  { key: 'constructionItemName', label: 'Tên hạng mục' },
   { key: 'startDate', label: 'Ngày bắt đầu' },
-  { key: 'endDate', label: 'Ngày kết thúc' },
+  { key: 'expectedCompletionDate', label: 'Ngày kết thúc' },
   { key: 'totalVolume', label: 'Tổng khối lượng' },
   { key: 'unit', label: 'Đơn vị' },
-  { key: 'status', label: 'Trạng thái' }
+  { key: 'statusName', label: 'Trạng thái' }
 ]
 
 const handleItemClick = (item) => {
@@ -51,20 +62,34 @@ const handleUpdateItem = (item, event) => {
   // Xử lý cập nhật hạng mục
 }
 
-const handleStatusChange = (item, event) => {
-  event.stopPropagation()
-  selectedItem.value = item
-  showStatusDialog.value = true
+const handleStatusChange = async (itemId, newStatus) => {
+  try {
+    // Tìm hạng mục cần cập nhật
+    const itemIndex = construction.value.constructionItems.findIndex(
+      item => item.id === itemId
+    )
+
+    if (itemIndex === -1) {
+      throw new Error('Không tìm thấy hạng mục')
+    }
+
+    // Cập nhật trạng thái
+    construction.value.constructionItems[itemIndex].status = newStatus
+    showSuccess('Cập nhật trạng thái thành công')
+  } catch (error) {
+    console.error('Error updating item status:', error)
+    showError('Không thể cập nhật trạng thái hạng mục')
+  }
 }
 
 const handleStatusSubmit = (newStatus) => {
   if (selectedItem.value) {
     // Cập nhật trạng thái của hạng mục
-    const itemIndex = project.value.constructionItems.findIndex(
+    const itemIndex = construction.value.constructionItems.findIndex(
       item => item.id === selectedItem.value.id
     )
     if (itemIndex !== -1) {
-      project.value.constructionItems[itemIndex].status = newStatus
+      construction.value.constructionItems[itemIndex].status = newStatus
     }
   }
   showStatusDialog.value = false
@@ -72,12 +97,19 @@ const handleStatusSubmit = (newStatus) => {
 }
 
 const formatDate = (date) => {
+  if (!date) return 'Chưa cập nhật'
   return new Date(date).toLocaleDateString('vi-VN')
 }
 
-const downloadDesign = () => {
-  // Xử lý tải bản thiết kế
-  console.log('Downloading design file:', project.value.designFile)
+const downloadDesign = async () => {
+  try {
+    console.log('Downloading design file:', construction.value.designFile)
+    // Implement download logic here
+    showSuccess('Tải file thiết kế thành công')
+  } catch (error) {
+    console.error('Error downloading design file:', error)
+    showError('Không thể tải file thiết kế')
+  }
 }
 
 const calculateRemainingDays = (endDate) => {
@@ -87,29 +119,35 @@ const calculateRemainingDays = (endDate) => {
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   return diffDays > 0 ? diffDays : 0
 }
+
+const handleItemSubmit = (item) => {
+  // Handle item submission
+  console.log('Item submitted:', item)
+  showItemForm.value = false
+}
 </script>
 
 <template>
   <div class="container-fluid py-4">
-    <div v-if="selectedProject" class="project-detail">
+    <div v-if="selectedConstruction" class="construction-detail">
       <!-- Header Section -->
       <div class="header-section mb-4">
         <div class="d-flex justify-content-between align-items-start">
           <div>
-            <h1 class="project-title mb-2">{{ selectedProject.constructionName }}</h1>
-            <div class="project-meta">
+            <h1 class="construction-title mb-2">{{ selectedConstruction.constructionName }}</h1>
+            <div class="construction-meta">
               <span class="meta-item">
                 <i class="fas fa-map-marker-alt"></i>
-                {{ selectedProject.location }}
+                {{ selectedConstruction.location }}
               </span>
               <span class="meta-item">
                 <i class="fas fa-calendar"></i>
-                {{ selectedProject.startDate }} - {{ selectedProject.expectedCompletionDate }}
+                {{ formatDate(selectedConstruction.startDate) }} - {{ formatDate(selectedConstruction.expectedCompletionDate) }}
               </span>
             </div>
           </div>
           <div class="d-flex flex-column align-items-end">
-            <StatusBadge :status="selectedProject.statusName" class="mb-2" />
+            <StatusBadge :status="selectedConstruction.statusName" class="mb-2" />
             <button class="btn btn-outline-primary btn-sm">
               <i class="fas fa-file-download me-1"></i>
               Tải bản thiết kế
@@ -127,7 +165,7 @@ const calculateRemainingDays = (endDate) => {
             </div>
             <div class="stat-content">
               <h3>Loại công trình</h3>
-              <p>{{ selectedProject.projectType || 'Chưa xác định' }}</p> <!-- Nếu không có projectType -->
+              <p>{{ selectedConstruction.constructionTypeName || 'Chưa xác định' }}</p> <!-- Nếu không có constructionType -->
             </div>
           </div>
         </div>
@@ -138,7 +176,7 @@ const calculateRemainingDays = (endDate) => {
             </div>
             <div class="stat-content">
               <h3>Tổng diện tích</h3>
-              <p>{{ selectedProject.totalArea }}</p>
+              <p>{{ selectedConstruction.totalArea }}</p>
             </div>
           </div>
         </div>
@@ -149,7 +187,7 @@ const calculateRemainingDays = (endDate) => {
             </div>
             <div class="stat-content">
               <h3>Số hạng mục</h3>
-              <!-- <p>{{ selectedProject.constructionItems.length }} hạng mục</p> -->
+              <p>{{ selectedConstruction.constructionItems.length }} hạng mục</p>
             </div>
           </div>
         </div>
@@ -160,7 +198,7 @@ const calculateRemainingDays = (endDate) => {
             </div>
             <div class="stat-content">
               <h3>Thời gian còn lại</h3>
-              <p>{{ calculateRemainingDays(selectedProject.expectedCompletionDate) }} ngày</p>
+              <p>{{ calculateRemainingDays(selectedConstruction.expectedCompletionDate) }} ngày</p>
             </div>
           </div>
         </div>
@@ -193,28 +231,28 @@ const calculateRemainingDays = (endDate) => {
                 <div class="info-section">
                   <h2 class="section-title">
                     <i class="fas fa-info-circle me-2"></i>
-                    Chi tiết dự án
+                    Chi tiết công trình
                   </h2>
                   <div class="info-grid">
                     <div class="info-item">
                       <label>Loại công trình</label>
-                      <p>{{ selectedProject.projectType || 'Chưa xác định' }}</p> <!-- Nếu không có projectType -->
+                      <p>{{ selectedConstruction.constructionType || 'Chưa xác định' }}</p> <!-- Nếu không có constructionType -->
                     </div>
                     <div class="info-item">
                       <label>Tổng diện tích</label>
-                      <p>{{ selectedProject.totalArea }}</p>
+                      <p>{{ selectedConstruction.totalArea }}</p>
                     </div>
                     <div class="info-item">
                       <label>Ngày khởi công</label>
-                      <p>{{ selectedProject.startDate }}</p>
+                      <p>{{ formatDate(selectedConstruction.startDate) }}</p>
                     </div>
                     <div class="info-item">
                       <label>Ngày dự kiến hoàn thành</label>
-                      <p>{{ selectedProject.expectedCompletionDate }}</p>
+                      <p>{{ formatDate(selectedConstruction.expectedCompletionDate) }}</p>
                     </div>
                     <div class="info-item full-width">
                       <label>Địa điểm xây dựng</label>
-                      <p>{{ selectedProject.location }}</p>
+                      <p>{{ selectedConstruction.location }}</p>
                     </div>
                   </div>
                 </div>
@@ -231,7 +269,7 @@ const calculateRemainingDays = (endDate) => {
                     </div>
                     <div class="document-info">
                       <h4>Bản thiết kế</h4>
-                      <p>{{ selectedProject.designBlueprint }}</p>
+                      <p>{{ selectedConstruction.designBlueprint }}</p>
                       <button class="btn btn-sm btn-primary" @click="downloadDesign">
                         <i class="fas fa-download me-1"></i>
                         Tải xuống
@@ -251,10 +289,10 @@ const calculateRemainingDays = (endDate) => {
                 Danh sách hạng mục
               </h2>
             </div>
-            <DataTable :columns="constructionItemColumns" :data="selectedProject.constructionItems"
+            <DataTable :columns="constructionItemColumns" :data="selectedConstruction.constructionItems"
               @row-click="handleItemClick" class="custom-table">
-              <template #name="{ item }">
-                <div class="fw-medium text-primary">{{ item.name }}</div>
+              <template #id="{ item }">
+                <div class="fw-medium text-primary">HM-{{ item.id }}</div>
               </template>
 
               <template #startDate="{ item }">
@@ -264,16 +302,16 @@ const calculateRemainingDays = (endDate) => {
                 </div>
               </template>
 
-              <template #endDate="{ item }">
+              <template #expectedCompletionDate="{ item }">
                 <div class="date-info">
                   <i class="fas fa-calendar-check text-muted me-1"></i>
-                  {{ formatDate(item.endDate) }}
+                  {{ formatDate(item.expectedCompletionDate) }}
                 </div>
               </template>
 
-              <template #totalVolume="{ item }">
+              <template #constructionItemName="{ item }">
                 <div class="volume-info">
-                  <span class="fw-medium">{{ item.totalVolume }}</span>
+                  <span class="fw-medium">{{ item.constructionItemName }}</span>
                   <span class="text-muted ms-1">{{ item.unit }}</span>
                 </div>
               </template>
@@ -285,7 +323,7 @@ const calculateRemainingDays = (endDate) => {
               <template #actions="{ item }">
                 <div class="d-flex justify-content-center gap-2">
                   <UpdateButton @click="(e) => handleUpdateItem(item, e)" />
-                  <ChangeStatusButton @click="(e) => handleStatusChange(item, e)" />
+                  <ChangeStatusButton @click="(e) => handleStatusChange(item.id, e)" />
                 </div>
               </template>
             </DataTable>
@@ -306,11 +344,20 @@ const calculateRemainingDays = (endDate) => {
       <ChangeStatusForm :current-status="selectedItem.status" type="construction" @submit="handleStatusSubmit"
         @cancel="showStatusDialog = false" />
     </ModalDialog>
+
+    <FormDialog v-model:show="showItemForm" :title="formMode === 'add' ? 'Thêm Hạng Mục' : 'Cập Nhật Hạng Mục'">
+      <ConstructionItemForm
+        :mode="formMode"
+        :item="selectedItem"
+        @submit="handleItemSubmit"
+        @cancel="showItemForm = false"
+      />
+    </FormDialog>
   </div>
 </template>
 
 <style scoped>
-.project-detail {
+.construction-detail {
   animation: fadeIn 0.3s ease-out;
 }
 
@@ -321,13 +368,13 @@ const calculateRemainingDays = (endDate) => {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.project-title {
+.construction-title {
   font-size: 2rem;
   color: #2c3e50;
   font-weight: 600;
 }
 
-.project-meta {
+.construction-meta {
   display: flex;
   gap: 1.5rem;
   color: #6c757d;

@@ -2,13 +2,17 @@
 import { ref, computed } from 'vue'
 import DataTable from '../common/DataTable.vue'
 import StatusBadge from '../common/StatusBadge.vue'
-import ActionButton from '../common/ActionButton.vue'
-import UpdatePlanDialog from './UpdatePlanDialog.vue'
-import ChangeStatusDialog from './ChangeStatusDialog.vue'
 import PlanDetailDialog from './PlanDetailDialog.vue'
-import Pagination from '../common/Pagination.vue'
 import UpdateButton from '../common/UpdateButton.vue'
+import StatusChangeDialog from '../common/StatusChangeDialog.vue'
 import ChangeStatusButton from '../common/ChangeStatusButton.vue'
+import { useConstructionPlan } from '../../composables/useConstructionPlan'
+import { useToast } from '../../composables/useToast'
+import PlanForm from './PlanForm.vue'
+import ModalDialog from '../common/ModalDialog.vue'
+
+const { plans, updatePlanStatus, fetchPlans } = useConstructionPlan()
+const { showSuccess, showError } = useToast()
 
 const props = defineProps({
   plans: {
@@ -34,7 +38,7 @@ const columns = [
   { key: 'startDate', label: 'Ngày BĐ', class: 'col-date' },
   { key: 'expectedCompletionDate', label: 'Ngày KTDK', class: 'col-date' },
   { key: 'actualCompletionDate', label: 'Ngày KTTT', class: 'col-date' },
-  { key: 'statusName', label: 'Trạng Thái', class: 'col-status' }
+  { key: 'statusName', label: 'Trạng Thái', class: 'col-status' },
 ]
 
 // Tính toán dữ liệu cho trang hiện tại
@@ -68,13 +72,21 @@ const handleUpdateSubmit = (updatedPlan) => {
   selectedPlan.value = null
 }
 
-const handleStatusSubmit = (newStatus) => {
-  emit('update-status', {
-    plan: selectedPlan.value,
-    newStatus
-  })
-  showStatusDialog.value = false
-  selectedPlan.value = null
+const handleStatusSubmit = async (data) => {
+  try {
+    const { newStatus, item } = data
+    await updatePlanStatus(item.id, newStatus)
+    await fetchPlans()
+    emit('update-status', {
+      plan: item,
+      newStatus
+    })
+    showStatusDialog.value = false
+    selectedPlan.value = null
+  } catch (error) {
+    console.error('Error updating status:', error)
+    showError('Không thể cập nhật trạng thái')
+  }
 }
 
 const handleDetailSubmit = (updatedPlan) => {
@@ -151,11 +163,19 @@ const formatDate = (date, isActualCompletion = false) => {
     <PlanDetailDialog v-if="selectedPlan" :show="showDetailDialog" :plan="selectedPlan"
       @update:show="showDetailDialog = $event" @submit="handleDetailSubmit" />
 
-    <UpdatePlanDialog v-if="selectedPlan" :show="showUpdateDialog" :plan="selectedPlan"
-      @update:show="showUpdateDialog = $event" @submit="handleUpdateSubmit" />
+    <ModalDialog v-if="selectedPlan" v-model:show="showUpdateDialog" title="Cập Nhật Kế Hoạch" size="lg">
+      <PlanForm v-if="selectedPlan" mode="update" :plan="selectedPlan" @close="handleUpdateSubmit" />
+    </ModalDialog>
 
-    <ChangeStatusDialog v-if="selectedPlan" :show="showStatusDialog" :plan="selectedPlan"
-      @update:show="showStatusDialog = $event" @submit="handleStatusSubmit" />
+    <StatusChangeDialog
+      v-if="selectedPlan"
+      :show="showStatusDialog"
+      :item="selectedPlan"
+      type="plan"
+      title="Thay Đổi Trạng Thái Kế Hoạch"
+      @update:show="showStatusDialog = $event"
+      @submit="handleStatusSubmit"
+    />
   </div>
 </template>
 

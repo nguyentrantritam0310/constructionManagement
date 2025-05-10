@@ -24,34 +24,19 @@ const emit = defineEmits(['update:show'])
 <template>
   <Teleport to="body">
     <!-- Backdrop -->
-    <div
-      v-if="show"
-      class="modal-backdrop fade show"
-      @click="$emit('update:show', false)"
-    ></div>
+    <div v-if="show" class="modal-backdrop fade show" @click="$emit('update:show', false)"></div>
 
     <!-- Modal -->
-    <div
-      v-if="show"
-      class="modal fade show"
-      style="display: block;"
-    >
-      <div
-        :class="[
-          'modal-dialog',
-          size ? `modal-${size}` : '',
-          { 'modal-dialog-scrollable': scrollable }
-        ]"
-        @click.stop
-      >
+    <div v-if="show" class="modal fade show" style="display: block;">
+      <div :class="[
+        'modal-dialog',
+        size ? `modal-${size}` : '',
+        { 'modal-dialog-scrollable': scrollable }
+      ]" @click.stop>
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">{{ title }}</h5>
-            <button
-              type="button"
-              class="btn-close"
-              @click="$emit('update:show', false)"
-            ></button>
+            <button type="button" class="btn-close" @click="$emit('update:show', false)"></button>
           </div>
           <div class="modal-body">
             <slot></slot>
@@ -90,6 +75,7 @@ const emit = defineEmits(['update:show'])
     opacity: 0;
     transform: translateY(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);

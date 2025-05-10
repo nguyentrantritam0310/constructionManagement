@@ -10,11 +10,14 @@ import ChangeStatusDialog from '../../components/common/ChangeStatusDialog.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ChangeStatusForm from '../../components/common/ChangeStatusForm.vue'
 import MultiSelect from 'vue-multiselect'
+import { useConstructionManagement } from '../../composables/useConstructionManagement'
+import { useToast } from '../../composables/useToast'
+import Pagination from '@/components/common/Pagination.vue'
 
 const route = useRoute()
 const router = useRouter()
-const projectId = route.params.id
-const project = ref(null)
+const constructionId = route.params.id
+const construction = ref(null)
 const activeTab = ref('info')
 const showStatusDialog = ref(false)
 const selectedItem = ref(null)
@@ -28,87 +31,30 @@ const availableWorkers = ref([
   { id: 'worker3', name: 'Thợ 3' }
 ])
 const selectedWorkers = ref([])
+const loading = ref(false)
+const error = ref(null)
+const currentPage = ref(1)
+const itemsPerPage = 5
+
+const { selectedConstruction, fetchConstructionDetail } = useConstructionManagement()
+const { showSuccess, showError } = useToast()
 
 const breadcrumbItems = computed(() => [
     { text: 'Trang chủ', to: '/' },
     { text: 'Quản lý dự án', to: '/project-management' },
-    { text: project.value?.projectName || 'Chi tiết dự án' }
+    { text: construction.value?.constructionName || 'Chi tiết công trình' }
 ])
 
-// Giả lập dữ liệu dự án
 onMounted(async () => {
-    project.value = {
-        id: projectId,
-        projectName: 'Khu chung cư cao cấp The Sun',
-        projectType: 'Chung cư cao tầng',
-        location: '123 Đường ABC, Quận XYZ, TP.HCM',
-        totalArea: '5000 m²',
-        startDate: '2024-01-01',
-        endDate: '2024-12-31',
-        status: 'In Progress',
-        designFile: 'thietke.pdf',
-        constructionItems: [
-            {
-                id: 1,
-                name: 'Móng Block A',
-                description: 'Đổ móng cho Block A',
-                startDate: '2024-01-15',
-                endDate: '2024-03-15',
-                totalVolume: 1000,
-                unit: 'm³',
-                status: 'In Progress'
-            },
-            {
-                id: 2,
-                name: 'Tường Block A',
-                description: 'Xây tường Block A',
-                startDate: '2024-03-16',
-                endDate: '2024-05-15',
-                totalVolume: 2000,
-                unit: 'm²',
-                status: 'Not Started'
-            }
-        ],
-        constructionPlans: [
-            {
-                id: 1,
-                name: 'Kế hoạch thi công móng',
-                projectCode: 'P001',
-                itemCode: 'I001',
-                supervisor: 'Nguyễn Văn A',
-                startDate: '2024-01-15',
-                endDate: '2024-03-15',
-                monthlyPlanVolume: 30,
-                tasks: [
-                    {
-                        id: 'T001',
-                        name: 'Đào móng',
-                        unit: 'm³',
-                        plannedVolume: 100,
-                        currentVolume: 50,
-                        progress: '40%'
-                    },
-                    {
-                        id: 'T002',
-                        name: 'Đổ bê tông móng',
-                        unit: 'm³',
-                        plannedVolume: 200,
-                        currentVolume: 0,
-                        progress: '0%'
-                    }
-                ]
-            },
-            {
-                id: 2,
-                name: 'Kế hoạch thi công tường',
-                startDate: '2024-03-16',
-                endDate: '2024-05-15',
-                tasks: [
-                    { id: 3, name: 'Xây tường tầng 1', assignedWorkers: 4, status: 'Not Started' },
-                    { id: 4, name: 'Xây tường tầng 2', assignedWorkers: 6, status: 'Not Started' }
-                ]
-            }
-        ]
+  try {
+    loading.value = true
+    await fetchConstructionDetail(constructionId)
+    construction.value = selectedConstruction.value
+  } catch (err) {
+    console.error('Error fetching construction details:', err)
+    error.value = 'Không thể tải thông tin công trình'
+  } finally {
+    loading.value = false
     }
 })
 
@@ -158,11 +104,11 @@ const handleStatusChange = (item, event) => {
 const handleStatusSubmit = (newStatus) => {
     if (selectedItem.value) {
         // Cập nhật trạng thái của hạng mục
-        const itemIndex = project.value.constructionItems.findIndex(
+        const itemIndex = construction.value.constructionItems.findIndex(
             item => item.id === selectedItem.value.id
         )
         if (itemIndex !== -1) {
-            project.value.constructionItems[itemIndex].status = newStatus
+            construction.value.constructionItems[itemIndex].status = newStatus
         }
     }
     showStatusDialog.value = false
@@ -187,9 +133,15 @@ const formatDate = (date) => {
     return new Date(date).toLocaleDateString('vi-VN')
 }
 
-const downloadDesign = () => {
-    // Xử lý tải bản thiết kế
-    console.log('Downloading design file:', project.value.designFile)
+const handleDownloadDesign = async () => {
+  try {
+    console.log('Downloading design file:', construction.value.designFile)
+    // Implement file download logic here
+    showSuccess('Tải xuống tài liệu thiết kế thành công')
+  } catch (err) {
+    console.error('Error downloading design file:', err)
+    showError('Không thể tải xuống tài liệu thiết kế')
+  }
 }
 
 const attendanceDate = ref(new Date().toISOString().split('T')[0]) // Default to today's date
@@ -219,29 +171,39 @@ const confirmAttendance = () => {
   })
   alert('Chấm công thành công!')
 }
+
+const paginatedItems = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return construction.value?.constructionItems.slice(start, end) || []
+})
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
 </script>
 
 <template>
     <div class="container-fluid py-4">
-        <div v-if="project" class="project-detail">
+        <div v-if="construction" class="project-detail">
             <!-- Header Section -->
             <div class="header-section mb-4">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <h1 class="project-title mb-2">{{ project.projectName }}</h1>
+                        <h1 class="project-title mb-2">{{ construction.constructionName }}</h1>
                         <div class="project-meta">
                             <span class="meta-item">
                                 <i class="fas fa-map-marker-alt"></i>
-                                {{ project.location }}
+                                {{ construction.location }}
                             </span>
                             <span class="meta-item">
                                 <i class="fas fa-calendar"></i>
-                                {{ project.startDate }} - {{ project.endDate }}
+                                {{ construction.startDate }} - {{ construction.endDate }}
                             </span>
                         </div>
                     </div>
                     <div class="d-flex flex-column align-items-end">
-                        <StatusBadge :status="project.status" class="mb-2" />
+                        <StatusBadge :status="construction.status" class="mb-2" />
                         <button class="btn btn-outline-primary btn-sm">
                             <i class="fas fa-file-download me-1"></i>
                             Tải bản thiết kế
@@ -259,7 +221,7 @@ const confirmAttendance = () => {
                         </div>
                         <div class="stat-content">
                             <h3>Loại công trình</h3>
-                            <p>{{ project.projectType }}</p>
+                            <p>{{ construction.constructionType }}</p>
                         </div>
                     </div>
                 </div>
@@ -270,7 +232,7 @@ const confirmAttendance = () => {
                         </div>
                         <div class="stat-content">
                             <h3>Tổng diện tích</h3>
-                            <p>{{ project.totalArea }}</p>
+                            <p>{{ construction.totalArea }}</p>
                         </div>
                     </div>
                 </div>
@@ -281,7 +243,7 @@ const confirmAttendance = () => {
                         </div>
                         <div class="stat-content">
                             <h3>Số hạng mục</h3>
-                            <p>{{ project.constructionItems.length }} hạng mục</p>
+                            <p>{{ construction.constructionItems.length }} hạng mục</p>
                         </div>
                     </div>
                 </div>
@@ -341,28 +303,28 @@ const confirmAttendance = () => {
                                 <div class="info-section">
                                     <h2 class="section-title">
                                         <i class="fas fa-info-circle me-2"></i>
-                                        Chi tiết dự án
+                                        Chi tiết công trình
                                     </h2>
                                     <div class="info-grid">
                                         <div class="info-item">
                                             <label>Loại công trình</label>
-                                            <p>{{ project.projectType }}</p>
+                                            <p>{{ construction.constructionType }}</p>
                                         </div>
                                         <div class="info-item">
                                             <label>Tổng diện tích</label>
-                                            <p>{{ project.totalArea }}</p>
+                                            <p>{{ construction.totalArea }}</p>
                                         </div>
                                         <div class="info-item">
                                             <label>Ngày khởi công</label>
-                                            <p>{{ project.startDate }}</p>
+                                            <p>{{ construction.startDate }}</p>
                                         </div>
                                         <div class="info-item">
                                             <label>Ngày dự kiến hoàn thành</label>
-                                            <p>{{ project.endDate }}</p>
+                                            <p>{{ construction.endDate }}</p>
                                         </div>
                                         <div class="info-item full-width">
                                             <label>Địa điểm xây dựng</label>
-                                            <p>{{ project.location }}</p>
+                                            <p>{{ construction.location }}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -379,8 +341,8 @@ const confirmAttendance = () => {
                                         </div>
                                         <div class="document-info">
                                             <h4>Bản thiết kế</h4>
-                                            <p>{{ project.designFile }}</p>
-                                            <button class="btn btn-sm btn-primary" @click="downloadDesign">
+                                            <p>{{ construction.designFile }}</p>
+                                            <button class="btn btn-sm btn-primary" @click="handleDownloadDesign">
                                                 <i class="fas fa-download me-1"></i>
                                                 Tải xuống
                                             </button>
@@ -399,7 +361,7 @@ const confirmAttendance = () => {
                                 Danh sách hạng mục
                             </h2>
                         </div>
-                        <DataTable :columns="constructionItemColumns" :data="project.constructionItems"
+                        <DataTable :columns="constructionItemColumns" :data="paginatedItems"
                             @row-click="handleItemClick" class="custom-table">
                             <template #name="{ item }">
                                 <div class="fw-medium text-primary">{{ item.name }}</div>
@@ -437,6 +399,19 @@ const confirmAttendance = () => {
                                 </div>
                             </template>
                         </DataTable>
+
+                        <!-- Phân trang -->
+                        <div class="d-flex justify-content-between align-items-center mt-4">
+                            <div class="text-muted">
+                                Hiển thị {{ paginatedItems.length }} trên {{ construction?.constructionItems.length || 0 }} hạng mục
+                            </div>
+                            <Pagination
+                                :total-items="construction?.constructionItems.length || 0"
+                                :items-per-page="itemsPerPage"
+                                :current-page="currentPage"
+                                @update:currentPage="handlePageChange"
+                            />
+                        </div>
                     </div>
 
                     <!-- Kế hoạch thi công -->
@@ -447,7 +422,7 @@ const confirmAttendance = () => {
                                 Danh sách kế hoạch
                             </h2>
                         </div>
-                        <DataTable :columns="planColumns" :data="project.constructionPlans" @row-click="handlePlanClick" />
+                        <DataTable :columns="planColumns" :data="construction.constructionPlans" @row-click="handlePlanClick" />
 
                         <div v-if="selectedPlan" class="mt-4">
                             <h5>Nhiệm vụ trong kế hoạch: {{ selectedPlan.name }}</h5>

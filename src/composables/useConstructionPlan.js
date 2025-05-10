@@ -1,18 +1,30 @@
-import { ref } from 'vue'
-import api from '../api.js'
+import { reactive, ref } from 'vue'
+import { planService } from '../services/planService'
+import { useToast } from './useToast'
 
 export function useConstructionPlan() {
   const plans = ref([])
   const loading = ref(false)
   const error = ref(null)
+  const { showSuccess, showError } = useToast()
+  const formData = reactive({
+    id: '',
+    constructionID: '',
+    constructionItemID: '',
+    employeeID: '',
+    startDate: '',
+    expectedCompletionDate: '',
+    constructionStatusID: 1
+  })
 
   const fetchPlans = async () => {
     try {
       loading.value = true
-      const response = await api.get('/ConstructionPlan')
-      plans.value = response.data
+      const data = await planService.getAll()
+      plans.value = data
     } catch (err) {
       error.value = err.message
+      showError('Không thể tải danh sách kế hoạch')
       console.error('Error fetching plans:', err)
     } finally {
       loading.value = false
@@ -21,12 +33,15 @@ export function useConstructionPlan() {
 
   const createPlan = async (planData) => {
     try {
+      console.log('📤 Dữ liệu gửi đi:', planData)
       loading.value = true
-      const response = await api.post('/ConstructionPlan', planData)
-      plans.value.push(response.data)
-      return response.data
+      const data = await planService.create(planData)
+      plans.value.push(data)
+      showSuccess('Tạo kế hoạch thành công')
+      return data
     } catch (err) {
       error.value = err.message
+      showError('Không thể tạo kế hoạch')
       throw err
     } finally {
       loading.value = false
@@ -35,45 +50,65 @@ export function useConstructionPlan() {
 
   const updatePlan = async (planId, planData) => {
     try {
+      console.log('📤 Dữ liệu gửi đi:', planId, planData)
       loading.value = true
-      const response = await api.put(`/ConstructionPlan/${planId}`, planData)
+      const data = await planService.update(planId, planData)
       const index = plans.value.findIndex(p => p.id === planId)
       if (index !== -1) {
-        plans.value[index] = response.data
+        plans.value[index] = data
       }
-      return response.data
+      showSuccess('Cập nhật kế hoạch thành công')
+      return data
     } catch (err) {
       error.value = err.message
+      showError('Không thể cập nhật kế hoạch')
       throw err
     } finally {
       loading.value = false
     }
   }
 
-  const updatePlanStatus = async (planId, newStatus) => {
+  const updatePlanStatus = async (planId, statusId) => {
     try {
+      console.log('📤 Dữ liệu gửi đi:', planId, statusId)
       loading.value = true
-      const response = await api.patch(`/ConstructionPlan/${planId}/status`, { status: newStatus })
+      const data = await planService.updateStatus(planId, statusId)
       const index = plans.value.findIndex(p => p.id === planId)
       if (index !== -1) {
-        plans.value[index] = response.data
+        plans.value[index] = data
       }
-      return response.data
+      showSuccess('Cập nhật trạng thái thành công')
+      return data
     } catch (err) {
       error.value = err.message
+      showError('Không thể cập nhật trạng thái')
       throw err
     } finally {
       loading.value = false
     }
+  }
+
+  const resetFormData = () => {
+    Object.assign(formData, {
+      id: '',
+      constructionID: '',
+      constructionItemID: '',
+      employeeID: '',
+      startDate: '',
+      expectedCompletionDate: '',
+      constructionStatusID: 1
+    })
   }
 
   return {
     plans,
     loading,
     error,
+    formData,
     fetchPlans,
     createPlan,
     updatePlan,
-    updatePlanStatus
+    updatePlanStatus,
+    resetFormData
   }
 }

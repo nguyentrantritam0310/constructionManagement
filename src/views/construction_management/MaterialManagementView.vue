@@ -8,14 +8,28 @@ import FilterSearch from '../../components/common/FilterSearch.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import UpdateButton from '@/components/common/UpdateButton.vue'
 import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
+import FormDialog from '../../components/common/FormDialog.vue'
+import MaterialForm from '../../components/material/MaterialForm.vue'
+import WarehouseEntryForm from '../../components/warehouse/WarehouseEntryForm.vue'
+import AdvancedFilter from '../../components/common/AdvancedFilter.vue'
 
 const {
   materials,
-  fetchMaterial
+  loading,
+  error,
+  formData,
+  fetchMaterials,
+  createMaterial,
+  updateMaterial,
+  updateMaterialStatus
 } = useMaterialManagement()
 
 const selectedProject = ref(null)
-onMounted(fetchMaterial)
+const filteredMaterials = ref([])
+
+onMounted(() => {
+  fetchMaterials()
+})
 
 const columns = [
   { key: 'id', label: 'Mã Vật Tư' },
@@ -24,19 +38,10 @@ const columns = [
   { key: 'materialTypeName', label: 'Loại Vật Tư' },
   { key: 'unitPrice', label: 'Đơn Giá' },
   { key: 'status', label: 'Trạng Thái' }
-
 ]
 
 const showForm = ref(false)
 const formMode = ref('add') // 'add' or 'edit'
-const formData = ref({
-  id: null,
-  name: '',
-  unit: '',
-  type: '',
-  price: null,
-  status: 'Hết hàng'
-})
 
 const openForm = (mode, material = null) => {
   formMode.value = mode
@@ -61,50 +66,53 @@ const closeForm = () => {
   document.body.classList.remove('modal-open')
 }
 
-const handleSubmit = () => {
-  if (formMode.value === 'add') {
-    const newId = materials.value.length + 1
-    materials.value.push({ ...formData.value, id: newId })
-    alert('Thêm vật tư thành công')
-  } else if (formMode.value === 'edit') {
-    const index = materials.value.findIndex(material => material.id === formData.value.id)
-    if (index !== -1) {
-      materials.value[index] = { ...formData.value }
+const handleSubmit = async () => {
+  try {
+    if (formMode.value === 'add') {
+      await createMaterial(formData.value)
+      alert('Thêm vật tư thành công')
+    } else if (formMode.value === 'edit') {
+      await updateMaterial(formData.value.id, formData.value)
       alert('Cập nhật thông tin vật tư thành công')
     }
+    closeForm()
+  } catch (err) {
+    console.error('Error handling material:', err)
+    alert('Có lỗi xảy ra khi xử lý vật tư')
   }
-  closeForm()
 }
 
 const handleDelete = (id) => {
   materials.value = materials.value.filter(material => material.id !== id)
 }
 
-const handleChangeStatus = (id, newStatus) => {
-  const material = materials.value.find(material => material.id === id)
-  if (material) {
-    material.status = newStatus
-    alert(`Trạng thái vật tư "${material.materialName}" đã được chuyển thành ${newStatus === 'conhang' ? 'Còn hàng' : 'Hết hàng'}.`)
+const handleChangeStatus = async (id, newStatus) => {
+  try {
+    await updateMaterialStatus(id, newStatus)
+    const material = materials.value.find(material => material.id === id)
+    if (material) {
+      alert(`Trạng thái vật tư "${material.materialName}" đã được chuyển thành ${newStatus === 'conhang' ? 'Còn hàng' : 'Hết hàng'}.`)
+    }
+  } catch (err) {
+    console.error('Error updating material status:', err)
+    alert('Có lỗi xảy ra khi cập nhật trạng thái vật tư')
   }
 }
 
 const statusMaterial = [
   { value: 'conhang', label: 'Còn hàng' },
   { value: 'hethang', label: 'Hết hàng' },
-
 ]
 
 const searchQuery = ref('')
 const statusFilter = ref('all')
 const dateRangeFilter = ref({ start: null, end: null })
 
-const filteredMaterials = computed(() => {
-  return materials.value.filter(material => {
-    const matchesSearch = searchQuery.value === '' || material.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchesStatus = statusFilter.value === 'all' || material.status === statusFilter.value
-    return matchesSearch && matchesStatus
-  })
-})
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = 'all'
+  dateRangeFilter.value = { start: null, end: null }
+}
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -133,6 +141,28 @@ const handleUpdateClick = (material, event) => {
   selectedMaterial.value = material
   openForm('edit', material)
 }
+
+const showDetails = ref(false)
+const selectedOrder = ref(null)
+
+const openDetails = (order) => {
+  selectedOrder.value = order
+  showDetails.value = true
+}
+
+const closeDetails = () => {
+  showDetails.value = false
+}
+
+const handleConfirmEntry = async () => {
+  try {
+    // Xử lý xác nhận nhập kho
+    closeDetails()
+  } catch (err) {
+    console.error('Error confirming entry:', err)
+    alert('Có lỗi xảy ra khi xác nhận nhập kho')
+  }
+}
 </script>
 
 <template>
@@ -144,14 +174,14 @@ const handleUpdateClick = (material, event) => {
       </ActionButton>
     </div>
 
-    <!-- Bộ lọc và tìm kiếm -->
-    <div class="card mb-4">
-      <div class="card-body">
-        <FilterSearch :searchQuery="searchQuery" :statusFilter="statusFilter" :dateRangeFilter="dateRangeFilter"
-          @update:searchQuery="searchQuery = $event" @update:statusFilter="statusFilter = $event"
-          @update:dateRangeFilter="dateRangeFilter = $event" @resetFilters="resetFilters" />
-      </div>
-    </div>
+    <!-- Advanced Filter -->
+    <AdvancedFilter
+      :items="materials"
+      :searchFields="['materialName', 'materialTypeName']"
+      dateField="createdAt"
+      statusField="status"
+      v-model:filteredItems="filteredMaterials"
+    />
 
     <!-- Danh sách vật tư -->
     <DataTable :columns="columns" :data="paginatedMaterials">
@@ -168,51 +198,40 @@ const handleUpdateClick = (material, event) => {
       <div class="text-muted">
         Hiển thị {{ paginatedMaterials.length }} trên {{ filteredMaterials.length }} vật tư
       </div>
-      <Pagination :total-items="filteredMaterials.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-        @update:currentPage="handlePageChange" />
+      <Pagination
+        :total-items="filteredMaterials.length"
+        :items-per-page="itemsPerPage"
+        :current-page="currentPage"
+        @update:currentPage="handlePageChange"
+      />
     </div>
 
     <!-- Modal for Add/Edit Form -->
-    <ModalDialog v-model:show="showForm" title="Thông Tin Vật Tư" size="lg">
-      <div class="mb-3">
-        <label for="name" class="form-label">Tên Vật Tư</label>
-        <input id="name" v-model="formData.name" type="text" class="form-control" placeholder="Nhập tên vật tư" />
-      </div>
-      <div class="mb-3">
-        <label for="unit" class="form-label">Đơn Vị Tính</label>
-        <input id="unit" v-model="formData.unit" type="text" class="form-control" placeholder="Nhập đơn vị tính" />
-      </div>
-      <div class="mb-3">
-        <label for="type" class="form-label">Loại Vật Tư</label>
-        <input id="type" v-model="formData.type" type="text" class="form-control" placeholder="Nhập loại vật tư" />
-      </div>
-      <div class="mb-3">
-        <label for="price" class="form-label">Đơn Giá</label>
-        <input id="price" v-model="formData.price" type="number" class="form-control" placeholder="Nhập đơn giá" />
-      </div>
-      <div class="text-end">
-        <ActionButton icon="fas fa-save" type="primary" @click="handleSubmit">
-          {{ formMode === 'add' ? 'Thêm Vật Tư' : 'Cập Nhật Vật Tư' }}
-        </ActionButton>
-        <ActionButton icon="fas fa-times" type="secondary" @click="closeForm">
-          Hủy
-        </ActionButton>
-      </div>
-    </ModalDialog>
+    <FormDialog v-model:show="showForm" :title="formMode === 'add' ? 'Thêm Vật Tư' : 'Cập Nhật Vật Tư'">
+      <MaterialForm
+        :mode="formMode"
+        :material="formData"
+        @submit="handleSubmit"
+        @cancel="closeForm"
+      />
+    </FormDialog>
 
     <!-- Change Status Dialog -->
     <ChangeStatusDialog v-if="selectedProject" :show="showStatusDialog" :project="selectedProject"
       @update:show="showStatusDialog = $event" @submit="handleStatusSubmit" />
 
-    <!-- Thêm Modal cho form cập nhật -->
-    <ModalDialog v-model:show="showUpdateDialog" title="Cập Nhật Dự Án" size="lg">
-      <UpdateProjectForm v-if="selectedProject" :project="selectedProject" @update="handleUpdateSubmit"
-        @cancel="handleUpdateCancel" />
-    </ModalDialog>
-
-
     <!-- Separate backdrop -->
     <div v-if="showForm" class="modal-backdrop fade show" @click="closeForm"></div>
+
+    <!-- Modal for Order Details -->
+    <FormDialog v-model:show="showDetails" title="Chi Tiết Đơn Hàng">
+      <WarehouseEntryForm
+        mode="update"
+        :order="selectedOrder"
+        @submit="handleConfirmEntry"
+        @cancel="closeDetails"
+      />
+    </FormDialog>
   </div>
 </template>
 

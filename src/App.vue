@@ -2,12 +2,14 @@
 import MainLayout from './components/layout/MainLayout.vue'
 import LoginView from './views/LoginView.vue'
 import { useAuth } from './composables/useAuth'
+import Toast from './components/common/Toast.vue'
 
 const { isAuthenticated } = useAuth()
 </script>
 
 <template>
-  <div>
+  <div id="app">
+    <Toast />
     <MainLayout v-if="isAuthenticated">
       <router-view></router-view>
     </MainLayout>

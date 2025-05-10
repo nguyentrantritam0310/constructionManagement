@@ -1,58 +1,81 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useMaterialPlanning } from '../../composables/useMaterialPlanning'
-import { useProjectManagement } from '../../composables/useProjectManagement'
 import DataTable from '../../components/common/DataTable.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
+import { useConstructionManagement } from '../../composables/useConstructionManagement'
+import { useToast } from '../../composables/useToast'
+import Pagination from '../../components/common/Pagination.vue'
 
-const selectedProject = ref(null)
+const { showSuccess, showError } = useToast()
+const selectedConstruction = ref(null)
 const showConfirmDialog = ref(false)
+const materials = ref([])
+const materialPlan = ref([])
+const loading = ref(false)
 
 const {
-  materials,
-  loading,
-  error,
+  constructions,
+  fetchConstructions
+} = useConstructionManagement()
+
+const {
+  materials: constructionMaterials,
+  loading: constructionLoading,
+  error: constructionError,
   fetchMaterials,
   updateMaterialQuantity,
   saveMaterialPlan
 } = useMaterialPlanning()
 
-const {
-  projects,
-  fetchProjects
-} = useProjectManagement()
-onMounted(() => {
-  fetchProjects()
+const currentPage = ref(1)
+const itemsPerPage = 5
+
+const paginatedConstructions = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return constructions.value.slice(start, end)
 })
 
-const projectColumns = [
+const currentMaterialPage = ref(1)
+const materialItemsPerPage = 5
+
+const paginatedMaterials = computed(() => {
+  const start = (currentMaterialPage.value - 1) * materialItemsPerPage
+  const end = start + materialItemsPerPage
+  return materials.value.slice(start, end)
+})
+
+onMounted(async () => {
+  await fetchConstructions()
+})
+
+const constructionColumns = [
   { key: 'id', label: 'Mã công trình' },
   { key: 'constructionName', label: 'Tên công trình' },
   { key: 'location', label: 'Địa điểm' },
-  { key: 'startDate', label: 'Ngày khởi công' },
-  { key: 'expectedCompletionDate', label: 'Ngày dự kiến hoàn thành' },
+  { key: 'startDate', label: 'Ngày bắt đầu' },
+  { key: 'expectedCompletionDate', label: 'Ngày hoàn thành dự kiến' },
   { key: 'statusName', label: 'Trạng thái' }
 ]
 
 const materialColumns = [
-  { key: 'id', label: 'Mã Vật Tư' },
-  { key: 'materialName', label: 'Tên Vật Tư' },
-  { key: 'stockQuantity', label: 'Tồn kho' },
-  { key: 'materialTypeName', label: 'Loại Vật Tư' },
-  { key: 'unitPrice', label: 'Đơn Giá' },
-  { key: 'status', label: 'Trạng Thái' },
-  { key: 'requiredQuantity', label: 'Số lượng cần mua' }
+  { key: 'materialCode', label: 'Mã vật tư' },
+  { key: 'materialName', label: 'Tên vật tư' },
+  { key: 'unit', label: 'Đơn vị' },
+  { key: 'quantity', label: 'Số lượng' },
+  { key: 'price', label: 'Đơn giá' },
+  { key: 'total', label: 'Thành tiền' }
 ]
 
-const handleProjectSelect = async (project) => {
-  selectedProject.value = project
+const handleConstructionSelect = async (construction) => {
+  selectedConstruction.value = construction
   try {
-    await fetchMaterials(project.id)
-  } catch (err) {
-    console.error('Error fetching materials:', err)
-    alert('Có lỗi xảy ra khi tải danh sách vật tư')
+    await fetchMaterials(construction.id)
+  } catch (error) {
+    showError('Không thể tải danh sách vật tư')
   }
 }
 
@@ -71,16 +94,22 @@ const handleQuantityChange = async (material, event) => {
   }
 }
 
-const handleConfirm = async () => {
+const handleSavePlan = async () => {
+  if (!selectedConstruction.value) {
+    showError('Vui lòng chọn công trình')
+    return
+  }
+
   try {
-    await saveMaterialPlan(selectedProject.value.id, {
-      materials: materials.value
+    loading.value = true
+    await saveMaterialPlan(selectedConstruction.value.id, {
+      materials: materialPlan.value
     })
-    alert('Lưu kế hoạch vật tư thành công')
-    showConfirmDialog.value = false
-  } catch (err) {
-    console.error('Error saving material plan:', err)
-    alert('Có lỗi xảy ra khi lưu kế hoạch vật tư')
+    showSuccess('Lưu kế hoạch vật tư thành công')
+  } catch (error) {
+    showError('Không thể lưu kế hoạch vật tư')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -88,8 +117,23 @@ const handleCancel = () => {
   showConfirmDialog.value = true
 }
 
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND'
+  }).format(value)
+}
+
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString('vi-VN')
+}
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
+
+const handleMaterialPageChange = (page) => {
+  currentMaterialPage.value = page
 }
 </script>
 
@@ -106,11 +150,11 @@ const formatDate = (date) => {
           </div>
         </div>
 
-        <div v-else-if="error" class="alert alert-danger" role="alert">
-          {{ error }}
+        <div v-else-if="constructionError" class="alert alert-danger" role="alert">
+          {{ constructionError }}
         </div>
 
-        <DataTable v-else :columns="projectColumns" :data="projects" @row-click="handleProjectSelect" class="id">
+        <DataTable v-else :columns="constructionColumns" :data="paginatedConstructions" @row-click="handleConstructionSelect" class="id">
           <template #id="{ item }">
             <span class="fw-medium text-primary">{{ item.id }}</span>
           </template>
@@ -146,17 +190,30 @@ const formatDate = (date) => {
             <StatusBadge :status="item.statusName" />
           </template>
         </DataTable>
+
+        <!-- Phân trang công trình -->
+        <div class="d-flex justify-content-between align-items-center mt-4">
+          <div class="text-muted">
+            Hiển thị {{ paginatedConstructions.length }} trên {{ constructions.length }} công trình
+          </div>
+          <Pagination
+            :total-items="constructions.length"
+            :items-per-page="itemsPerPage"
+            :current-page="currentPage"
+            @update:currentPage="handlePageChange"
+          />
+        </div>
       </div>
     </div>
 
-    <div v-if="selectedProject" class="card">
+    <div v-if="selectedConstruction" class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <h4 class="mb-0">Danh sách vật tư - {{ selectedProject.constructionName }}</h4>
+        <h4 class="mb-0">Danh sách vật tư - {{ selectedConstruction.constructionName }}</h4>
         <div class="d-flex gap-2">
           <ActionButton type="secondary" icon="fas fa-times" @click="handleCancel">
             Hủy
           </ActionButton>
-          <ActionButton type="primary" icon="fas fa-save" @click="handleConfirm">
+          <ActionButton type="primary" icon="fas fa-save" @click="handleSavePlan">
             Xác nhận
           </ActionButton>
         </div>
@@ -168,8 +225,8 @@ const formatDate = (date) => {
           </div>
         </div>
 
-        <div v-else-if="error" class="alert alert-danger" role="alert">
-          {{ error }}
+        <div v-else-if="constructionError" class="alert alert-danger" role="alert">
+          {{ constructionError }}
         </div>
 
         <div v-else class="table-responsive">
@@ -180,19 +237,29 @@ const formatDate = (date) => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="material in materials" :key="material.materialCode">
+              <tr v-for="material in paginatedMaterials" :key="material.materialCode">
                 <td>{{ material.materialCode }}</td>
                 <td>{{ material.materialName }}</td>
                 <td>{{ material.unit }}</td>
-                <td>{{ material.estimatedQuantity }}</td>
-                <td>{{ material.availableQuantity }}</td>
-                <td>
-                  <input type="number" class="form-control form-control-sm" :value="material.requiredQuantity"
-                    @input="(e) => handleQuantityChange(material, e)" min="0">
-                </td>
+                <td>{{ material.quantity }}</td>
+                <td>{{ formatCurrency(material.price) }}</td>
+                <td>{{ formatCurrency(material.total) }}</td>
               </tr>
             </tbody>
           </table>
+
+          <!-- Phân trang vật tư -->
+          <div class="d-flex justify-content-between align-items-center mt-4">
+            <div class="text-muted">
+              Hiển thị {{ paginatedMaterials.length }} trên {{ materials.length }} vật tư
+            </div>
+            <Pagination
+              :total-items="materials.length"
+              :items-per-page="materialItemsPerPage"
+              :current-page="currentMaterialPage"
+              @update:currentPage="handleMaterialPageChange"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -205,7 +272,7 @@ const formatDate = (date) => {
           <ActionButton type="secondary" @click="showConfirmDialog = false">
             Không
           </ActionButton>
-          <ActionButton type="primary" @click="handleConfirm">
+          <ActionButton type="primary" @click="handleSavePlan">
             Có
           </ActionButton>
         </div>
@@ -219,28 +286,28 @@ const formatDate = (date) => {
   animation: fadeIn 0.3s ease-out;
 }
 
-.project-table {
+.construction-table {
   margin-bottom: 0;
 }
 
-.project-table :deep(th) {
+.construction-table :deep(th) {
   background: #f8f9fa;
   font-weight: 600;
   padding: 1rem;
   white-space: nowrap;
 }
 
-.project-table :deep(td) {
+.construction-table :deep(td) {
   padding: 1rem;
   vertical-align: middle;
 }
 
-.project-table :deep(tr) {
+.construction-table :deep(tr) {
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.project-table :deep(tr:hover) {
+.construction-table :deep(tr:hover) {
   background-color: rgba(0, 123, 255, 0.05);
 }
 

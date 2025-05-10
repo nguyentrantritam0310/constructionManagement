@@ -1,10 +1,11 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
-import FilterSearch from '../../components/common/FilterSearch.vue'
+import AdvancedFilter from '../../components/common/AdvancedFilter.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import { useWarehouseEntry } from '../../composables/useWarehouseEntry'
 
 const orders = ref([
   {
@@ -29,6 +30,8 @@ const orders = ref([
   }
 ])
 
+const filteredOrders = ref([])
+
 const columns = [
   { key: 'id', label: 'Mã Đơn Hàng' },
   { key: 'supplier', label: 'Nhà Cung Cấp' },
@@ -40,17 +43,16 @@ const showDetails = ref(false)
 const selectedOrder = ref(null)
 const actualQuantities = ref([])
 
-const searchQuery = ref('')
-const statusFilter = ref('all')
-const dateRangeFilter = ref({ start: null, end: null })
-
-const filteredOrders = computed(() => {
-  return orders.value.filter(order => {
-    const matchesSearch = searchQuery.value === '' || order.supplier.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchesStatus = statusFilter.value === 'all' || order.status === statusFilter.value
-    return matchesSearch && matchesStatus
-  })
-})
+const {
+  importOrders,
+  loading,
+  error,
+  formData,
+  fetchImportOrders,
+  createImportOrder,
+  updateImportOrder,
+  updateImportOrderStatus
+} = useWarehouseEntry()
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -63,6 +65,31 @@ const paginatedOrders = computed(() => {
 
 const handlePageChange = (page) => {
   currentPage.value = page
+}
+
+onMounted(() => {
+  fetchImportOrders()
+})
+
+const handleConfirmEntry = async () => {
+  try {
+    await updateImportOrderStatus(selectedOrder.value.id, 'Completed')
+    alert('Nhập kho thành công!')
+    closeDetails()
+  } catch (err) {
+    console.error('Error confirming entry:', err)
+    alert('Có lỗi xảy ra khi xác nhận nhập kho')
+  }
+}
+
+const handleReportIssue = async (material) => {
+  try {
+    await updateImportOrderStatus(selectedOrder.value.id, 'Issue')
+    alert(`Đã báo cáo sự cố cho vật tư: ${material.name}`)
+  } catch (err) {
+    console.error('Error reporting issue:', err)
+    alert('Có lỗi xảy ra khi báo cáo sự cố')
+  }
 }
 
 const openDetails = (order) => {
@@ -82,23 +109,6 @@ const closeDetails = () => {
   showDetails.value = false
   document.body.classList.remove('modal-open')
 }
-
-const handleConfirmEntry = () => {
-  // Update the order status and log the warehouse entry
-  selectedOrder.value.status = 'Đã nhập kho'
-  alert('Nhập kho thành công!')
-  closeDetails()
-}
-
-const handleReportIssue = (material) => {
-  alert(`Báo cáo sự cố cho vật tư: ${material.name}`)
-}
-
-const resetFilters = () => {
-  searchQuery.value = ''
-  statusFilter.value = 'all'
-  dateRangeFilter.value = { start: null, end: null }
-}
 </script>
 
 <template>
@@ -107,14 +117,14 @@ const resetFilters = () => {
       <h1 class="h3 mb-0">Nhập Kho</h1>
     </div>
 
-    <!-- Bộ lọc và tìm kiếm -->
-    <div class="card mb-4">
-      <div class="card-body">
-        <FilterSearch :searchQuery="searchQuery" :statusFilter="statusFilter" :dateRangeFilter="dateRangeFilter"
-          @update:searchQuery="searchQuery = $event" @update:statusFilter="statusFilter = $event"
-          @update:dateRangeFilter="dateRangeFilter = $event" @resetFilters="resetFilters" />
-      </div>
-    </div>
+    <!-- Advanced Filter -->
+    <AdvancedFilter
+      :items="orders"
+      :searchFields="['supplier']"
+      dateField="date"
+      statusField="status"
+      v-model:filteredItems="filteredOrders"
+    />
 
     <!-- Danh sách đơn hàng -->
     <DataTable :columns="columns" :data="paginatedOrders" @row-click="openDetails">
@@ -130,8 +140,12 @@ const resetFilters = () => {
       <div class="text-muted">
         Hiển thị {{ paginatedOrders.length }} trên {{ filteredOrders.length }} đơn hàng
       </div>
-      <Pagination :total-items="filteredOrders.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-        @update:currentPage="handlePageChange" />
+      <Pagination
+        :total-items="filteredOrders.length"
+        :items-per-page="itemsPerPage"
+        :current-page="currentPage"
+        @update:currentPage="handlePageChange"
+      />
     </div>
 
     <!-- Modal for Order Details -->

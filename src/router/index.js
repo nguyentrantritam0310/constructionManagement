@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import ProjectManagementView from '../views/technical_staff/ProjectManagementView.vue'
+import ConstructionManagementView from '../views/technical_staff/ConstructionManagementView.vue'
 import DashboardView from '../views/technical_staff/DashboardView.vue'
 import MaterialPlanningView from '../views/technical_staff/MaterialPlanningView.vue'
 import TechnicalReportView from '../views/technical_staff/TechnicalReportView.vue'
@@ -12,6 +12,7 @@ import StockOutView from '../views/construction_management/StockOutView.vue'
 import TaskDetailView from '../views/construction_management/TaskDetailView.vue'
 import TaskStatusView from '../views/construction_management/TaskStatusView.vue'
 import ProposalApprovalView from '../views/director/ProposalApprovalView.vue'
+import ConstructionPlanManagementView from '@/views/technical_staff/ConstructionPlanManagementView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -35,29 +36,29 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/project-management',
-      name: 'project-management',
-      component: ProjectManagementView,
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/project-management/:id',
-      name: 'project-detail',
-      component: () => import('../views/technical_staff/ProjectDetailView.vue'),
-      props: true,
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/project-management-leader/:id',
-      name: 'project-management-leader',
-      component: () => import('../views/construction_management/ProjectDetailForLeaderView.vue'),
-      props: true,
+      path: '/construction-management',
+      name: 'construction-management',
+      component: ConstructionManagementView,
       meta: { requiresAuth: true }
     },
     {
       path: '/construction-plan-management',
       name: 'construction-plan-management',
-      component: () => import('../views/technical_staff/ConstructionPlanManagementView.vue'),
+      component: ConstructionPlanManagementView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/construction-management/:id',
+      name: 'construction-detail',
+      component: () => import('../views/technical_staff/ConstructionDetailView.vue'),
+      props: true,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/construction-management-leader/:id',
+      name: 'construction-management-leader',
+      component: () => import('../views/construction_management/ConstructionDetailForLeaderView.vue'),
+      props: true,
       meta: { requiresAuth: true }
     },
     {

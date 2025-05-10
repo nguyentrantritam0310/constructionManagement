@@ -1,130 +1,87 @@
-import { ref, computed } from 'vue'
-import api from '../api.js';
+import { ref } from 'vue'
+import api from '../api.js'
 
 export function useMaterialManagement() {
   const materials = ref([])
-  const fetchMaterial = async () => {
-    const res = await api.get('/material');
-    materials.value = res.data;
-  };
-
-  const showCreateForm = ref(false)
+  const loading = ref(false)
+  const error = ref(null)
   const formData = ref({
-    projectName: '',
-    projectType: '',
-    materialLocation: '',
-    totalArea: '',
-    startDate: '',
-    estimatedCompletionDate: '',
-    designDocument: null,
-    MaterialItems: []
+    materialName: '',
+    materialTypeID: '',
+    stockQuantity: 0,
+    unitPrice: 0,
+    status: 'Available'
   })
 
-  const MaterialItem = ref({
-    itemName: '',
-    description: '',
-    startDate: '',
-    endDate: '',
-    totalVolume: '',
-    unitOfMeasurement: ''
-  })
-
-  const pendingProjects = computed(() => {
-    return projects.value.filter(project => project.status === 'Pending Start')
-  })
-
-  const inProgressProjects = computed(() => {
-    return projects.value.filter(project => project.status === 'In Progress')
-  })
-
-  const handleCreateProject = () => {
-    showCreateForm.value = true
-  }
-
-  const handleCancelCreate = () => {
-    if (confirm('The information has not been saved, are you sure you want to exit?')) {
-      showCreateForm.value = false
-      resetForm()
+  const fetchMaterials = async () => {
+    try {
+      loading.value = true
+      const response = await api.get('/Material')
+      materials.value = response.data
+    } catch (err) {
+      error.value = err.message
+      console.error('Error fetching materials:', err)
+    } finally {
+      loading.value = false
     }
   }
 
-  const addMaterialItem = () => {
-    if (!MaterialItem.value.itemName) {
-      alert('Please enter an item name')
-      return
-    }
-    formData.value.MaterialItems.push({ ...MaterialItem.value })
-    resetMaterialItem()
-  }
-
-  const handleProjectCreated = () => {
-    if (!validateForm()) {
-      alert('Please fill in all required fields correctly')
-      return
-    }
-
-    const newProject = {
-      ...formData.value,
-      projectCode: `PRJ${String(projects.value.length + 1).padStart(3, '0')}`,
-      status: 'Pending Start'
-    }
-    projects.value.push(newProject)
-    showCreateForm.value = false
-    resetForm()
-    alert('Project created successfully')
-  }
-
-  const validateForm = () => {
-    return (
-      formData.value.projectName &&
-      formData.value.projectType &&
-      formData.value.MaterialLocation &&
-      formData.value.totalArea &&
-      formData.value.startDate &&
-      formData.value.estimatedCompletionDate
-    )
-  }
-
-  const handleFileUpload = (event) => {
-    formData.value.designDocument = event.target.files[0]
-  }
-
-  const resetForm = () => {
-    formData.value = {
-      projectName: '',
-      projectType: '',
-      MaterialLocation: '',
-      totalArea: '',
-      startDate: '',
-      estimatedCompletionDate: '',
-      designDocument: null,
-      MaterialItems: []
+  const createMaterial = async (materialData) => {
+    try {
+      loading.value = true
+      const response = await api.post('/Material', materialData)
+      materials.value.push(response.data)
+      return response.data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
     }
   }
 
-  const resetMaterialItem = () => {
-    MaterialItem.value = {
-      itemName: '',
-      description: '',
-      startDate: '',
-      endDate: '',
-      totalVolume: '',
-      unitOfMeasurement: ''
+  const updateMaterial = async (materialId, materialData) => {
+    try {
+      loading.value = true
+      const response = await api.put(`/Material/${materialId}`, materialData)
+      const index = materials.value.findIndex(m => m.id === materialId)
+      if (index !== -1) {
+        materials.value[index] = response.data
+      }
+      return response.data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const updateMaterialStatus = async (materialId, newStatus) => {
+    try {
+      loading.value = true
+      const response = await api.patch(`/Material/${materialId}/status`, { status: newStatus })
+      const index = materials.value.findIndex(m => m.id === materialId)
+      if (index !== -1) {
+        materials.value[index] = response.data
+      }
+      return response.data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
     }
   }
 
   return {
     materials,
-    fetchMaterial,
-    showCreateForm,
+    loading,
+    error,
     formData,
-    MaterialItem,
-    pendingProjects,
-    inProgressProjects,
-    handleCreateProject,
-    handleCancelCreate,
-    handleProjectCreated,
-    addMaterialItem,
-    handleFileUpload
+    fetchMaterials,
+    createMaterial,
+    updateMaterial,
+    updateMaterialStatus
   }
-} 
+}

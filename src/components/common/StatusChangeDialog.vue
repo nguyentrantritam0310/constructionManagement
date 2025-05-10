@@ -1,52 +1,60 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import StatusBadge from '../common/StatusBadge.vue'
+import StatusBadge from './StatusBadge.vue'
+import FormField from './FormField.vue'
+import { useStatusTransition } from '../../composables/useStatusTransition'
 
 const props = defineProps({
   show: {
     type: Boolean,
     required: true
   },
-  plan: {
+  item: {
     type: Object,
     required: true
+  },
+  type: {
+    type: String,
+    required: true,
+    validator: (value) => ['construction', 'item', 'plan', 'task'].includes(value)
+  },
+  title: {
+    type: String,
+    default: 'Thay Đổi Trạng Thái'
   }
 })
 
 const emit = defineEmits(['update:show', 'submit'])
 
 const selectedStatus = ref('')
+const { getStatusOptions, getStatusWarning } = useStatusTransition(props.type)
 
 // Reset selectedStatus khi dialog mở
 watch(() => props.show, (newShow) => {
   if (newShow) {
-    selectedStatus.value = props.plan.status
+    selectedStatus.value = props.item.statusName
   }
 })
 
-const statusOptions = [
-  { value: 'Not Started', label: 'Chưa khởi công' },
-  { value: 'In Progress', label: 'Đang thi công' },
-  { value: 'Completed', label: 'Hoàn thành' },
-  { value: 'Suspended', label: 'Tạm dừng' }
-]
-
-const validStatusTransitions = {
-  'Not Started': ['In Progress', 'Suspended'],
-  'In Progress': ['Completed', 'Suspended'],
-  'Completed': [],
-  'Suspended': ['In Progress']
-}
-
+// Lấy danh sách trạng thái có thể chuyển đổi
 const availableStatuses = computed(() => {
-  return statusOptions.filter(status =>
-    validStatusTransitions[props.plan.status]?.includes(status.value)
-  )
+  return getStatusOptions(props.item.statusName)
+})
+
+// Lấy thông báo cảnh báo
+const showWarning = computed(() => {
+  return getStatusWarning(selectedStatus.value)
 })
 
 const handleSubmit = () => {
-  emit('submit', selectedStatus.value)
-  emit('update:show', false)
+  if (selectedStatus.value && selectedStatus.value !== props.item.statusName) {
+    emit('submit', {
+      newStatus: selectedStatus.value,
+      type: props.type,
+      item: props.item
+    })
+    emit('update:show', false)
+  }
 }
 
 const handleClose = () => {
@@ -60,7 +68,7 @@ const handleClose = () => {
     <div class="modal-dialog" @click.stop>
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Thay Đổi Trạng Thái</h5>
+          <h5 class="modal-title">{{ title }}</h5>
           <button
             type="button"
             class="btn-close"
@@ -71,29 +79,20 @@ const handleClose = () => {
           <div class="status-dialog">
             <div class="current-status mb-3">
               <p class="mb-2">Trạng thái hiện tại:</p>
-              <StatusBadge :status="plan.status" type="construction" />
+              <StatusBadge :status="item.statusName" :type="type" />
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Chọn trạng thái mới:</label>
-              <select
-                v-model="selectedStatus"
-                class="form-select"
-              >
-                <option value="" disabled>Chọn trạng thái</option>
-                <option
-                  v-for="status in availableStatuses"
-                  :key="status.value"
-                  :value="status.value"
-                >
-                  {{ status.label }}
-                </option>
-              </select>
-            </div>
+            <FormField
+              label="Chọn trạng thái mới"
+              type="select"
+              v-model="selectedStatus"
+              :options="availableStatuses"
+              required
+            />
 
-            <div v-if="selectedStatus === 'Suspended'" class="alert alert-warning mt-3">
+            <div v-if="showWarning" class="alert" :class="selectedStatus === 'Hủy bỏ' ? 'alert-danger' : 'alert-warning'">
               <i class="fas fa-exclamation-triangle me-2"></i>
-              Lưu ý: Việc tạm dừng kế hoạch sẽ ảnh hưởng đến tiến độ thi công
+              {{ showWarning }}
             </div>
           </div>
         </div>
@@ -109,7 +108,7 @@ const handleClose = () => {
             type="button"
             class="btn btn-primary"
             @click="handleSubmit"
-            :disabled="!selectedStatus || selectedStatus === plan.status"
+            :disabled="!selectedStatus || selectedStatus === item.statusName"
           >
             Xác nhận
           </button>

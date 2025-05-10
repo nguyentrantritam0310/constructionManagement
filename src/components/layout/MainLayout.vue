@@ -19,21 +19,12 @@ const toggleSidebar = () => {
 }
 
 // Watch for changes in currentUser and redirect to appropriate default page
-
-
-// const menuItems = [
-//   { title: 'Bảng Điều Khiển', icon: 'fas fa-chart-line', path: '/' },
-//   { title: 'Quản Lý Dự Án', icon: 'fas fa-building', path: '/project-management' },
-//   { title: 'Quản Lý Kế Hoạch Thi Công', icon: 'fas fa-calendar-alt', path: '/construction-plan-management' },
-//   { title: 'Lập Kế Hoạch Vật Tư', icon: 'fas fa-boxes', path: '/material-planning' },
-//   { title: 'Báo Cáo Kỹ Thuật', icon: 'fas fa-exclamation-triangle', path: '/technical-reports' }
-// ]
 const menuItems = computed(() => {
   switch (currentUser.value?.role) {
     case 'technician':
       return [
         { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
-        { icon: 'fas fa-project-diagram', text: 'Quản lý dự án', route: '/project-management' },
+        { icon: 'fas fa-project-diagram', text: 'Quản lý Công trình', route: '/construction-management' },
         { icon: 'fas fa-tasks', text: 'Quản lý kế hoạch thi công', route: '/construction-plan-management' },
         { icon: 'fas fa-boxes', text: 'Lập kế hoạch vật tư', route: '/material-planning' },
         { icon: 'fas fa-file-alt', text: 'Báo cáo kỹ thuật', route: '/technical-reports' }

@@ -1,22 +1,69 @@
 <script setup>
+import { ref } from 'vue'
+import api from '../../api.js'
 import FormField from '../common/FormField.vue'
 import ActionButton from '../common/ActionButton.vue'
 
 const props = defineProps({
-  formData: {
-    type: Object,
-    required: true
-  },
-  constructionItem: {
+  construction: {
     type: Object,
     required: true
   }
 })
 
-const emit = defineEmits(['cancel', 'submit', 'add-item', 'file-upload'])
+const emit = defineEmits(['cancel'])
 
-const handleSubmit = () => {
-  emit('submit') // Phát sự kiện submit ra ngoài
+const formData = ref({
+  ...props.construction,
+  startDate: props.construction?.startDate ? props.construction.startDate.split('T')[0] : '',
+  expectedCompletionDate: props.construction?.expectedCompletionDate ? props.construction.expectedCompletionDate.split('T')[0] : ''
+})
+
+const errorMessage = ref('')
+
+const validateForm = () => {
+  if (!formData.value.constructionName.trim()) {
+    errorMessage.value = 'Vui lòng nhập tên công trình'
+    return false
+  }
+  if (!formData.value.location.trim()) {
+    errorMessage.value = 'Vui lòng nhập địa điểm'
+    return false
+  }
+  if (!formData.value.totalArea) {
+    errorMessage.value = 'Vui lòng nhập tổng diện tích'
+    return false
+  }
+  if (!formData.value.startDate) {
+    errorMessage.value = 'Vui lòng chọn ngày bắt đầu'
+    return false
+  }
+  if (!formData.value.expectedCompletionDate) {
+    errorMessage.value = 'Vui lòng chọn ngày dự kiến hoàn thành'
+    return false
+  }
+  if (new Date(formData.value.expectedCompletionDate) <= new Date(formData.value.startDate)) {
+    errorMessage.value = 'Ngày hoàn thành phải sau ngày bắt đầu'
+    return false
+  }
+  return true
+}
+
+const handleSubmit = async () => {
+  if (!validateForm()) return
+  try {
+    await api.put(`/constructions/${formData.value.id}`, formData.value) // Gửi dữ liệu cập nhật
+    alert('Cập nhật thành công!')
+  } catch (error) {
+    console.error('Error updating project:', error)
+    alert('Cập nhật thất bại!')
+  }
+}
+
+const fileInput = ref(null)
+
+const triggerFileUpload = () => {
+  fileInput.value.click() // Mở input upload file
 }
 
 const handleFileUpload = (event) => {
@@ -27,8 +74,8 @@ const handleFileUpload = (event) => {
   }
 }
 
-const handleAddItem = () => {
-  emit('add-item')
+const removeDesignBlueprint = () => {
+  formData.value.designBlueprint = null
 }
 </script>
 
@@ -40,10 +87,10 @@ const handleAddItem = () => {
       </div>
       <div class="col-md-6">
         <FormField label="Loại Dự Án" type="select" v-model="formData.constructionTypeID" :options="[
-          { value: 1, label: 'Cầu đường' },
-          { value: 2, label: 'Nhà ở' },
-          { value: 3, label: 'Công nghiệp' },
-          { value: 4, label: 'Thủy lợi' }
+          { value: '1', label: 'Cầu đường' },
+          { value: '2', label: 'Nhà ở' },
+          { value: '3', label: 'Công nghiệp' },
+          { value: '4', label: 'Thủy lợi' }
         ]" required />
       </div>
       <div class="col-12">
@@ -73,6 +120,8 @@ const handleAddItem = () => {
     </div>
   </form>
 </template>
+
+
 
 <style scoped>
 .create-project-form {

@@ -2,10 +2,11 @@
 import { ref, computed } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
-import ModalDialog from '../../components/common/ModalDialog.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
-import UpdateReportForm from '../../components/technical-report/UpdateReportForm.vue'
-import FilterSearch from '../../components/common/FilterSearch.vue'
+import AdvancedFilter from '../../components/common/AdvancedFilter.vue'
+import FormDialog from '../../components/common/FormDialog.vue'
+import ReportForm from '../../components/common/ReportForm.vue'
+import Pagination from '../../components/common/Pagination.vue'
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
@@ -14,76 +15,72 @@ const selectedReport = ref(null)
 const reports = ref([
   {
     id: 1,
-    projectCode: 'PRJ001',
-    projectName: 'Khu chung cư The Sun',
-    issueType: 'equipment',
-    description: 'Máy trộn bê tông gặp sự cố',
-    severity: 'high',
-    status: 'Pending',
-    reportDate: '2024-03-15',
-    images: [],
-    updates: []
+    employeeID: "manager1-id",
+    constructionName: "Khu chung cư An Hòa Garden",
+    constructionID: 1,
+    reportDate: "2023-01-01T00:00:00",
+    reportType: "Sự cố kĩ thuật",
+    content: "Báo cáo tiến độ ngày 1",
+    level: "Cao",
+    problemType: "Chậm tiến độ",
+    statusLogs: [
+      {
+        id: 1,
+        reportID: 1,
+        status: 0,
+        note: "Đang chờ phê duyệt",
+        reportDate: "2023-01-01T00:00:00"
+      }
+    ],
+    attachments: [
+      {
+        id: 1,
+        reportID: 1,
+        filePath: "/uploads/report1.pdf",
+        uploadDate: "2023-01-01T00:00:00"
+      }
+    ]
   }
 ])
 
+const filteredReports = ref([])
+
+const currentPage = ref(1)
+const itemsPerPage = 5
+
+const paginatedReports = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredReports.value.slice(start, end)
+})
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
+
 const columns = [
-  { key: 'projectName', label: 'Công trình' },
-  { key: 'issueType', label: 'Loại vấn đề' },
-  { key: 'description', label: 'Mô tả' },
-  { key: 'severity', label: 'Mức độ' },
-  { key: 'status', label: 'Trạng thái' },
+  { key: 'id', label: 'Mã báo cáo' },
+  { key: 'constructionName', label: 'Công trình' },
+  { key: 'problemType', label: 'Loại vấn đề' },
+  { key: 'content', label: 'Mô tả' },
+  { key: 'level', label: 'Mức độ' },
+  { key: 'statusLogs[0].status', label: 'Trạng thái' },
   { key: 'reportDate', label: 'Ngày báo cáo' }
 ]
 
-const issueTypes = [
-  { value: 'equipment', label: 'Lỗi thiết bị' },
-  { value: 'material', label: 'Thiếu vật tư' },
-  { value: 'construction', label: 'Sự cố công trình' },
-  { value: 'other', label: 'Vấn đề khác' }
+const problemTypes = [
+  { value: 'Chậm tiến độ', label: 'Chậm tiến độ' },
+  { value: 'Thiếu vật liệu', label: 'Thiếu vật liệu' },
+  { value: 'Sự cố thiết bị', label: 'Sự cố thiết bị' },
+  { value: 'Vấn đề khác', label: 'Vấn đề khác' }
 ]
 
-const severityLevels = [
-  { value: 'low', label: 'Thấp' },
-  { value: 'medium', label: 'Trung bình' },
-  { value: 'high', label: 'Cao' },
-  { value: 'critical', label: 'Nghiêm trọng' }
+const securityLevels = [
+  { value: 'Thấp', label: 'Thấp' },
+  { value: 'Trung bình', label: 'Trung bình' },
+  { value: 'Cao', label: 'Cao' },
+  { value: 'Nghiêm trọng', label: 'Nghiêm trọng' }
 ]
-
-const newReport = ref({
-  projectCode: '',
-  projectName: '',
-  issueType: '',
-  description: '',
-  severity: '',
-  images: []
-})
-
-const validateForm = () => {
-  if (!newReport.value.projectCode || !newReport.value.issueType ||
-    !newReport.value.description || !newReport.value.severity) {
-    return false
-  }
-  return true
-}
-
-const handleSubmit = () => {
-  if (!validateForm()) {
-    alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
-    return
-  }
-
-  const report = {
-    ...newReport.value,
-    id: Date.now(),
-    status: 'Pending',
-    reportDate: new Date().toISOString().split('T')[0],
-    updates: []
-  }
-
-  reports.value.unshift(report)
-  showCreateForm.value = false
-  alert('Báo cáo đã được gửi thành công')
-}
 
 const handleUpdateStatus = (report) => {
   selectedReport.value = report
@@ -104,17 +101,18 @@ const handleUpdateSubmit = (updatedReport) => {
   }
 }
 
-const searchQuery = ref('')
-const statusFilter = ref('all')
-const dateRangeFilter = ref({ start: null, end: null })
-
-const filteredReports = computed(() => {
-  return reports.value.filter(report => {
-    const matchesSearch = searchQuery.value === '' || report.projectName.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchesStatus = statusFilter.value === 'all' || report.status === statusFilter.value
-    return matchesSearch && matchesStatus
-  })
-})
+const getStatusLabel = (status) => {
+  switch (status) {
+    case 0:
+      return 'Chờ phê duyệt'
+    case 1:
+      return 'Đã phê duyệt'
+    case 2:
+      return 'Đã từ chối'
+    default:
+      return 'Không xác định'
+  }
+}
 </script>
 
 <template>
@@ -126,34 +124,34 @@ const filteredReports = computed(() => {
       </ActionButton>
     </div>
 
-    <!-- Bộ lọc và tìm kiếm -->
-    <div class="card mb-4">
-      <div class="card-body">
-        <FilterSearch :searchQuery="searchQuery" :statusFilter="statusFilter" :dateRangeFilter="dateRangeFilter"
-          @update:searchQuery="searchQuery = $event" @update:statusFilter="statusFilter = $event"
-          @update:dateRangeFilter="dateRangeFilter = $event" @resetFilters="resetFilters" />
-      </div>
-    </div>
+    <!-- Advanced Filter -->
+    <AdvancedFilter
+      :items="reports"
+      :searchFields="['constructionName', 'content', 'problemType']"
+      dateField="reportDate"
+      statusField="statusLogs[0].status"
+      v-model:filteredItems="filteredReports"
+    />
 
-    <DataTable :columns="columns" :data="filteredReports" class="report-table">
-      <template #issueType="{ item }">
-        <span :class="'badge bg-' + (item.issueType === 'equipment' ? 'warning' :
-          item.issueType === 'material' ? 'info' :
-            item.issueType === 'construction' ? 'danger' : 'secondary')">
-          {{issueTypes.find(t => t.value === item.issueType)?.label}}
+    <DataTable :columns="columns" :data="paginatedReports" class="report-table">
+      <template #problemType="{ item }">
+        <span :class="'badge bg-' + (item.problemType === 'Chậm tiến độ' ? 'warning' :
+          item.problemType === 'Thiếu vật liệu' ? 'info' :
+            item.problemType === 'Sự cố thiết bị' ? 'danger' : 'secondary')">
+          {{item.problemType}}
         </span>
       </template>
 
-      <template #severity="{ item }">
-        <span :class="'badge bg-' + (item.severity === 'critical' ? 'danger' :
-          item.severity === 'high' ? 'warning' :
-            item.severity === 'medium' ? 'info' : 'success')">
-          {{severityLevels.find(s => s.value === item.severity)?.label}}
+      <template #level="{ item }">
+        <span :class="'badge bg-' + (item.level === 'Nghiêm trọng' ? 'danger' :
+          item.level === 'Cao' ? 'warning' :
+            item.level === 'Trung bình' ? 'info' : 'success')">
+          {{item.level}}
         </span>
       </template>
 
       <template #status="{ item }">
-        <StatusBadge :status="item.status" />
+        <StatusBadge :status="getStatusLabel(item.statusLogs[0].status)" />
       </template>
 
       <template #reportDate="{ item }">
@@ -166,64 +164,39 @@ const filteredReports = computed(() => {
       </template>
     </DataTable>
 
-    <!-- Form tạo báo cáo mới -->
-    <ModalDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới" size="lg">
-      <div class="p-3">
-        <div class="mb-3">
-          <label class="form-label">Công trình</label>
-          <select v-model="newReport.projectCode" class="form-select">
-            <option value="">-- Chọn công trình --</option>
-            <option value="PRJ001">Khu chung cư The Sun</option>
-            <option value="PRJ002">Cao ốc văn phòng Star</option>
-          </select>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Loại vấn đề</label>
-          <select v-model="newReport.issueType" class="form-select">
-            <option value="">-- Chọn loại vấn đề --</option>
-            <option v-for="type in issueTypes" :key="type.value" :value="type.value">
-              {{ type.label }}
-            </option>
-          </select>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Mức độ ảnh hưởng</label>
-          <select v-model="newReport.severity" class="form-select">
-            <option value="">-- Chọn mức độ --</option>
-            <option v-for="level in severityLevels" :key="level.value" :value="level.value">
-              {{ level.label }}
-            </option>
-          </select>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Mô tả vấn đề</label>
-          <textarea v-model="newReport.description" class="form-control" rows="4"
-            placeholder="Mô tả chi tiết vấn đề..."></textarea>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Hình ảnh</label>
-          <input type="file" class="form-control" multiple accept="image/*">
-        </div>
-
-        <div class="d-flex justify-content-end gap-2">
-          <ActionButton type="secondary" @click="showCreateForm = false">
-            Hủy
-          </ActionButton>
-          <ActionButton type="primary" @click="handleSubmit">
-            Gửi báo cáo
-          </ActionButton>
-        </div>
+    <!-- Phân trang -->
+    <div class="d-flex justify-content-between align-items-center mt-4">
+      <div class="text-muted">
+        Hiển thị {{ paginatedReports.length }} trên {{ filteredReports.length }} báo cáo
       </div>
-    </ModalDialog>
+      <Pagination
+        :total-items="filteredReports.length"
+        :items-per-page="itemsPerPage"
+        :current-page="currentPage"
+        @update:currentPage="handlePageChange"
+      />
+    </div>
+
+    <!-- Form tạo báo cáo mới -->
+    <FormDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới">
+      <ReportForm
+        mode="create"
+        reportType="incident"
+        @submit="handleSubmit"
+        @cancel="showCreateForm = false"
+      />
+    </FormDialog>
 
     <!-- Form cập nhật báo cáo -->
-    <ModalDialog v-if="selectedReport" v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo" size="lg">
-      <UpdateReportForm :report="selectedReport" @submit="handleUpdateSubmit" @cancel="showUpdateForm = false" />
-    </ModalDialog>
+    <FormDialog v-if="selectedReport" v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo">
+      <ReportForm
+        mode="update"
+        reportType="incident"
+        :report="selectedReport"
+        @submit="handleUpdateSubmit"
+        @cancel="showUpdateForm = false"
+      />
+    </FormDialog>
   </div>
 </template>
 
