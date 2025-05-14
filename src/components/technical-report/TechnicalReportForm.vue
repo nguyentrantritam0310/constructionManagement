@@ -8,6 +8,11 @@ const props = defineProps({
     required: true,
     validator: (value) => ['create', 'update'].includes(value)
   },
+  reportType: {
+    type: String,
+    required: true,
+    validator: (value) => ['incident', 'technical'].includes(value)
+  },
   report: {
     type: Object,
     default: () => ({})

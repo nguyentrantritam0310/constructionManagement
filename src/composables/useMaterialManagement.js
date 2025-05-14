@@ -26,6 +26,22 @@ export function useMaterialManagement() {
     }
   }
 
+  const fetchMaterialById = async (id) => {
+    try {
+      loading.value = true
+      console.log('Fetching material by ID:', id) // Debug log
+      const response = await api.get(`/Material/${id}`)
+      console.log('Fetched material response:', response.data) // Debug log
+      return response.data
+    } catch (err) {
+      error.value = err.message
+      console.error(`Error fetching material with ID ${id}:`, err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   const createMaterial = async (materialData) => {
     try {
       loading.value = true
@@ -80,6 +96,7 @@ export function useMaterialManagement() {
     error,
     formData,
     fetchMaterials,
+    fetchMaterialById,
     createMaterial,
     updateMaterial,
     updateMaterialStatus
