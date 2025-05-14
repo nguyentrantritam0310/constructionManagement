@@ -1,47 +1,21 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useManagementReport } from '../../composables/useManagementReport'
 import DataTable from '../../components/common/DataTable.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
+import ModalDialog from '../../components/common/ModalDialog.vue'
+
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import AdvancedFilter from '../../components/common/AdvancedFilter.vue'
 import FormDialog from '../../components/common/FormDialog.vue'
 import ReportForm from '../../components/common/ReportForm.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import UpdateReportForm from '../../components/incident-report/UpdateReportForm.vue'
+
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
 const selectedReport = ref(null)
-
-const reports = ref([
-  {
-    id: 1,
-    employeeID: "manager1-id",
-    constructionName: "Khu chung cư An Hòa Garden",
-    constructionID: 1,
-    reportDate: "2023-01-01T00:00:00",
-    reportType: "Sự cố kĩ thuật",
-    content: "Báo cáo tiến độ ngày 1",
-    level: "Cao",
-    problemType: "Chậm tiến độ",
-    statusLogs: [
-      {
-        id: 1,
-        reportID: 1,
-        status: 0,
-        note: "Đang chờ phê duyệt",
-        reportDate: "2023-01-01T00:00:00"
-      }
-    ],
-    attachments: [
-      {
-        id: 1,
-        reportID: 1,
-        filePath: "/uploads/report1.pdf",
-        uploadDate: "2023-01-01T00:00:00"
-      }
-    ]
-  }
-])
 
 const filteredReports = ref([])
 
@@ -57,7 +31,20 @@ const paginatedReports = computed(() => {
 const handlePageChange = (page) => {
   currentPage.value = page
 }
+const {
+  loading,
+  error,
+  reports,
+  formData,
+  fetchReports,
+  createReport,
+  updateReport,
+  updateReportStatus
+} = useManagementReport()
 
+onMounted(() => {
+  fetchReports()
+})
 const columns = [
   { key: 'id', label: 'Mã báo cáo' },
   { key: 'constructionName', label: 'Công trình' },
@@ -81,7 +68,28 @@ const securityLevels = [
   { value: 'Cao', label: 'Cao' },
   { value: 'Nghiêm trọng', label: 'Nghiêm trọng' }
 ]
+const validateForm = () => {
+  if (!newReport.value.constructionCode || !newReport.value.problemType ||
+    !newReport.value.content || !newReport.value.level) {
+    return false
+  }
+  return true
+}
+const handleSubmit = async () => {
+  if (!validateForm()) {
+    alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
+    return
+  }
 
+  try {
+    await createReport(newReport.value)
+    showCreateForm.value = false
+    alert('Báo cáo đã được gửi thành công')
+  } catch (err) {
+    console.error('Error creating report:', err)
+    alert('Có lỗi xảy ra khi gửi báo cáo')
+  }
+}
 const handleUpdateStatus = (report) => {
   selectedReport.value = report
   showUpdateForm.value = true
@@ -91,13 +99,15 @@ const formatDate = (date) => {
   return new Date(date).toLocaleDateString('vi-VN')
 }
 
-const handleUpdateSubmit = (updatedReport) => {
-  const index = reports.value.findIndex(r => r.id === updatedReport.id)
-  if (index !== -1) {
-    reports.value[index] = updatedReport
+const handleUpdateSubmit = async (updatedReport) => {
+  try {
+    await updateReport(updatedReport.id, updatedReport)
     showUpdateForm.value = false
     selectedReport.value = null
     alert('Cập nhật báo cáo thành công')
+  } catch (err) {
+    console.error('Error updating report:', err)
+    alert('Có lỗi xảy ra khi cập nhật báo cáo')
   }
 }
 
@@ -116,7 +126,7 @@ const getStatusLabel = (status) => {
 </script>
 
 <template>
-  <div class="technical-report">
+  <div class="management-report">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h2>Báo Cáo Sự Cố Thi Công</h2>
       <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
@@ -132,6 +142,15 @@ const getStatusLabel = (status) => {
       statusField="statusLogs[0].status"
       v-model:filteredItems="filteredReports"
     />
+    <div v-if="loading" class="text-center py-4">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+
+    <div v-else-if="error" class="alert alert-danger" role="alert">
+      {{ error }}
+    </div>
 
     <DataTable :columns="columns" :data="paginatedReports" class="report-table">
       <template #problemType="{ item }">

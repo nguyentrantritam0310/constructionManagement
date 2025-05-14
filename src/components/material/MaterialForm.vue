@@ -1,6 +1,7 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import FormField from '../common/FormField.vue'
+import { useMaterialType } from '../../composables/useMaterialType'
 
 const props = defineProps({
   mode: {
@@ -10,72 +11,110 @@ const props = defineProps({
   },
   material: {
     type: Object,
+    required: false,
     default: () => ({})
   }
 })
 
 const emit = defineEmits(['submit', 'cancel'])
 
-const formData = ref({
-  id: null,
-  name: '',
-  unit: '',
-  type: '',
-  price: null,
-  status: 'Hết hàng'
+const formData = ref({})
+
+// Fetch material types
+const { materialTypes, loadMaterialTypes } = useMaterialType()
+
+// Initialize form data based on the mode and props
+const initFormData = () => {
+  if (props.mode === 'update' && props.material) {
+    Object.assign(formData.value, props.material)
+  }
+}
+
+onMounted(() => {
+  loadMaterialTypes() // Load material types when the component is mounted
+  initFormData()
 })
 
-// Watch for changes in material prop
+// Watch for changes in props.material to update formData
 watch(() => props.material, (newMaterial) => {
-  if (newMaterial && Object.keys(newMaterial).length > 0) {
-    formData.value = { ...newMaterial }
+  if (props.mode === 'update' && newMaterial) {
+    Object.assign(formData.value, newMaterial)
+    formData.value.materialTypeID = newMaterial.materialTypeID // Update default material type
   }
 }, { immediate: true })
 
-const validateForm = () => {
-  if (!formData.value.name || !formData.value.unit || !formData.value.type || !formData.value.price) {
-    return false
-  }
-  return true
+const handleSubmit = () => {
+  emit('submit', formData.value) // Emit the updated form data
 }
 
-const handleSubmit = () => {
-  if (!validateForm()) {
-    alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
-    return
-  }
-  emit('submit', formData.value)
+const handleCancel = () => {
+  emit('cancel')
 }
 </script>
 
 <template>
-  <div class="p-3">
-    <FormField
-      label="Tên Vật Tư"
-      type="text"
-      v-model="formData.name"
-      required
-    />
-
-    <FormField
-      label="Đơn Vị Tính"
-      type="text"
-      v-model="formData.unit"
-      required
-    />
-
-    <FormField
-      label="Loại Vật Tư"
-      type="text"
-      v-model="formData.type"
-      required
-    />
-
-    <FormField
-      label="Đơn Giá"
-      type="number"
-      v-model="formData.price"
-      required
-    />
-  </div>
+  <form @submit.prevent="handleSubmit">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <FormField
+          label="Tên Vật Tư"
+          type="text"
+          v-model="formData.materialName"
+          required
+        />
+      </div>
+      <div class="col-md-6">
+        <FormField
+          label="Loại Vật Tư"
+          type="select"
+          v-model="formData.materialTypeID"
+          :options="materialTypes.map(type => ({
+            value: type.materialTypeID,
+            label: type.materialTypeName
+          }))"
+          required
+        />
+      </div>
+      <div class="col-md-6">
+        <FormField
+          label="Số Lượng Tồn Kho"
+          type="number"
+          v-model="formData.stockQuantity"
+          required
+        />
+      </div>
+      <div class="col-md-6">
+        <FormField
+          label="Đơn Giá"
+          type="number"
+          v-model="formData.unitPrice"
+          required
+        />
+      </div>
+      <div class="col-md-12">
+        <FormField
+          label="Chi Tiết Vật Tư"
+          type="textarea" 
+          v-model="formData.specification"
+          required
+        />
+      </div>
+      <div class="col-md-12">
+        <FormField
+          label="Ghi Chú"
+          type="textarea" 
+          v-model="formData.note"
+          required
+        />
+      </div>
+    </div>
+    <div class="mt-4 d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-secondary" @click="handleCancel">
+        Hủy
+      </button>
+      <button type="submit" class="btn btn-primary">
+        {{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}
+      </button>
+    </div>
+  </form>
 </template>
