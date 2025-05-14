@@ -1,9 +1,15 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import ModalDialog from '../common/ModalDialog.vue'
 import DataTable from '../common/DataTable.vue'
 import ActionButton from '../common/ActionButton.vue'
 import CreateTaskDialog from './CreateTaskDialog.vue'
+import Pagination from '../common/Pagination.vue'
+import { useToast } from '../../composables/useToast'
+import { useTask } from '../../composables/useTask'
+import StatusBadge from '../common/StatusBadge.vue'
+
+const { showSuccess, showError } = useToast()
 
 const props = defineProps({
   show: {
@@ -18,72 +24,108 @@ const props = defineProps({
 
 const emit = defineEmits(['update:show', 'submit'])
 
-// Giả lập dữ liệu chi tiết nhiệm vụ (sau này sẽ lấy từ API)
-const tasks = ref([
-  {
-    id: 1,
-    taskCode: 'NV001',
-    name: 'Đào móng Block A - Phần 1',
-    unit: 'm3',
-    plannedVolume: 50,
-    currentVolume: 30,
-    monthlyPlan: 20,
-    actualVolume: 0
-  },
-  {
-    id: 2,
-    taskCode: 'NV002',
-    name: 'Đào móng Block A - Phần 2',
-    unit: 'm3',
-    plannedVolume: 50,
-    currentVolume: 20,
-    monthlyPlan: 30,
-    actualVolume: 0
+const {
+  tasks,
+  loading,
+  error,
+  fetchTasks,
+  createTask,
+  updateTask,
+  updateTasks
+} = useTask()
+
+onMounted(() => {
+  fetchTasks(props.plan.id)
+})
+
+// Phân trang
+const currentPage = ref(1)
+const itemsPerPage = 5
+
+const paginatedTasks = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return tasks.value.slice(start, end)
+})
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
+
+// Fetch tasks when plan changes
+watch(() => props.plan, async (newPlan) => {
+  if (newPlan && newPlan.id) {
+    console.log('Fetching tasks for plan:', newPlan.id)
+    await fetchTasks(newPlan.id)
   }
-])
+}, { immediate: true })
 
 const columns = [
-  { key: 'taskCode', label: 'Mã nhiệm vụ' },
-  { key: 'name', label: 'Tên nhiệm vụ' },
+  { key: 'id', label: 'Mã nhiệm vụ' },
   { key: 'unit', label: 'Đơn vị' },
-  { key: 'plannedVolume', label: 'Khối lượng hoạch định' },
+  { key: 'workload', label: 'Khối lượng hoạch định' },
   { key: 'currentVolume', label: 'Khối lượng hiện tại' },
-  { key: 'monthlyPlan', label: 'Kế hoạch tháng' },
   { key: 'actualVolume', label: 'Khối lượng thực tế' },
-  { key: 'progress', label: 'Tiến độ' }
+  { key: 'statusName', label: 'Trạng thái' }
 ]
 
 const hasUnsavedChanges = ref(false)
 const showConfirmDialog = ref(false)
 const showCreateTaskDialog = ref(false)
 
-const validateVolume = (value) => {
+const isEditable = computed(() => {
+  return props.plan.statusName === 'In Progress' ||
+    props.plan.statusName === 'Đang thi công' ||
+    props.plan.statusName === 1
+})
+
+const validateVolume = (value, task) => {
   const volume = parseFloat(value)
-  return !isNaN(volume) && volume >= 0
+  if (isNaN(volume) || volume < 0) {
+    return false
+  }
+  // Kiểm tra không vượt quá khối lượng hoạch định
+  if (volume > task.plannedVolume) {
+    showError('Khối lượng thực tế không được vượt quá khối lượng hoạch định')
+    return false
+  }
+  return true
 }
 
 const handleVolumeChange = (task, value) => {
-  if (!validateVolume(value)) {
-    alert('Vui lòng nhập khối lượng hợp lệ')
+  if (!validateVolume(value, task)) {
     return
   }
 
   const index = tasks.value.findIndex(t => t.id === task.id)
   if (index !== -1) {
-    tasks.value[index].actualVolume = parseFloat(value)
+    tasks.value[index].currentVolume = parseFloat(value)
+    // Tính khối lượng thực tế = khối lượng hoạch định - khối lượng hiện tại
+    tasks.value[index].actualVolume = task.workload - parseFloat(value)
     hasUnsavedChanges.value = true
   }
 }
 
-const handleCreateTask = (newTask) => {
-  tasks.value.push({
-    id: tasks.value.length + 1,
-    taskCode: `NV${String(tasks.value.length + 1).padStart(3, '0')}`,
-    ...newTask,
-    currentVolume: 0,
-    actualVolume: 0
-  })
-  showCreateTaskDialog.value = false
+const handleCreateTask = async (newTask) => {
+  try {
+    // Kiểm tra trùng lặp tên nhiệm vụ
+    if (tasks.value.some(t => t.name === newTask.name)) {
+      showError('Tên nhiệm vụ đã tồn tại')
+      return
+    }
+
+    const taskData = {
+      ...newTask,
+      constructionPlanID: props.plan.id,
+      constructionStatusID: 1, // Mặc định là trạng thái mới
+      workload: 0 // Khối lượng thực tế ban đầu là 0
+    }
+
+    await createTask(props.plan.id, taskData)
+    showCreateTaskDialog.value = false
+  } catch (err) {
+    console.error('Error creating task:', err)
+  }
 }
 
 const handleClose = () => {
@@ -101,40 +143,31 @@ const handleConfirmClose = (confirm) => {
   }
 }
 
-const handleSubmit = () => {
-  const invalidTasks = tasks.value.filter(
-    task => task.actualVolume > 0 && !validateVolume(task.actualVolume)
-  )
+const handleSubmit = async () => {
+  try {
+    const invalidTasks = tasks.value.filter(
+      task => task.workload > 0 && !validateVolume(task.workload, task)
+    )
 
-  if (invalidTasks.length > 0) {
-    alert('Vui lòng kiểm tra lại khối lượng nhập vào')
-    return
+    if (invalidTasks.length > 0) {
+      showError('Vui lòng kiểm tra lại khối lượng nhập vào')
+      return
+    }
+
+    await updateTasks(props.plan.id, tasks.value)
+    emit('submit', {
+      ...props.plan,
+      tasks: tasks.value
+    })
+    hasUnsavedChanges.value = false
+  } catch (err) {
+    console.error('Error updating tasks:', err)
   }
-
-  emit('submit', {
-    ...props.plan,
-    tasks: tasks.value.map(task => ({
-      ...task,
-      currentVolume: task.actualVolume > 0 ? task.actualVolume : task.currentVolume
-    }))
-  })
-  hasUnsavedChanges.value = false
-}
-
-const getTotalProgress = () => {
-  const totalPlanned = tasks.value.reduce((sum, task) => sum + task.plannedVolume, 0)
-  const totalCurrent = tasks.value.reduce((sum, task) => sum + task.currentVolume, 0)
-  return totalPlanned > 0 ? (totalCurrent / totalPlanned) * 100 : 0
 }
 </script>
 
 <template>
-  <ModalDialog
-    :show="show"
-    @update:show="handleClose"
-    title="Chi Tiết Kế Hoạch Thi Công"
-    size="xl"
-  >
+  <ModalDialog :show="show" @update:show="handleClose" title="Chi Tiết Kế Hoạch Thi Công" size="xl">
     <div class="plan-detail">
       <div class="alert alert-info mb-4">
         <div class="d-flex justify-content-between align-items-center">
@@ -142,110 +175,82 @@ const getTotalProgress = () => {
             <h5 class="alert-heading">{{ plan.planName }}</h5>
             <p class="mb-0">Trạng thái: {{ plan.status }}</p>
           </div>
-          <button
-            class="btn btn-primary"
-            @click="showCreateTaskDialog = true"
-            :disabled="plan.status !== 'In Progress'"
-          >
+          <button class="btn btn-primary" @click="showCreateTaskDialog = true" :disabled="!isEditable">
             <i class="fas fa-plus me-2"></i>
             Thêm Nhiệm Vụ
           </button>
         </div>
       </div>
 
-      <!-- Tổng tiến độ -->
-      <div class="mb-4">
-        <h6>Tổng tiến độ:</h6>
-        <div class="progress" style="height: 25px;">
-          <div
-            class="progress-bar"
-            :style="{
-              width: `${getTotalProgress()}%`,
-              backgroundColor: getTotalProgress() >= 100 ? '#28a745' : '#007bff'
-            }"
-          >
-            {{ Math.round(getTotalProgress()) }}%
-          </div>
+      <div v-if="loading" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
         </div>
       </div>
 
-      <DataTable
-        :columns="columns"
-        :data="tasks"
-      >
-        <template #actualVolume="{ item }">
-          <input
-            type="number"
-            class="form-control form-control-sm"
-            :value="item.actualVolume"
-            :disabled="plan.status !== 'In Progress'"
-            @input="(e) => handleVolumeChange(item, e.target.value)"
-          />
-        </template>
+      <div v-else-if="error" class="alert alert-danger" role="alert">
+        {{ error }}
+      </div>
 
-        <template #progress="{ item }">
-          <div class="progress" style="height: 20px;">
-            <div
-              class="progress-bar"
-              :style="{
-                width: `${(item.currentVolume / item.plannedVolume) * 100}%`,
-                backgroundColor: item.currentVolume >= item.plannedVolume ? '#28a745' : '#007bff'
-              }"
-            >
-              {{ Math.round((item.currentVolume / item.plannedVolume) * 100) }}%
-            </div>
+      <template v-else>
+        <DataTable :columns="columns" :data="paginatedTasks">
+          <template #currentVolume="{ item }">
+            <input
+              type="number"
+              class="form-control form-control-sm"
+              :value="item.currentVolume"
+              :disabled="!isEditable"
+              @input="(e) => handleVolumeChange(item, e.target.value)"
+              min="0"
+              :max="item.workload"
+              step="0.01"
+            />
+          </template>
+
+          <template #actualVolume="{ item }">
+            <span>{{ item.actualVolume || 0 }}</span>
+          </template>
+
+          <template #statusName="{ item }">
+            <StatusBadge :status="item.statusName" />
+          </template>
+        </DataTable>
+
+        <!-- Phân trang -->
+        <div class="d-flex justify-content-between align-items-center mt-4">
+          <div class="text-muted">
+            Hiển thị {{ paginatedTasks.length }} trên {{ tasks.length }} nhiệm vụ
           </div>
-        </template>
-      </DataTable>
+          <Pagination :total-items="tasks.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+            @update:currentPage="handlePageChange" />
+        </div>
+      </template>
 
       <div class="d-flex justify-content-end gap-2 mt-4">
-        <button
-          type="button"
-          class="btn btn-secondary"
-          @click="handleClose"
-        >
+        <button type="button" class="btn btn-secondary" @click="handleClose">
           Hủy
         </button>
-        <button
-          type="button"
-          class="btn btn-primary"
-          @click="handleSubmit"
-          :disabled="plan.status !== 'In Progress' || !hasUnsavedChanges"
-        >
+        <button type="button" class="btn btn-primary" @click="handleSubmit"
+          :disabled="!isEditable || !hasUnsavedChanges">
           Xác nhận
         </button>
       </div>
     </div>
 
     <!-- Create Task Dialog -->
-    <CreateTaskDialog
-      v-if="showCreateTaskDialog"
-      :show="showCreateTaskDialog"
-      @update:show="showCreateTaskDialog = $event"
-      @submit="handleCreateTask"
-    />
+    <CreateTaskDialog v-if="showCreateTaskDialog" :show="showCreateTaskDialog"
+      @update:show="showCreateTaskDialog = $event" @submit="handleCreateTask" />
 
     <!-- Confirm Dialog -->
-    <ModalDialog
-      v-if="showConfirmDialog"
-      :show="showConfirmDialog"
-      @update:show="showConfirmDialog = $event"
-      title="Xác nhận"
-      size="sm"
-    >
+    <ModalDialog v-if="showConfirmDialog" :show="showConfirmDialog" @update:show="showConfirmDialog = $event"
+      title="Xác nhận" size="sm">
       <div class="text-center">
         <p>Thông tin vẫn chưa được lưu bạn có chắc muốn thoát không?</p>
         <div class="d-flex justify-content-center gap-2 mt-3">
-          <button
-            class="btn btn-secondary"
-            @click="handleConfirmClose(false)"
-          >
+          <button class="btn btn-secondary" @click="handleConfirmClose(false)">
             Không đồng ý
           </button>
-          <button
-            class="btn btn-primary"
-            @click="handleConfirmClose(true)"
-          >
+          <button class="btn btn-primary" @click="handleConfirmClose(true)">
             Đồng ý
           </button>
         </div>

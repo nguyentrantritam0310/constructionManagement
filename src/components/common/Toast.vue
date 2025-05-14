@@ -1,13 +1,7 @@
 <template>
   <div class="toast-container">
     <TransitionGroup name="toast">
-      <div
-        v-for="toast in toasts"
-        :key="toast.id"
-        class="toast"
-        :class="toast.type"
-        @click="removeToast(toast.id)"
-      >
+      <div v-for="toast in toasts" :key="toast.id" class="toast" :class="toast.type" @click="removeToast(toast.id)">
         <div class="toast-content">
           <i :class="getIcon(toast.type)" class="toast-icon"></i>
           <span class="toast-message">{{ toast.message }}</span>
@@ -21,19 +15,23 @@
 </template>
 
 <script setup>
-import { useToast } from '../../composables/useToast'
+import { toasts, removeToast } from '../../composables/toastStore'
 
-const { toasts, removeToast } = useToast()
+console.log('toasts:', toasts.value)
 
 const getIcon = (type) => {
   const icons = {
     success: 'fas fa-check-circle',
     error: 'fas fa-exclamation-circle',
-    warning: 'fas fa-exclamation-triangle',
-    info: 'fas fa-info-circle'
+    info: 'fas fa-info-circle',
+    warning: 'fas fa-exclamation-triangle'
   }
   return icons[type] || icons.info
 }
+
+setTimeout(() => {
+  toasts.value.push({ id: 1, message: 'Test push', type: 'success', duration: 3000 })
+}, 1000)
 </script>
 
 <style scoped>
@@ -51,7 +49,8 @@ const getIcon = (type) => {
   min-width: 300px;
   padding: 12px 16px;
   border-radius: 4px;
-  background: white;
+  background: #222;
+  color: #fff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;

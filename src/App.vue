@@ -1,15 +1,15 @@
 <script setup>
 import MainLayout from './components/layout/MainLayout.vue'
 import LoginView from './views/LoginView.vue'
+import GlobalMessageModal from './components/common/GlobalMessageModal.vue'
 import { useAuth } from './composables/useAuth'
-import Toast from './components/common/Toast.vue'
 
 const { isAuthenticated } = useAuth()
 </script>
 
 <template>
   <div id="app">
-    <Toast />
+    <GlobalMessageModal />
     <MainLayout v-if="isAuthenticated">
       <router-view></router-view>
     </MainLayout>

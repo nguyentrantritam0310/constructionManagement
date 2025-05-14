@@ -1,12 +1,13 @@
 import { reactive, ref } from 'vue'
 import { planService } from '../services/planService'
-import { useToast } from './useToast'
+import { useGlobalMessage } from './useGlobalMessage'
+
+const { showMessage } = useGlobalMessage()
 
 export function useConstructionPlan() {
   const plans = ref([])
   const loading = ref(false)
   const error = ref(null)
-  const { showSuccess, showError } = useToast()
   const formData = reactive({
     id: '',
     constructionID: '',
@@ -24,7 +25,7 @@ export function useConstructionPlan() {
       plans.value = data
     } catch (err) {
       error.value = err.message
-      showError('Không thể tải danh sách kế hoạch')
+      showMessage('Không thể tải danh sách kế hoạch', 'error')
       console.error('Error fetching plans:', err)
     } finally {
       loading.value = false
@@ -37,11 +38,11 @@ export function useConstructionPlan() {
       loading.value = true
       const data = await planService.create(planData)
       plans.value.push(data)
-      showSuccess('Tạo kế hoạch thành công')
+      showMessage('Tạo kế hoạch thành công', 'success')
       return data
     } catch (err) {
       error.value = err.message
-      showError('Không thể tạo kế hoạch')
+      showMessage('Không thể tạo kế hoạch', 'error')
       throw err
     } finally {
       loading.value = false
@@ -57,11 +58,11 @@ export function useConstructionPlan() {
       if (index !== -1) {
         plans.value[index] = data
       }
-      showSuccess('Cập nhật kế hoạch thành công')
+      showMessage('Cập nhật kế hoạch thành công', 'success')
       return data
     } catch (err) {
       error.value = err.message
-      showError('Không thể cập nhật kế hoạch')
+      showMessage('Không thể cập nhật kế hoạch', 'error')
       throw err
     } finally {
       loading.value = false
@@ -77,11 +78,11 @@ export function useConstructionPlan() {
       if (index !== -1) {
         plans.value[index] = data
       }
-      showSuccess('Cập nhật trạng thái thành công')
+      showMessage('Cập nhật trạng thái thành công', 'success')
       return data
     } catch (err) {
       error.value = err.message
-      showError('Không thể cập nhật trạng thái')
+      showMessage('Không thể cập nhật trạng thái', 'error')
       throw err
     } finally {
       loading.value = false

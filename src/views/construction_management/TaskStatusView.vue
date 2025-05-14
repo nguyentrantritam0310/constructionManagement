@@ -45,7 +45,7 @@ const columns = [
 ]
 
 const handleConstructionClick = (construction) => {
-  router.push(`/construction-management/${construction.id}`)
+  router.push(`/construction-management-leader/${construction.id}`)
 }
 
 const formatDate = (date) => {
@@ -60,13 +60,8 @@ const formatDate = (date) => {
     </div>
 
     <!-- Advanced Filter -->
-    <AdvancedFilter
-      :items="constructions"
-      :searchFields="['constructionName', 'location', 'id']"
-      dateField="startDate"
-      statusField="statusName"
-      v-model:filteredItems="filteredConstructions"
-    />
+    <AdvancedFilter :items="constructions" :searchFields="['constructionName', 'location', 'id']" dateField="startDate"
+      statusField="statusName" v-model:filteredItems="filteredConstructions" />
 
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">
@@ -78,7 +73,8 @@ const formatDate = (date) => {
       {{ error }}
     </div>
 
-    <DataTable v-else :columns="columns" :data="paginatedConstructions" class="construction-table" @row-click="handleConstructionClick">
+    <DataTable v-else :columns="columns" :data="paginatedConstructions" class="construction-table"
+      @row-click="handleConstructionClick">
       <template #id="{ item }">
         <span class="fw-medium text-primary">CT-{{ item.id }}</span>
       </template>
@@ -120,12 +116,8 @@ const formatDate = (date) => {
       <div class="text-muted">
         Hiển thị {{ paginatedConstructions.length }} trên {{ filteredConstructions.length }} công trình
       </div>
-      <Pagination
-        :total-items="filteredConstructions.length"
-        :items-per-page="itemsPerPage"
-        :current-page="currentPage"
-        @update:currentPage="handlePageChange"
-      />
+      <Pagination :total-items="filteredConstructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        @update:currentPage="handlePageChange" />
     </div>
   </div>
 </template>

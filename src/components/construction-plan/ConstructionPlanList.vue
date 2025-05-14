@@ -167,15 +167,8 @@ const formatDate = (date, isActualCompletion = false) => {
       <PlanForm v-if="selectedPlan" mode="update" :plan="selectedPlan" @close="handleUpdateSubmit" />
     </ModalDialog>
 
-    <StatusChangeDialog
-      v-if="selectedPlan"
-      :show="showStatusDialog"
-      :item="selectedPlan"
-      type="plan"
-      title="Thay Đổi Trạng Thái Kế Hoạch"
-      @update:show="showStatusDialog = $event"
-      @submit="handleStatusSubmit"
-    />
+    <StatusChangeDialog v-if="selectedPlan" :show="showStatusDialog" :item="selectedPlan" type="plan"
+      title="Thay Đổi Trạng Thái Kế Hoạch" @update:show="showStatusDialog = $event" @submit="handleStatusSubmit" />
   </div>
 </template>
 

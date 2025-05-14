@@ -48,8 +48,8 @@ const constructionItemColumns = [
   { key: 'startDate', label: 'Ngày bắt đầu' },
   { key: 'expectedCompletionDate', label: 'Ngày kết thúc' },
   { key: 'totalVolume', label: 'Tổng khối lượng' },
-  { key: 'unit', label: 'Đơn vị' },
-  { key: 'statusName', label: 'Trạng thái' }
+  { key: 'unitName', label: 'Đơn vị' },
+  { key: 'constructionItemStatusName', label: 'Trạng thái' }
 ]
 
 const handleItemClick = (item) => {
@@ -142,7 +142,8 @@ const handleItemSubmit = (item) => {
               </span>
               <span class="meta-item">
                 <i class="fas fa-calendar"></i>
-                {{ formatDate(selectedConstruction.startDate) }} - {{ formatDate(selectedConstruction.expectedCompletionDate) }}
+                {{ formatDate(selectedConstruction.startDate) }} - {{
+                  formatDate(selectedConstruction.expectedCompletionDate) }}
               </span>
             </div>
           </div>
@@ -165,7 +166,8 @@ const handleItemSubmit = (item) => {
             </div>
             <div class="stat-content">
               <h3>Loại công trình</h3>
-              <p>{{ selectedConstruction.constructionTypeName || 'Chưa xác định' }}</p> <!-- Nếu không có constructionType -->
+              <p>{{ selectedConstruction.constructionTypeName || 'Chưa xác định' }}</p>
+              <!-- Nếu không có constructionType -->
             </div>
           </div>
         </div>
@@ -236,7 +238,8 @@ const handleItemSubmit = (item) => {
                   <div class="info-grid">
                     <div class="info-item">
                       <label>Loại công trình</label>
-                      <p>{{ selectedConstruction.constructionType || 'Chưa xác định' }}</p> <!-- Nếu không có constructionType -->
+                      <p>{{ selectedConstruction.constructionType || 'Chưa xác định' }}</p>
+                      <!-- Nếu không có constructionType -->
                     </div>
                     <div class="info-item">
                       <label>Tổng diện tích</label>
@@ -312,12 +315,11 @@ const handleItemSubmit = (item) => {
               <template #constructionItemName="{ item }">
                 <div class="volume-info">
                   <span class="fw-medium">{{ item.constructionItemName }}</span>
-                  <span class="text-muted ms-1">{{ item.unit }}</span>
                 </div>
               </template>
 
-              <template #status="{ item }">
-                <StatusBadge :status="item.status" type="construction" />
+              <template #constructionItemStatusName="{ item }">
+                <StatusBadge :status="item.constructionItemStatusName" type="item" />
               </template>
 
               <template #actions="{ item }">
@@ -346,12 +348,8 @@ const handleItemSubmit = (item) => {
     </ModalDialog>
 
     <FormDialog v-model:show="showItemForm" :title="formMode === 'add' ? 'Thêm Hạng Mục' : 'Cập Nhật Hạng Mục'">
-      <ConstructionItemForm
-        :mode="formMode"
-        :item="selectedItem"
-        @submit="handleItemSubmit"
-        @cancel="showItemForm = false"
-      />
+      <ConstructionItemForm :mode="formMode" :item="selectedItem" @submit="handleItemSubmit"
+        @cancel="showItemForm = false" />
     </FormDialog>
   </div>
 </template>

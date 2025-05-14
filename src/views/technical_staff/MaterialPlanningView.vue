@@ -1,20 +1,35 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { useMaterialPlanning } from '../../composables/useMaterialPlanning'
 import DataTable from '../../components/common/DataTable.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
-import { useToast } from '../../composables/useToast'
 import Pagination from '../../components/common/Pagination.vue'
+import { useMaterialNorm } from '../../composables/useMaterialNorm'
+import { useImportOrder } from '../../composables/useImportOrder'
+import { useMaterialPlan } from '../../composables/useMaterialPlan'
+import { useUser } from '../../composables/useUser'
+import { useAuth } from '../../composables/useAuth'
+import { useImportOrderEmployee } from '../../composables/useImportOrderEmployee'
 
-const { showSuccess, showError } = useToast()
 const selectedConstruction = ref(null)
 const showConfirmDialog = ref(false)
 const materials = ref([])
 const materialPlan = ref([])
 const loading = ref(false)
+const showMaterialNormDialog = ref(false)
+const constructionError = ref('')
+
+const showMessageDialog = ref(false)
+const messageDialogContent = ref('')
+const messageDialogType = ref('success') // 'success' hoặc 'error'
+
+function showMessage(content, type = 'success') {
+  messageDialogContent.value = content
+  messageDialogType.value = type
+  showMessageDialog.value = true
+}
 
 const {
   constructions,
@@ -22,13 +37,21 @@ const {
 } = useConstructionManagement()
 
 const {
-  materials: constructionMaterials,
-  loading: constructionLoading,
-  error: constructionError,
-  fetchMaterials,
-  updateMaterialQuantity,
-  saveMaterialPlan
-} = useMaterialPlanning()
+  materialNorms,
+  loading: materialNormLoading,
+  error: materialNormError,
+  fetchMaterialNorms
+} = useMaterialNorm()
+
+const { createImportOrder } = useImportOrder()
+const { createMaterialPlan } = useMaterialPlan()
+const { users } = useUser() // Lấy thông tin user hiện tại
+
+const { currentUser } = useAuth()
+const { createImportOrderEmployee } = useImportOrderEmployee()
+
+// Lấy employeeID từ currentUser
+const employeeID = computed(() => currentUser.value?.id)
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -48,8 +71,49 @@ const paginatedMaterials = computed(() => {
   return materials.value.slice(start, end)
 })
 
+// Thêm computed property để nhóm định mức theo hạng mục
+const groupedMaterialNorms = computed(() => {
+  const groups = {}
+  materialNorms.value.forEach(norm => {
+    if (!groups[norm.constructionItemName]) {
+      groups[norm.constructionItemName] = []
+    }
+    groups[norm.constructionItemName].push(norm)
+  })
+  return groups
+})
+
+// Thêm computed property để tính tổng số lượng cho từng vật tư
+const materialTotals = computed(() => {
+  const totals = {}
+  materialNorms.value.forEach(norm => {
+    const key = `${norm.materialID}-${norm.materialName}`
+    if (!totals[key]) {
+      totals[key] = {
+        materialName: norm.materialName,
+        totalQuantity: 0,
+        unitOfMeasurement: norm.unitOfMeasurement,
+        totalAmount: 0
+      }
+    }
+    totals[key].totalQuantity += parseInt(norm.quantity)
+    totals[key].totalAmount += parseInt(norm.quantity) * parseFloat(norm.price)
+  })
+  return Object.values(totals)
+})
+
+// Thêm computed property để tính tổng thành tiền
+const grandTotal = computed(() => {
+  return materialTotals.value.reduce((sum, material) => sum + material.totalAmount, 0)
+})
+
 onMounted(async () => {
-  await fetchConstructions()
+  try {
+    await fetchConstructions()
+    constructionError.value = ''
+  } catch (error) {
+    constructionError.value = 'Không thể tải danh sách công trình'
+  }
 })
 
 const constructionColumns = [
@@ -62,52 +126,98 @@ const constructionColumns = [
 ]
 
 const materialColumns = [
-  { key: 'materialCode', label: 'Mã vật tư' },
+  { key: 'materialID', label: 'Mã vật tư' },
   { key: 'materialName', label: 'Tên vật tư' },
-  { key: 'unit', label: 'Đơn vị' },
-  { key: 'quantity', label: 'Số lượng' },
+  { key: 'workSubTypeVariantDescription', label: 'Công tác' },
+  { key: 'unitOfMeasurement', label: 'Đơn vị' },
+  { key: 'quantity', label: 'Định mức' },
   { key: 'price', label: 'Đơn giá' },
   { key: 'total', label: 'Thành tiền' }
 ]
 
 const handleConstructionSelect = async (construction) => {
   selectedConstruction.value = construction
+  showMaterialNormDialog.value = true
   try {
-    await fetchMaterials(construction.id)
+    await fetchMaterialNorms(construction.id)
   } catch (error) {
-    showError('Không thể tải danh sách vật tư')
+    showMessage('Không thể tải thông tin vật tư', 'error')
   }
 }
 
-const handleQuantityChange = async (material, event) => {
-  const newQuantity = parseInt(event.target.value)
+const handleQuantityChange = (norm, value) => {
+  const newQuantity = parseInt(value)
   if (isNaN(newQuantity) || newQuantity < 0) {
-    alert('Vui lòng nhập số lượng hợp lệ')
-    event.target.value = material.requiredQuantity
+    showMessage('Vui lòng nhập số lượng hợp lệ', 'error')
     return
   }
-  try {
-    await updateMaterialQuantity(material.id, newQuantity)
-  } catch (err) {
-    console.error('Error updating quantity:', err)
-    alert('Có lỗi xảy ra khi cập nhật số lượng')
+
+  const index = materialNorms.value.findIndex(
+    n => n.materialID === norm.materialID &&
+      n.workSubTypeVariantDescription === norm.workSubTypeVariantDescription
+  )
+
+  if (index !== -1) {
+    materialNorms.value[index].quantity = newQuantity
   }
 }
 
 const handleSavePlan = async () => {
+  console.log('handleSavePlan called') // Debug
   if (!selectedConstruction.value) {
-    showError('Vui lòng chọn công trình')
+    showMessage('Vui lòng chọn công trình', 'error')
+    return
+  }
+
+  if (!employeeID.value) {
+    showMessage('Không thể xác định người dùng hiện tại', 'error')
     return
   }
 
   try {
     loading.value = true
-    await saveMaterialPlan(selectedConstruction.value.id, {
-      materials: materialPlan.value
-    })
-    showSuccess('Lưu kế hoạch vật tư thành công')
+    console.log(materialNorms.value) // Debug
+
+    // Tạo ImportOrder
+    const importOrderData = {
+      importDate: new Date().toISOString(), // Thời gian hiện tại
+      status: 'Pending'
+    }
+    console.log('ImportOrder data:', importOrderData) // Debug
+    const importOrder = await createImportOrder(importOrderData)
+    console.log('Created ImportOrder:', importOrder) // Debug
+
+    const importOrderEmployeeData = {
+      importOrderId: importOrder.id,
+      employeeID: employeeID.value,
+      role: 'Planner' // hoặc role phù hợp
+    }
+    console.log('ImportOrderEmployee data:', importOrderEmployeeData) // Debug
+    // POST ImportOrderEmployee sau khi tạo ImportOrder
+    const importOrderEmployee = await createImportOrderEmployee(importOrderEmployeeData)
+    console.log('Created ImportOrderEmployee:', importOrderEmployee) // Debug
+
+
+    // Tạo MaterialPlan cho từng vật tư
+    for (const material of materialNorms.value) { // Iterate over materialNorms.value
+      const materialPlanData = {
+        importOrderID: importOrder.id,
+        materialID: material.materialID,
+        constructionItemID: material.constructionItemID,
+        importQuantity: material.quantity,
+        note: ''
+      }
+      console.log('MaterialPlan data:', materialPlanData) // Debug
+      const createdMaterialPlan = await createMaterialPlan(materialPlanData)
+      materialPlan.value.push(createdMaterialPlan) // Push to materialPlan array
+    }
+
+    console.log('MaterialPlan value:', materialPlan.value) // Debug
+    showMessage('Lưu kế hoạch vật tư thành công', 'success')
+    showMaterialNormDialog.value = false
   } catch (error) {
-    showError('Không thể lưu kế hoạch vật tư')
+    console.error('Error in handleSavePlan:', error) // Debug lỗi
+    showMessage('Không thể lưu kế hoạch vật tư', 'error')
   } finally {
     loading.value = false
   }
@@ -154,7 +264,8 @@ const handleMaterialPageChange = (page) => {
           {{ constructionError }}
         </div>
 
-        <DataTable v-else :columns="constructionColumns" :data="paginatedConstructions" @row-click="handleConstructionSelect" class="id">
+        <DataTable v-else :columns="constructionColumns" :data="paginatedConstructions"
+          @row-click="handleConstructionSelect" class="id">
           <template #id="{ item }">
             <span class="fw-medium text-primary">{{ item.id }}</span>
           </template>
@@ -196,73 +307,103 @@ const handleMaterialPageChange = (page) => {
           <div class="text-muted">
             Hiển thị {{ paginatedConstructions.length }} trên {{ constructions.length }} công trình
           </div>
-          <Pagination
-            :total-items="constructions.length"
-            :items-per-page="itemsPerPage"
-            :current-page="currentPage"
-            @update:currentPage="handlePageChange"
-          />
+          <Pagination :total-items="constructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+            @update:currentPage="handlePageChange" />
         </div>
       </div>
     </div>
 
-    <div v-if="selectedConstruction" class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h4 class="mb-0">Danh sách vật tư - {{ selectedConstruction.constructionName }}</h4>
-        <div class="d-flex gap-2">
-          <ActionButton type="secondary" icon="fas fa-times" @click="handleCancel">
-            Hủy
-          </ActionButton>
-          <ActionButton type="primary" icon="fas fa-save" @click="handleSavePlan">
-            Xác nhận
-          </ActionButton>
+    <!-- Material Norm Dialog -->
+    <ModalDialog v-if="showMaterialNormDialog" :show="showMaterialNormDialog"
+      @update:show="showMaterialNormDialog = $event" title="Định lượng vật tư" size="xl">
+      <div class="material-norm-dialog">
+        <div class="alert alert-info mb-4">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="alert-heading">{{ selectedConstruction?.constructionName }}</h5>
+              <p class="mb-0">Địa điểm: {{ selectedConstruction?.location }}</p>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="card-body">
-        <div v-if="loading" class="text-center py-4">
+
+        <div v-if="materialNormLoading" class="text-center py-4">
           <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
           </div>
         </div>
 
-        <div v-else-if="constructionError" class="alert alert-danger" role="alert">
-          {{ constructionError }}
+        <div v-else-if="materialNormError" class="alert alert-danger" role="alert">
+          {{ materialNormError }}
         </div>
 
-        <div v-else class="table-responsive">
-          <table class="table">
-            <thead>
-              <tr>
-                <th v-for="col in materialColumns" :key="col.key">{{ col.label }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="material in paginatedMaterials" :key="material.materialCode">
-                <td>{{ material.materialCode }}</td>
-                <td>{{ material.materialName }}</td>
-                <td>{{ material.unit }}</td>
-                <td>{{ material.quantity }}</td>
-                <td>{{ formatCurrency(material.price) }}</td>
-                <td>{{ formatCurrency(material.total) }}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <!-- Phân trang vật tư -->
-          <div class="d-flex justify-content-between align-items-center mt-4">
-            <div class="text-muted">
-              Hiển thị {{ paginatedMaterials.length }} trên {{ materials.length }} vật tư
+        <div v-else>
+          <!-- Hiển thị tổng số lượng cho từng vật tư -->
+          <div class="card mb-4">
+            <div class="card-header text-white">
+              <h5 class="mb-0">Tổng hợp vật tư</h5>
             </div>
-            <Pagination
-              :total-items="materials.length"
-              :items-per-page="materialItemsPerPage"
-              :current-page="currentMaterialPage"
-              @update:currentPage="handleMaterialPageChange"
-            />
+            <div class="card-body p-0">
+              <DataTable :columns="[
+                { key: 'materialName', label: 'Tên vật tư' },
+                { key: 'totalQuantity', label: 'Tổng số lượng' },
+                { key: 'unitOfMeasurement', label: 'Đơn vị' },
+                { key: 'totalAmount', label: 'Thành tiền' }
+              ]" :data="materialTotals">
+                <template #totalQuantity="{ item }">
+                  <span class="fw-bold">{{ item.totalQuantity }}</span>
+                </template>
+                <template #totalAmount="{ item }">
+                  <span class="fw-bold">{{ formatCurrency(item.totalAmount) }}</span>
+                </template>
+              </DataTable>
+            </div>
+          </div>
+
+          <!-- Hiển thị tổng thành tiền -->
+          <div class="alert alert-success mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Tổng thành tiền:</h5>
+              <h4 class="mb-0">{{ formatCurrency(grandTotal) }}</h4>
+            </div>
+          </div>
+
+          <!-- Hiển thị chi tiết theo hạng mục -->
+          <div v-for="(norms, itemName) in groupedMaterialNorms" :key="itemName" class="mb-4">
+            <div class="card">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">{{ itemName }}</h5>
+              </div>
+              <div class="card-body p-0">
+                <DataTable :columns="materialColumns" :data="norms">
+                  <template #quantity="{ item }">
+                    <input type="number" class="form-control form-control-sm" :value="item.quantity"
+                      @input="(e) => handleQuantityChange(item, e.target.value)" min="0" step="1"
+                      @keypress="(e) => !/^\d*$/.test(e.key) && e.preventDefault()" />
+                  </template>
+
+                  <template #price="{ item }">
+                    {{ formatCurrency(item.price) }}
+                  </template>
+
+                  <template #total="{ item }">
+                    {{ formatCurrency(item.quantity * parseFloat(item.price)) }}
+                  </template>
+                </DataTable>
+              </div>
+            </div>
           </div>
         </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <ActionButton type="primary" icon="fas fa-save" @click="handleSavePlan">
+            Lưu kế hoạch
+          </ActionButton>
+          <ActionButton type="secondary" icon="fas fa-times" @click="handleCancel">
+            Hủy
+          </ActionButton>
+        </div>
       </div>
-    </div>
+    </ModalDialog>
 
     <!-- Dialog xác nhận hủy -->
     <ModalDialog v-model:show="showConfirmDialog" title="Xác nhận" size="sm">
@@ -278,12 +419,30 @@ const handleMaterialPageChange = (page) => {
         </div>
       </div>
     </ModalDialog>
+
+    <!-- Dialog hiển thị thông báo -->
+    <ModalDialog v-if="showMessageDialog" :show="showMessageDialog" @update:show="showMessageDialog = false"
+      :title="messageDialogType === 'success' ? 'Thành công' : 'Lỗi'" size="sm">
+      <div
+        :class="['alert', messageDialogType === 'success' ? 'alert-success' : 'alert-danger', 'mb-0', 'text-center']">
+        {{ messageDialogContent }}
+      </div>
+      <div class="d-flex justify-content-center mt-3">
+        <button class="btn btn-primary" @click="showMessageDialog = false">Đóng</button>
+      </div>
+    </ModalDialog>
   </div>
 </template>
 
 <style scoped>
 .material-planning {
   animation: fadeIn 0.3s ease-out;
+}
+
+.material-norm-dialog {
+  min-height: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .construction-table {
@@ -333,5 +492,39 @@ const handleMaterialPageChange = (page) => {
   to {
     opacity: 1;
   }
+}
+
+.form-control-sm {
+  width: 100px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+.card-header {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.card-header h5 {
+  color: #495057;
+  font-size: 1.1rem;
+}
+
+.card-header.bg-primary {
+  background-color: #0d6efd !important;
+}
+
+.alert-success {
+  background-color: #d1e7dd;
+  border-color: #badbcc;
+  color: #0f5132;
+}
+
+.alert-success h4 {
+  color: #0f5132;
+}
+
+.fw-bold {
+  font-weight: 600;
 }
 </style>

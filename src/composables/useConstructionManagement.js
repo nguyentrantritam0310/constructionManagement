@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue'
 import api from '../api.js'
 import { constructionService } from '../services/constructionService'
-import { useToast } from '../composables/useToast'
+import { useGlobalMessage } from '../../src/composables/useGlobalMessage'
+const { showMessage } = useGlobalMessage()
 
 export function useConstructionManagement() {
   const constructions = ref([])
@@ -9,7 +10,6 @@ export function useConstructionManagement() {
   const templateItem = ref([])
   const loading = ref(false)
   const error = ref(null)
-  const { showSuccess, showError } = useToast()
 
   const fetchConstructions = async () => {
     try {
@@ -18,7 +18,7 @@ export function useConstructionManagement() {
       constructions.value = data
     } catch (err) {
       error.value = err.message
-      showError('Không thể tải danh sách công trình')
+      showMessage('Không thể tải danh sách công trình', 'error')
       console.error('Error fetching constructions:', err)
     } finally {
       loading.value = false
@@ -33,7 +33,7 @@ export function useConstructionManagement() {
       return data
     } catch (err) {
       error.value = err.message
-      showError('Không thể tải thông tin công trình')
+      showMessage('Không thể tải thông tin công trình', 'error')
       throw err
     } finally {
       loading.value = false
@@ -59,30 +59,6 @@ export function useConstructionManagement() {
     canceledConstructions: constructions.value.filter(c => c.status === 'Canceled').length
   }))
 
-  const constructionTypesStats = computed(() => {
-    const typeCounts = {}
-    constructions.value.forEach(construction => {
-      const type = construction.constructionType || construction.type || 'Không xác định'
-      typeCounts[type] = (typeCounts[type] || 0) + 1
-    })
-
-    const colors = {
-      'Cầu đường': '#0d6efd',
-      'Nhà phố': '#198754',
-      'Biệt thự': '#ffc107',
-      'Công trình công cộng': '#dc3545',
-      'Công trình công nghiệp': '#ffc107',
-      'Công trình giao thông': '#dc3545',
-      'Công trình thủy lợi': '#0dcaf0',
-      'Không xác định': '#6c757d'
-    }
-
-    return Object.entries(typeCounts).map(([type, count]) => ({
-      type,
-      count,
-      color: colors[type] || '#6c757d'
-    }))
-  })
 
   const upcomingDeadlines = computed(() => {
     const today = new Date()
@@ -100,17 +76,6 @@ export function useConstructionManagement() {
       }))
       .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
   })
-
-  const getTypeColor = (type) => {
-    const colors = {
-      'Cầu đường': '#0d6efd',
-      'Nhà phố': '#198754',
-      'Biệt thự': '#ffc107',
-      'Công trình công cộng': '#dc3545',
-      'Không xác định': '#6c757d'
-    }
-    return colors[type] || '#6c757d'
-  }
 
   const calculateProgress = (construction) => {
     if (!construction.constructionItems || construction.constructionItems.length === 0) return 0
@@ -182,11 +147,11 @@ export function useConstructionManagement() {
       loading.value = true
       const newConstruction = await constructionService.create(data)
       constructions.value.push(newConstruction)
-      showSuccess('Tạo công trình thành công')
+      showMessage('Tạo công trình thành công', 'success')
       return newConstruction
     } catch (err) {
       error.value = err.message
-      showError('Không thể tạo công trình')
+      showMessage('Không thể tạo công trình', 'error')
       throw err
     } finally {
       loading.value = false
@@ -204,11 +169,11 @@ export function useConstructionManagement() {
       if (selectedConstruction.value?.id === id) {
         selectedConstruction.value = updatedConstruction
       }
-      showSuccess('Cập nhật công trình thành công')
+      showMessage('Cập nhật công trình thành công', 'success')
       return updatedConstruction
     } catch (err) {
       error.value = err.message
-      showError('Không thể cập nhật công trình')
+      showMessage('Không thể cập nhật công trình', 'error')
       throw err
     } finally {
       loading.value = false
@@ -227,11 +192,11 @@ export function useConstructionManagement() {
       if (selectedConstruction.value?.id === id) {
         selectedConstruction.value = updatedConstruction
       }
-      showSuccess('Cập nhật trạng thái thành công')
+      showMessage('Cập nhật trạng thái thành công', 'success')
       return updatedConstruction
     } catch (err) {
       error.value = err.message
-      showError('Không thể cập nhật trạng thái')
+      showMessage('Không thể cập nhật trạng thái', 'error')
       throw err
     } finally {
       loading.value = false
@@ -246,10 +211,10 @@ export function useConstructionManagement() {
       if (selectedConstruction.value?.id === id) {
         selectedConstruction.value = null
       }
-      showSuccess('Xóa công trình thành công')
+      showMessage('Xóa công trình thành công', 'success')
     } catch (err) {
       error.value = err.message
-      showError('Không thể xóa công trình')
+      showMessage('Không thể xóa công trình', 'error')
       throw err
     } finally {
       loading.value = false
@@ -343,7 +308,7 @@ export function useConstructionManagement() {
       return data
     } catch (err) {
       error.value = err.message
-      showError('Không thể tải danh sách hạng mục')
+      showMessage('Không thể tải danh sách hạng mục', 'error')
       throw err
     } finally {
       loading.value = false
@@ -360,7 +325,6 @@ export function useConstructionManagement() {
     fetchConstructionDetail,
     fetchConstructionTemplateItem,
     dashboardStats,
-    constructionTypesStats,
     upcomingDeadlines,
     showCreateForm,
     formData,

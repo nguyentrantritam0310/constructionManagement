@@ -26,7 +26,7 @@ const dashboardStats = computed(() => {
 const constructionTypesStats = computed(() => {
   const types = {}
   constructions.value.forEach(construction => {
-    const type = construction.constructionType || construction.type || 'Không xác định'
+    const type = construction.constructionTypeName || 'Không xác định'
     if (!types[type]) {
       types[type] = 0
     }
@@ -34,13 +34,10 @@ const constructionTypesStats = computed(() => {
   })
 
   const colors = {
-    'Chung cư': '#0d6efd',
-    'Nhà phố': '#198754',
-    'Biệt thự': '#ffc107',
-    'Công trình công cộng': '#dc3545',
-    'Công trình công nghiệp': '#ffc107',
-    'Công trình giao thông': '#dc3545',
-    'Công trình thủy lợi': '#0dcaf0',
+    'Dân dụng': '#198754',
+    'Công nghiệp': '#ffc107',
+    'Cầu đường': '#dc3545',
+    'Thủy lợi': '#0dcaf0',
     'Không xác định': '#6c757d'
   }
 
