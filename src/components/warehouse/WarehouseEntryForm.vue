@@ -3,6 +3,12 @@ import { ref, watch, computed } from 'vue'
 import FormField from '../common/FormField.vue'
 import ActionButton from '../common/ActionButton.vue'
 import DataTable from '../common/DataTable.vue'
+import { useWarehouseEntry } from '../../composables/useWarehouseEntry'
+import { useAuth } from '../../composables/useAuth'
+
+const { confirmWarehouseEntry } = useWarehouseEntry()
+const { currentUser } = useAuth()
+const employeeID = computed(() => currentUser.value?.id)
 
 const props = defineProps({
   mode: {
@@ -37,6 +43,8 @@ const columns = [
   { key: 'totalAmount', label: 'Thành tiền' },
   { key: 'note', label: 'Ghi chú' }
 ]
+
+const isCompleted = computed(() => props.order?.status === 'Completed')
 
 // Watch for changes in order prop
 watch(() => props.order, (newOrder) => {
@@ -110,12 +118,21 @@ const validateForm = () => {
   return true
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (!validateForm()) {
     alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
     return
   }
-  emit('submit', formData.value)
+  try {
+    await confirmWarehouseEntry(
+      formData.value.importOrderID,
+      formData.value.materials,
+      employeeID.value // truyền employeeID vào đây
+    )
+    emit('submit', formData.value)
+  } catch (err) {
+    alert('Có lỗi khi xác nhận nhập kho: ' + err.message)
+  }
 }
 
 const handleReportIssue = (material) => {
@@ -194,12 +211,12 @@ const handleQuantityChange = (material, value) => {
             <template #actualQuantity="{ item }">
               <input type="number" :value="item.actualQuantity"
                 @input="(e) => handleQuantityChange(item, e.target.value)" class="form-control form-control-sm"
-                :disabled="item.status === 'Issue'" />
+                :disabled="item.status === 'Issue' || isCompleted" />
             </template>
 
             <template #note="{ item }">
               <input type="text" v-model="item.note" class="form-control form-control-sm" placeholder="Ghi chú (nếu có)"
-                :disabled="item.status === 'Issue'" />
+                :disabled="item.status === 'Issue' || isCompleted" />
             </template>
 
             <template #price="{ item }">
@@ -217,7 +234,7 @@ const handleQuantityChange = (material, value) => {
       <ActionButton type="secondary" @click="$emit('cancel')">
         Hủy
       </ActionButton>
-      <ActionButton type="primary" @click="handleSubmit">
+      <ActionButton type="primary" @click="handleSubmit" :disabled="isCompleted">
         Xác nhận nhập kho
       </ActionButton>
     </div>

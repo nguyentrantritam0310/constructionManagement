@@ -8,12 +8,15 @@ import Pagination from '../../components/common/Pagination.vue'
 import { useWarehouseEntry } from '../../composables/useWarehouseEntry'
 import { useMaterialPlan } from '../../composables/useMaterialPlan'
 import WarehouseEntryForm from '../../components/warehouse/WarehouseEntryForm.vue'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
 
+const { showMessage } = useGlobalMessage()
 const filteredOrders = ref([])
 
 const columns = [
   { key: 'id', label: 'Mã Đơn Hàng' },
-  { key: 'employeeName', label: 'Người lập kế hoạch' },
+  { key: 'plannerName', label: 'Người lập kế hoạch' },
+  { key: 'receiverName', label: 'Người nhập kho' },
   { key: 'importDate', label: 'Ngày Đặt' },
   { key: 'status', label: 'Trạng thái' }
 ]
@@ -35,13 +38,25 @@ const {
 
 const { getMaterialPlanByImportOrderID } = useMaterialPlan()
 
+const mappedOrders = computed(() => {
+  return importOrders.value.map(order => {
+    const planner = order.importOrderEmployee?.find(e => e.role === 'Planner')
+    const receiver = order.importOrderEmployee?.find(e => e.role === 'Receiver')
+    return {
+      ...order,
+      plannerName: planner ? planner.employeeName : '',
+      receiverName: receiver ? receiver.employeeName : ''
+    }
+  })
+})
+
 const currentPage = ref(1)
 const itemsPerPage = 5
 
 const paginatedOrders = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
   const end = start + itemsPerPage
-  return importOrders.value.slice(start, end)
+  return mappedOrders.value.slice(start, end)
 })
 
 const handlePageChange = (page) => {
@@ -52,24 +67,18 @@ onMounted(() => {
   fetchImportOrders()
 })
 
-const handleConfirmEntry = async () => {
-  try {
-    await updateImportOrderStatus(selectedOrder.value.id, 'Completed')
-    alert('Nhập kho thành công!')
-    closeDetails()
-  } catch (err) {
-    console.error('Error confirming entry:', err)
-    alert('Có lỗi xảy ra khi xác nhận nhập kho')
-  }
+const handleConfirmEntry = () => {
+  showMessage('Nhập kho thành công!', 'success')
+  closeDetails()
 }
 
 const handleReportIssue = async (material) => {
   try {
     await updateImportOrderStatus(selectedOrder.value.id, 'Issue')
-    alert(`Đã báo cáo sự cố cho vật tư: ${material.name}`)
+    showMessage(`Đã báo cáo sự cố cho vật tư: ${material.name}`, 'success')
   } catch (err) {
     console.error('Error reporting issue:', err)
-    alert('Có lỗi xảy ra khi báo cáo sự cố')
+    showMessage('Có lỗi xảy ra khi báo cáo sự cố', 'error')
   }
 }
 
@@ -83,7 +92,7 @@ const openDetails = async (order) => {
     document.body.classList.add('modal-open')
   } catch (err) {
     console.error('Error fetching material plans:', err)
-    alert('Có lỗi xảy ra khi tải thông tin vật tư')
+    showMessage('Có lỗi xảy ra khi tải thông tin vật tư', 'error')
   }
 }
 

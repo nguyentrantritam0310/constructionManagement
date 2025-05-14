@@ -8,5 +8,13 @@ export const importOrderService = {
             }
         })
         return response.data
+    },
+    async updateStatus(id, status) {
+        const response = await api.patch(
+            `/ImportOrder/${id}/status`,
+            { status: Number(status) },
+            { headers: { 'Content-Type': 'application/json' } }
+        )
+        return response.data
     }
 }

@@ -1,5 +1,8 @@
 import { ref } from 'vue'
 import api from '../api.js'
+import { importOrderService } from '../services/importOrderService'
+import { materialPlanService } from '../services/materialPlanService'
+import { useImportOrderEmployee } from './useImportOrderEmployee'
 
 export function useWarehouseEntry() {
   const importOrders = ref([])
@@ -11,6 +14,8 @@ export function useWarehouseEntry() {
     status: 'Pending',
     materials: []
   })
+
+  const { createImportOrderEmployee } = useImportOrderEmployee()
 
   const fetchImportOrders = async () => {
     try {
@@ -73,6 +78,36 @@ export function useWarehouseEntry() {
     }
   }
 
+  const confirmWarehouseEntry = async (importOrderID, materials, employeeID) => {
+    try {
+      loading.value = true
+      // 1. Cập nhật từng vật tư
+      for (const m of materials) {
+        await materialPlanService.updateQuantityAndNote({
+          importOrderID,
+          materialID: m.materialID,
+          constructionItemID: m.constructionItemID,
+          importQuantity: m.actualQuantity,
+          note: m.note
+        })
+      }
+      // 2. Gọi API thêm ImportOrderEmployee với vai trò Receiver
+      await createImportOrderEmployee({
+        importOrderId: importOrderID,
+        employeeID: employeeID,
+        role: 'Receiver'
+      })
+      // 3. Sau khi xong hết, cập nhật trạng thái đơn nhập kho
+      await importOrderService.updateStatus(importOrderID, 3) // 3 = Completed
+      return true
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     importOrders,
     loading,
@@ -81,6 +116,7 @@ export function useWarehouseEntry() {
     fetchImportOrders,
     createImportOrder,
     updateImportOrder,
-    updateImportOrderStatus
+    updateImportOrderStatus,
+    confirmWarehouseEntry
   }
 }
