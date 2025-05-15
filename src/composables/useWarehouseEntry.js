@@ -3,6 +3,7 @@ import api from '../api.js'
 import { importOrderService } from '../services/importOrderService'
 import { materialPlanService } from '../services/materialPlanService'
 import { useImportOrderEmployee } from './useImportOrderEmployee'
+import { useMaterialManagement } from './useMaterialManagement'
 
 export function useWarehouseEntry() {
   const importOrders = ref([])
@@ -16,6 +17,7 @@ export function useWarehouseEntry() {
   })
 
   const { createImportOrderEmployee } = useImportOrderEmployee()
+  const { updateMaterialStock, fetchMaterialById } = useMaterialManagement()
 
   const fetchImportOrders = async () => {
     try {
@@ -90,6 +92,17 @@ export function useWarehouseEntry() {
           importQuantity: m.actualQuantity,
           note: m.note
         })
+        // Lấy thông tin vật tư hiện tại
+        let material = null
+        try {
+          material = await fetchMaterialById(m.materialID)
+        } catch (e) {
+          // Nếu lỗi thì bỏ qua cập nhật tồn kho
+          continue
+        }
+        // Cộng thêm số lượng nhập vào tồn kho
+        const newStock = (material?.stockQuantity || 0) + (m.actualQuantity || 0)
+        await updateMaterialStock(m.materialID, newStock)
       }
       // 2. Gọi API thêm ImportOrderEmployee với vai trò Receiver
       await createImportOrderEmployee({

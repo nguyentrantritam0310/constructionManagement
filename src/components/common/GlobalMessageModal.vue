@@ -26,3 +26,14 @@ const alertClass = computed(() => {
     }
 })
 </script>
+
+<style scoped>
+/* Đảm bảo modal thông báo luôn nổi trên cùng */
+:deep(.modal) {
+    z-index: 99999 !important;
+}
+
+:deep(.modal-backdrop) {
+    z-index: 99998 !important;
+}
+</style>

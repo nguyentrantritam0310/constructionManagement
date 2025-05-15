@@ -145,6 +145,7 @@ export function useConstructionManagement() {
   const createConstruction = async (data) => {
     try {
       loading.value = true
+      // data.designBlueprint là file nếu có
       const newConstruction = await constructionService.create(data)
       constructions.value.push(newConstruction)
       showMessage('Tạo công trình thành công', 'success')

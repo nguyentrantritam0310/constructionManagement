@@ -23,10 +23,26 @@ export function useMaterialNorm() {
     }
   }
 
+  const fetchMaterialNormsByItem = async (constructionItemId) => {
+    try {
+      loading.value = true
+      error.value = null
+      const data = await materialNormService.getMaterialNormsByConstructionItemId(constructionItemId)
+      materialNorms.value = data
+    } catch (err) {
+      error.value = 'Không thể tải định lượng vật tư'
+      showMessage('Không thể tải định lượng vật tư', 'error')
+      console.error('Error in fetchMaterialNormsByItem:', err)
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     materialNorms,
     loading,
     error,
-    fetchMaterialNorms
+    fetchMaterialNorms,
+    fetchMaterialNormsByItem
   }
 }

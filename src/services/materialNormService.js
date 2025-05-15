@@ -12,5 +12,16 @@ export const materialNormService = {
       console.error('Error fetching material norms:', error)
       throw error
     }
+  },
+
+  // Lấy định lượng vật tư theo ID hạng mục
+  getMaterialNormsByConstructionItemId: async (constructionItemId) => {
+    try {
+      const response = await axios.get(`${API_URL}/MaterialNorm/item/${constructionItemId}`)
+      return response.data
+    } catch (error) {
+      console.error('Error fetching material norms by item:', error)
+      throw error
+    }
   }
 }

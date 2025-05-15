@@ -5,6 +5,7 @@ import ActionButton from '../common/ActionButton.vue'
 import DataTable from '../common/DataTable.vue'
 import { useWarehouseEntry } from '../../composables/useWarehouseEntry'
 import { useAuth } from '../../composables/useAuth'
+import StatusBadge from '../common/StatusBadge.vue'
 
 const { confirmWarehouseEntry } = useWarehouseEntry()
 const { currentUser } = useAuth()
@@ -59,7 +60,7 @@ watch(() => props.materialPlans, (newPlans) => {
     formData.value.materials = newPlans.map(plan => ({
       ...plan,
       actualQuantity: plan.importQuantity,
-      note: ''
+      note: plan.note || '',
     }))
   }
 }, { immediate: true })
@@ -155,7 +156,7 @@ const handleQuantityChange = (material, value) => {
           <p class="mb-0">Ngày đặt: {{ new Date(order.importDate).toLocaleDateString('vi-VN') }}</p>
         </div>
         <div>
-          <span class="badge bg-primary">{{ order.status }}</span>
+          <StatusBadge :status="order.status" />
         </div>
       </div>
     </div>
@@ -209,14 +210,14 @@ const handleQuantityChange = (material, value) => {
         <div class="card-body p-0">
           <DataTable :columns="columns" :data="materials">
             <template #actualQuantity="{ item }">
-              <input type="number" :value="item.actualQuantity"
-                @input="(e) => handleQuantityChange(item, e.target.value)" class="form-control form-control-sm"
-                :disabled="item.status === 'Issue' || isCompleted" />
+              <FormField type="number" label="" :modelValue="item.actualQuantity"
+                @update:modelValue="val => handleQuantityChange(item, val)"
+                :disabled="item.status === 'Completed' || isCompleted" />
             </template>
 
             <template #note="{ item }">
-              <input type="text" v-model="item.note" class="form-control form-control-sm" placeholder="Ghi chú (nếu có)"
-                :disabled="item.status === 'Issue' || isCompleted" />
+              <FormField type="text" label="" :modelValue="item.note" @update:modelValue="val => item.note = val"
+                placeholder="Ghi chú (nếu có)" :disabled="item.status === 'Completed' || isCompleted" />
             </template>
 
             <template #price="{ item }">

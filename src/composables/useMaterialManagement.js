@@ -90,6 +90,28 @@ export function useMaterialManagement() {
     }
   }
 
+  // Cập nhật số lượng tồn kho vật tư
+  const updateMaterialStock = async (materialId, newStockQuantity) => {
+    try {
+      loading.value = true
+      const response = await api.put(`/Material/update-stock/${materialId}`, {
+        id: materialId,
+        stockQuantity: newStockQuantity
+      })
+      // Cập nhật lại materials nếu có
+      const index = materials.value.findIndex(m => m.id === materialId)
+      if (index !== -1) {
+        materials.value[index].stockQuantity = response.data.stockQuantity
+      }
+      return response.data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     materials,
     loading,
@@ -99,6 +121,7 @@ export function useMaterialManagement() {
     fetchMaterialById,
     createMaterial,
     updateMaterial,
-    updateMaterialStatus
+    updateMaterialStatus,
+    updateMaterialStock
   }
 }

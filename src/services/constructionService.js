@@ -13,9 +13,21 @@ export const constructionService = {
     return response.data
   },
 
-  // Cập nhật công trình
+  // Cập nhật công trình (hỗ trợ upload file)
   async update(id, data) {
-    const response = await api.put(`/Constructions/${id}`, data)
+    let formData = new FormData();
+    for (const key in data) {
+      if (key === 'constructionItems') {
+        formData.append(key, JSON.stringify(data[key]))
+      } else if (key === 'designBlueprint' && data[key]) {
+        formData.append('designBlueprint', data[key])
+      } else {
+        formData.append(key, data[key])
+      }
+    }
+    const response = await api.put(`/Constructions/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
     return response.data
   },
 
@@ -25,9 +37,21 @@ export const constructionService = {
     return response.data
   },
 
-  // Tạo công trình mới
+  // Tạo công trình mới (hỗ trợ upload file)
   async create(data) {
-    const response = await api.post('/Constructions', data)
+    let formData = new FormData();
+    for (const key in data) {
+      if (key === 'constructionItems') {
+        formData.append(key, JSON.stringify(data[key]))
+      } else if (key === 'designBlueprint' && data[key]) {
+        formData.append('designBlueprint', data[key])
+      } else {
+        formData.append(key, data[key])
+      }
+    }
+    const response = await api.post('/Constructions', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
     return response.data
   },
 

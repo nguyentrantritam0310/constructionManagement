@@ -9,6 +9,7 @@ import { useWarehouseEntry } from '../../composables/useWarehouseEntry'
 import { useMaterialPlan } from '../../composables/useMaterialPlan'
 import WarehouseEntryForm from '../../components/warehouse/WarehouseEntryForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const { showMessage } = useGlobalMessage()
 const filteredOrders = ref([])
@@ -42,10 +43,12 @@ const mappedOrders = computed(() => {
   return importOrders.value.map(order => {
     const planner = order.importOrderEmployee?.find(e => e.role === 'Planner')
     const receiver = order.importOrderEmployee?.find(e => e.role === 'Receiver')
+      ? order.importOrderEmployee.find(e => e.role === 'Receiver')
+      : null
     return {
       ...order,
       plannerName: planner ? planner.employeeName : '',
-      receiverName: receiver ? receiver.employeeName : ''
+      receiverName: receiver ? receiver.employeeName : '(chưa cập nhật)'
     }
   })
 })
@@ -68,7 +71,9 @@ onMounted(() => {
 })
 
 const handleConfirmEntry = () => {
+  fetchImportOrders()
   showMessage('Nhập kho thành công!', 'success')
+
   closeDetails()
 }
 
@@ -100,6 +105,13 @@ const closeDetails = () => {
   showDetails.value = false
   document.body.classList.remove('modal-open')
 }
+
+const formatDate = (date) => {
+  if (!date || date === '0001-01-01T00:00:00') {
+    return '(chưa cập nhật)'
+  }
+  return new Date(date).toLocaleDateString('vi-VN')
+}
 </script>
 
 <template>
@@ -114,6 +126,27 @@ const closeDetails = () => {
 
     <!-- Danh sách đơn hàng -->
     <DataTable :columns="columns" :data="paginatedOrders" @row-click="openDetails">
+      <template #id="{ item }">
+        <span class="fw-medium text-primary">#{{ item.id }}</span>
+      </template>
+
+      <template #plannerName="{ item }">
+        <div>
+          <div class="fw-medium">{{ item.plannerName }}</div>
+        </div>
+      </template>
+
+      <template #receiverName="{ item }">
+        <div>
+          <div class="fw-medium">{{ item.receiverName }}</div>
+        </div>
+      </template>
+      <template #importDate="{ item }">
+        {{ formatDate(item.importDate) }}
+      </template>
+      <template #status="{ item }">
+        <StatusBadge :status="item.status" />
+      </template>
     </DataTable>
 
     <!-- Phân trang -->
@@ -148,5 +181,32 @@ const closeDetails = () => {
   to {
     opacity: 1;
   }
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.95em;
+  font-weight: 500;
+  color: #fff;
+  min-width: 80px;
+  text-align: center;
+}
+
+.status-pending {
+  background: #f7b924;
+}
+
+.status-approved {
+  background: #3498db;
+}
+
+.status-completed {
+  background: #27ae60;
+}
+
+.status-rejected {
+  background: #7f8c8d;
 }
 </style>

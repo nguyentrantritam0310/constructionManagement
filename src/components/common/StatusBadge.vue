@@ -12,11 +12,23 @@ const getStatusConfig = (status) => {
       bgColor: 'bg-warning',
       textColor: 'text-dark'
     },
+    'Pending': {
+      bgColor: 'bg-warning',
+      textColor: 'text-dark'
+    },
     'Đang thi công': {
       bgColor: 'bg-info',
       textColor: 'text-white'
     },
+    'Approved': {
+      bgColor: 'bg-info',
+      textColor: 'text-white'
+    },
     'Hoàn thành': {
+      bgColor: 'bg-success',
+      textColor: 'text-white'
+    },
+    'Completed': {
       bgColor: 'bg-success',
       textColor: 'text-white'
     },
@@ -27,7 +39,11 @@ const getStatusConfig = (status) => {
     'Hủy bỏ': {
       bgColor: 'bg-danger',
       textColor: 'text-white'
-    }
+    },
+    'Rejected': {
+      bgColor: 'bg-danger',
+      textColor: 'text-white'
+    },
   }
 
   return configs[status] || {
@@ -40,10 +56,7 @@ const statusConfig = getStatusConfig(props.status)
 </script>
 
 <template>
-  <span
-    class="badge rounded-pill px-3 py-2"
-    :class="[statusConfig.bgColor, statusConfig.textColor]"
-  >
+  <span class="badge rounded-pill px-3 py-2" :class="[statusConfig.bgColor, statusConfig.textColor]">
     {{ status }}
   </span>
 </template>

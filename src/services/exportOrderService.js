@@ -31,12 +31,9 @@ export const exportOrderService = {
     return response.data
   },
 
-
   async create(data) {
     const response = await api.post('/ExportOrder', data, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' }
     })
     return response.data
   },

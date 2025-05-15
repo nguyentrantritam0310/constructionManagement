@@ -1,11 +1,22 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import AdvancedFilter from '../../components/common/AdvancedFilter.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import FormField from '../../components/common/FormField.vue'
 import { useStockOut } from '../../composables/useStockOut'
+import { useConstructionManagement } from '../../composables/useConstructionManagement'
+import { useConstructionPlan } from '../../composables/useConstructionPlan'
+import { useUser } from '../../composables/useUser'
+import { useMaterialNorm } from '../../composables/useMaterialNorm'
+import { useMaterialManagement } from '../../composables/useMaterialManagement'
+import { useMaterialExportOrder } from '../../composables/useMaterialExportOrder'
+import { useAuth } from '../../composables/useAuth'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+
+const { showMessage } = useGlobalMessage()
 
 const {
   exportOrders,
@@ -13,20 +24,77 @@ const {
   error,
   fetchExportOrders,
   updateExportOrderStatus,
-  createExportOrder,
-  plans,
-  employees,
-  fetchPlans,
-  fetchEmployees
+  createExportOrder
 } = useStockOut()
+
+const {
+  constructions,
+  fetchConstructions,
+  fetchConstructionItems
+} = useConstructionManagement()
+
+const {
+  plans,
+  fetchPlans
+} = useConstructionPlan()
+
+const {
+  users,
+  fetchUsers
+} = useUser()
+
+const { materialNorms, fetchMaterialNormsByItem } = useMaterialNorm()
+const { materials, fetchMaterials, updateMaterialStock } = useMaterialManagement()
+const { createMaterialExportOrder } = useMaterialExportOrder()
+const { currentUser } = useAuth()
+const employeeID = computed(() => currentUser.value?.id)
+
+const createOrderError = ref('')
 
 onMounted(async () => {
   await Promise.all([
     fetchExportOrders(),
+    fetchConstructions(),
     fetchPlans(),
-    fetchEmployees()
+    fetchUsers(),
+    fetchMaterials()
   ])
 })
+
+// Options cho select công trình
+const constructionOptions = computed(() =>
+  constructions.value.map(c => ({
+    value: c.id,
+    label: c.constructionName
+  }))
+)
+
+// Options cho select hạng mục (lọc theo công trình đã chọn)
+const constructionItemOptions = computed(() => {
+  if (!newExportOrder.value.constructionID) return []
+  const construction = constructions.value.find(
+    c => c.id === newExportOrder.value.constructionID
+  )
+  if (!construction || !construction.constructionItems) return []
+  return construction.constructionItems.map(item => ({
+    value: item.id,
+    label: item.itemName // hoặc item.constructionItemName nếu đúng tên trường
+  }))
+})
+
+const filteredConstructionItems = computed(() => {
+  if (!constructions.value.length || !newExportOrder.value.constructionID) return []
+  const selectedID = Number(newExportOrder.value.constructionID)
+  const selectedConstruction = constructions.value.find(construction => construction.id === selectedID)
+  return selectedConstruction?.constructionItems || []
+})
+
+const materialOptions = computed(() =>
+  materials.value.map(m => ({
+    value: m.id,
+    label: m.materialName
+  }))
+)
 
 const columns = [
   { key: 'id', label: 'Mã Phiếu Xuất' },
@@ -46,8 +114,51 @@ const newExportOrder = ref({
   planID: null,
   employeeID: null,
   material_ExportOrders: [],
-  materialName: []
+  materialName: [],
+  constructionID: null,
+  constructionItemID: null
 })
+
+watch(() => newExportOrder.value.constructionID, () => {
+  newExportOrder.value.constructionItemID = null
+})
+
+watch(() => newExportOrder.value.constructionItemID, async (newVal) => {
+  newExportOrder.value.material_ExportOrders = []
+  newExportOrder.value.materialName = []
+  if (newVal) {
+    await fetchMaterialNormsByItem(newVal)
+    // Đổ dữ liệu vật tư từ API vào danh sách vật tư xuất
+    if (materialNorms.value && materialNorms.value.length > 0) {
+      materialNorms.value.forEach(norm => {
+        newExportOrder.value.material_ExportOrders.push({
+          materialID: norm.materialID,
+          quantity: norm.quantity,
+          unitOfMeasurement: norm.unitOfMeasurement,
+          stockQuantity: norm.stockQuantity
+        })
+        newExportOrder.value.materialName.push(norm.materialName)
+      })
+    }
+  }
+})
+
+watch(
+  () => newExportOrder.value.material_ExportOrders.map(m => m.materialID),
+  (newIDs, oldIDs) => {
+    newIDs.forEach((id, idx) => {
+      if (id) {
+        const found = materials.value.find(m => m.id === Number(id))
+        if (found) {
+          newExportOrder.value.material_ExportOrders[idx].unitOfMeasurement = found.unitOfMeasurement
+        }
+      } else {
+        newExportOrder.value.material_ExportOrders[idx].unitOfMeasurement = ''
+      }
+    })
+  },
+  { deep: true }
+)
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -63,63 +174,100 @@ const handlePageChange = (page) => {
 }
 
 const handleCreateExportOrder = async () => {
-  try {
-    const selectedPlan = plans.value.find(p => p.id === newExportOrder.value.planID)
-    const selectedEmployee = employees.value.find(e => e.id === newExportOrder.value.employeeID)
+  // Kiểm tra số lượng xuất không vượt tồn kho
+  const invalidMaterials = newExportOrder.value.material_ExportOrders.filter(material => {
+    const found = materials.value.find(m => m.id === material.materialID)
+    return material.quantity > (found?.stockQuantity ?? 0)
+  })
 
+  if (invalidMaterials.length > 0) {
+    const names = invalidMaterials
+      .map(mat => materials.value.find(m => m.id === mat.materialID)?.materialName || 'Không xác định')
+      .join(', ')
+    createOrderError.value = `Các vật tư sau có số lượng xuất lớn hơn số lượng tồn kho: ${names}. Vui lòng nhập lại hoặc bổ sung vật tư.`
+    return
+  } else {
+    createOrderError.value = ''
+  }
+
+  try {
+    // 1. Tạo ExportOrder đúng schema API
     const exportOrderData = {
-      ...newExportOrder.value,
-      constructionName: selectedPlan.constructionName,
-      constructionItemName: selectedPlan.constructionItemName,
-      exportDate: new Date().toISOString(),
-      employeeName: selectedEmployee.name
+      employeeID: employeeID.value,
+      constructionItemID: newExportOrder.value.constructionItemID,
+      exportDate: new Date().toISOString()
+    }
+    const createdOrder = await createExportOrder(exportOrderData)
+
+    // 2. Tạo từng MaterialExportOrder
+    for (const material of newExportOrder.value.material_ExportOrders) {
+      await createMaterialExportOrder({
+        materialID: material.materialID,
+        exportOrderID: createdOrder.id,
+        quantity: material.quantity
+      })
+
+      // 3. Cập nhật tồn kho vật tư
+      const found = materials.value.find(m => m.id === material.materialID)
+      if (found) {
+        const newStock = (found.stockQuantity || 0) - (material.quantity || 0)
+        await updateMaterialStock(material.materialID, newStock)
+      }
     }
 
-    await createExportOrder(exportOrderData)
     showCreateForm.value = false
-    alert('Tạo phiếu xuất thành công!')
+    showMessage('Tạo phiếu xuất thành công!', 'success')
     // Reset form
     newExportOrder.value = {
       planID: null,
       employeeID: null,
       material_ExportOrders: [],
-      materialName: []
+      materialName: [],
+      constructionID: null,
+      constructionItemID: null
     }
+    await fetchExportOrders()
   } catch (err) {
     console.error('Error creating export order:', err)
-    alert('Có lỗi xảy ra khi tạo phiếu xuất')
+    showMessage('Có lỗi xảy ra khi tạo phiếu xuất', 'error')
   }
 }
 
 const handleConfirmStockOut = async () => {
   try {
     await updateExportOrderStatus(selectedStockOut.value.id, 'Completed')
-    alert('Xuất kho thành công!')
+    showMessage('Xuất kho thành công!', 'success')
     closeDetails()
   } catch (err) {
     console.error('Error confirming stock out:', err)
-    alert('Có lỗi xảy ra khi xác nhận xuất kho')
+    showMessage('Có lỗi xảy ra khi xác nhận xuất kho', 'error')
   }
 }
 
 const handleReportIssue = async (material) => {
   try {
     await updateExportOrderStatus(selectedStockOut.value.id, 'Issue')
-    alert(`Đã báo cáo sự cố cho vật tư: ${material.name}`)
+    showMessage(`Đã báo cáo sự cố cho vật tư: ${material.name}`, 'success')
   } catch (err) {
     console.error('Error reporting issue:', err)
-    alert('Có lỗi xảy ra khi báo cáo sự cố')
+    showMessage('Có lỗi xảy ra khi báo cáo sự cố', 'error')
   }
 }
 
 const openDetails = (stockOut) => {
   selectedStockOut.value = stockOut
-  actualQuantities.value = stockOut.material_ExportOrders.map((material, index) => ({
-    name: stockOut.materialName[index],
-    expected: material.quantity,
-    actual: material.quantity,
-    note: material.note || ''
-  }))
+  actualQuantities.value = stockOut.material_ExportOrders.map((material, index) => {
+    const stock = materials.value.find(m => m.id === material.materialID)?.stockQuantity || 0
+    const actual = material.quantity
+    return {
+      name: stockOut.materialName[index],
+      actual,
+      id: material.materialID,
+      stock,
+      remaining: stock - actual,
+      unitOfMeasurement: materials.value.find(m => m.id === material.materialID)?.unitOfMeasurement
+    }
+  })
   showDetails.value = true
   document.body.classList.add('modal-open')
 }
@@ -180,6 +328,22 @@ const formatDate = (date, isActualCompletion = false) => {
     <!-- Data Table -->
     <template v-else>
       <DataTable :columns="columns" :data="paginatedExportOrders" @row-click="openDetails">
+        <template #id="{ item }">
+          <span class="fw-medium text-primary">#{{ item.id }}</span>
+        </template>
+
+        <template #constructionName="{ item }">
+          <div>
+            <div class="fw-medium">{{ item.constructionName }}</div>
+          </div>
+        </template>
+        <template #constructionItemName="{ item }">
+          <div>
+            <div class="fw-medium">{{ item.constructionItemName }}</div>
+          </div>
+        </template>
+
+
         <template #exportDate="{ item }">
           <div class="date-info">
             <i class="fas fa-calendar-check text-muted"></i>
@@ -193,58 +357,58 @@ const formatDate = (date, isActualCompletion = false) => {
         <div class="text-muted">
           Hiển thị {{ paginatedExportOrders.length }} trên {{ exportOrders.length }} phiếu xuất
         </div>
-        <Pagination
-          :total-items="exportOrders.length"
-          :items-per-page="itemsPerPage"
-          :current-page="currentPage"
-          @update:currentPage="handlePageChange"
-        />
+        <Pagination :total-items="exportOrders.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+          @update:currentPage="handlePageChange" />
       </div>
     </template>
 
     <!-- Modal for Stock Out Details -->
-    <ModalDialog v-model:show="showDetails" title="Chi Tiết Phiếu Xuất" size="lg">
+    <ModalDialog v-model:show="showDetails" title="Chi Tiết Phiếu Xuất" size="xl">
       <div v-if="selectedStockOut">
-        <h4>Dự Án: {{ selectedStockOut.constructionName }}</h4>
-        <h5>Hạng mục: {{ selectedStockOut.constructionItemName}}</h5>
-        <p>Ngày Xuất: {{ formatDate(selectedStockOut.exportDate) }}</p>
-        <table class="table table-bordered">
-          <thead>
-            <tr>
-              <th>Tên Vật Tư</th>
-              <th>Số Lượng Yêu Cầu</th>
-              <th>Số Lượng Thực Xuất</th>
-              <th>Ghi Chú</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(material, index) in actualQuantities" :key="index">
-              <td>{{ material.name }}</td>
-              <td>{{ material.expected }}</td>
-              <td>
-                {{material.actual}}
-              </td>
-              <td>
-                {{material.note || 'Không có ghi chú'}}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="mb-3">
+          <h4 class="text-primary mb-1">
+            <i class="fas fa-warehouse me-2"></i>Dự Án: {{ selectedStockOut.constructionName }}
+          </h4>
+          <h5 class="mb-1">Hạng mục: {{ selectedStockOut.constructionItemName }}</h5>
+          <p class="mb-1">
+            <i class="fas fa-calendar-alt text-muted me-1"></i>
+            Ngày Xuất: <b>{{ formatDate(selectedStockOut.exportDate) }}</b>
+          </p>
+          <p class="mb-1">
+            <i class="fas fa-user text-muted me-1"></i>
+            Người xuất: <b>{{ selectedStockOut.employeeName }}</b>
+          </p>
+        </div>
+        <DataTable :columns="[
+          { key: 'id', label: 'Mã Vật Tư' },
+          { key: 'name', label: 'Tên Vật Tư' },
+          { key: 'stock', label: 'Số Lượng Tồn' },
+          { key: 'actual', label: 'Số Lượng Xuất' },
+          { key: 'remaining', label: 'Số Lượng Còn Lại' },
+          { key: 'unitOfMeasurement', label: 'Đơn Vị' }
+        ]" :data="actualQuantities">
+          <template #id="{ item }">
+            <span class="fw-medium text-primary">VT-{{ item.id }}</span>
+          </template>
+
+          <template #name="{ item }">
+            <div>
+              <div class="fw-medium">{{ item.name }}</div>
+            </div>
+          </template>
+        </DataTable>
       </div>
     </ModalDialog>
 
     <!-- Modal for Create Export Order -->
     <ModalDialog v-model:show="showCreateForm" title="Tạo Phiếu Xuất" size="lg">
       <form @submit.prevent="handleCreateExportOrder">
-        <div class="mb-3">
-          <label class="form-label">Kế Hoạch</label>
-          <select v-model="newExportOrder.planID" class="form-select" required>
-            <option value="">Chọn kế hoạch</option>
-            <option v-for="plan in plans" :key="plan.id" :value="plan.id">
-              {{ formatPlanOption(plan) }}
-            </option>
-          </select>
-        </div>
+        <FormField label="Công Trình" type="select" v-model="newExportOrder.constructionID"
+          :options="constructionOptions" required />
+        <FormField label="Hạng Mục" type="select" v-model="newExportOrder.constructionItemID" :options="filteredConstructionItems.map(item => ({
+          value: item.id,
+          label: item.constructionItemName
+        }))" required />
 
         <div class="mb-3">
           <div class="d-flex justify-content-between align-items-center mb-2">
@@ -257,18 +421,22 @@ const formatDate = (date, isActualCompletion = false) => {
           <div v-for="(material, index) in newExportOrder.material_ExportOrders" :key="index" class="card mb-2">
             <div class="card-body">
               <div class="row">
-                <div class="col-md-5">
-                  <label class="form-label">Tên Vật Tư</label>
-                  <input type="text" v-model="newExportOrder.materialName[index]" class="form-control" required>
+                <div class="col-md-4">
+                  <FormField label="Tên Vật Tư" type="select" v-model="material.materialID" :options="materialOptions"
+                    required
+                    :disabled="!!material.materialID && !!(materialNorms.value?.find(norm => norm.materialID === material.materialID))" />
+                </div>
+                <div class="col-md-2">
+                  <FormField label="Đơn Vị" type="text" v-model="material.unitOfMeasurement" :disabled="true" />
+                </div>
+                <div class="col-md-2">
+                  <FormField label="Tồn kho" type="number" v-model="material.stockQuantity" required min="1"
+                    :disabled="true" />
                 </div>
                 <div class="col-md-3">
-                  <label class="form-label">Số Lượng</label>
-                  <input type="number" v-model="material.quantity" class="form-control" required min="1">
+                  <FormField label="Số Lượng Xuất" type="number" v-model="material.quantity" required min="1" />
                 </div>
-                <div class="col-md-3">
-                  <label class="form-label">Ghi Chú</label>
-                  <input type="text" v-model="material.note" class="form-control">
-                </div>
+
                 <div class="col-md-1 d-flex align-items-end">
                   <button type="button" class="btn btn-danger btn-sm" @click="removeMaterial(index)">
                     <i class="fas fa-trash"></i>
@@ -278,9 +446,11 @@ const formatDate = (date, isActualCompletion = false) => {
             </div>
           </div>
         </div>
-
+        <div v-if="createOrderError" class="alert alert-danger">
+          {{ createOrderError }}
+        </div>
         <div class="text-end">
-          <ActionButton type="primary" icon="fas fa-save" @click="handleCreateExportOrder">
+          <ActionButton type="primary" icon="fas fa-save" buttonType="submit">
             Tạo Phiếu Xuất
           </ActionButton>
           <ActionButton type="secondary" icon="fas fa-times" @click="showCreateForm = false">
@@ -318,5 +488,12 @@ const formatDate = (date, isActualCompletion = false) => {
   to {
     opacity: 1;
   }
+}
+
+.badge {
+  font-size: 1rem;
+  padding: 0.5em 1em;
+  border-radius: 0.5em;
+  margin-left: 0.5em;
 }
 </style>
