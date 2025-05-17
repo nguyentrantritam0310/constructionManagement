@@ -248,68 +248,72 @@ const handleMaterialPageChange = (page) => {
 </script>
 
 <template>
-  <div class="material-planning">
-    <div class="card mb-4">
-      <div class="card-header">
-        <h4 class="mb-0">Chọn công trình</h4>
+  <div class="container-fluid py-4 material-planning">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+      <h2 class="mb-0">Kế Hoạch Vật Tư</h2>
+      <div class="alert alert-info d-flex align-items-center mb-0 ms-3 guide-alert">
+        <i class="fas fa-info-circle me-2 text-primary" style="font-size: 1.4rem;"></i>
+        <span>Vui lòng chọn một công trình bên dưới để xem và lập kế hoạch vật tư.</span>
       </div>
-      <div class="card-body">
-        <div v-if="loading" class="text-center py-4">
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
+    </div>
+
+    <!-- Bỏ card, chỉ còn DataTable và phân trang -->
+    <div>
+      <div v-if="loading" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+
+      <div v-else-if="constructionError" class="alert alert-danger" role="alert">
+        {{ constructionError }}
+      </div>
+
+      <DataTable v-else :columns="constructionColumns" :data="paginatedConstructions"
+        @row-click="handleConstructionSelect" class="id">
+        <template #id="{ item }">
+          <span class="fw-medium text-primary">{{ item.id }}</span>
+        </template>
+
+        <template #constructionName="{ item }">
+          <div>
+            <div class="fw-medium">{{ item.constructionName }}</div>
           </div>
-        </div>
+        </template>
 
-        <div v-else-if="constructionError" class="alert alert-danger" role="alert">
-          {{ constructionError }}
-        </div>
-
-        <DataTable v-else :columns="constructionColumns" :data="paginatedConstructions"
-          @row-click="handleConstructionSelect" class="id">
-          <template #id="{ item }">
-            <span class="fw-medium text-primary">{{ item.id }}</span>
-          </template>
-
-          <template #constructionName="{ item }">
-            <div>
-              <div class="fw-medium">{{ item.constructionName }}</div>
-            </div>
-          </template>
-
-          <template #location="{ item }">
-            <div class="d-flex align-items-center">
-              <i class="fas fa-map-marker-alt text-muted me-1"></i>
-              {{ item.location }}
-            </div>
-          </template>
-
-          <template #startDate="{ item }">
-            <div class="date-info">
-              <i class="fas fa-calendar text-muted"></i>
-              {{ formatDate(item.startDate) }}
-            </div>
-          </template>
-
-          <template #expectedCompletionDate="{ item }">
-            <div class="date-info">
-              <i class="fas fa-calendar-check text-muted"></i>
-              {{ formatDate(item.expectedCompletionDate) }}
-            </div>
-          </template>
-
-          <template #statusName="{ item }">
-            <StatusBadge :status="item.statusName" />
-          </template>
-        </DataTable>
-
-        <!-- Phân trang công trình -->
-        <div class="d-flex justify-content-between align-items-center mt-4">
-          <div class="text-muted">
-            Hiển thị {{ paginatedConstructions.length }} trên {{ constructions.length }} công trình
+        <template #location="{ item }">
+          <div class="d-flex align-items-center">
+            <i class="fas fa-map-marker-alt text-muted me-1"></i>
+            {{ item.location }}
           </div>
-          <Pagination :total-items="constructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-            @update:currentPage="handlePageChange" />
+        </template>
+
+        <template #startDate="{ item }">
+          <div class="date-info">
+            <i class="fas fa-calendar text-muted"></i>
+            {{ formatDate(item.startDate) }}
+          </div>
+        </template>
+
+        <template #expectedCompletionDate="{ item }">
+          <div class="date-info">
+            <i class="fas fa-calendar-check text-muted"></i>
+            {{ formatDate(item.expectedCompletionDate) }}
+          </div>
+        </template>
+
+        <template #statusName="{ item }">
+          <StatusBadge :status="item.statusName" />
+        </template>
+      </DataTable>
+
+      <!-- Phân trang công trình -->
+      <div class="d-flex justify-content-between align-items-center mt-4">
+        <div class="text-muted">
+          Hiển thị {{ paginatedConstructions.length }} trên {{ constructions.length }} công trình
         </div>
+        <Pagination :total-items="constructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+          @update:currentPage="handlePageChange" />
       </div>
     </div>
 
@@ -526,5 +530,27 @@ const handleMaterialPageChange = (page) => {
 
 .fw-bold {
   font-weight: 600;
+}
+
+.guide-alert {
+  font-size: 1rem;
+  padding: 0.5rem 1rem;
+  background: #e9f6ff;
+  border: 1px solid #b6e0fe;
+  color: #0c5460;
+  border-radius: 0.5rem;
+  min-width: 340px;
+  max-width: 600px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+@media (max-width: 768px) {
+  .guide-alert {
+    margin-top: 1rem;
+    width: 100%;
+    min-width: unset;
+    max-width: unset;
+    justify-content: center;
+  }
 }
 </style>

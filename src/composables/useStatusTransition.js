@@ -13,9 +13,9 @@ export const STATUS_TYPES = {
 export const STATUS = {
   WAITING: { id: 1, name: 'Chờ khởi công' },
   IN_PROGRESS: { id: 2, name: 'Đang thi công' },
-  COMPLETED: { id: 3, name: 'Hoàn thành' },
-  CANCELLED: { id: 4, name: 'Hủy bỏ' },
-  SUSPENDED: { id: 5, name: 'Tạm dừng' },
+  SUSPENDED: { id: 3, name: 'Tạm dừng' },
+  COMPLETED: { id: 4, name: 'Hoàn thành' },
+  CANCELLED: { id: 5, name: 'Hủy bỏ' },
   WAITING_ASSIGNMENT: { id: 6, name: 'Chờ phân công' }
 }
 

@@ -26,18 +26,10 @@ defineProps({
         </tr>
       </thead>
       <tbody>
-        <tr
-          v-for="item in data"
-          :key="item.id"
-          @click="$emit('row-click', item)"
-          class="cursor-pointer"
-        >
+        <tr v-for="item in data" :key="item.id" @click="$emit('row-click', item)" class="cursor-pointer">
           <template v-for="column in columns" :key="column.key">
             <td>
-              <slot
-                :name="column.key"
-                :item="item"
-              >
+              <slot :name="column.key" :item="item">
                 {{ item[column.key] }}
               </slot>
             </td>
@@ -59,7 +51,8 @@ defineProps({
   min-width: 100px;
 }
 
-.table td, .table th {
+.table td,
+.table th {
   padding: 0.75rem;
   vertical-align: middle;
 }

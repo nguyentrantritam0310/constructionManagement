@@ -32,6 +32,18 @@ export function useWarehouseEntry() {
     }
   }
 
+  const fetchByDirector = async () => {
+    try {
+      loading.value = true
+      const response = await api.get('/ImportOrder/director')
+      importOrders.value = response.data
+    } catch (err) {
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   const createImportOrder = async (orderData) => {
     try {
       loading.value = true
@@ -130,6 +142,7 @@ export function useWarehouseEntry() {
     createImportOrder,
     updateImportOrder,
     updateImportOrderStatus,
-    confirmWarehouseEntry
+    confirmWarehouseEntry,
+    fetchByDirector
   }
 }

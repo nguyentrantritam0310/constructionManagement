@@ -3,7 +3,7 @@ import { reactive, ref, watch, onMounted } from 'vue'
 import FormField from '../common/FormField.vue'
 import ActionButton from '../common/ActionButton.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
-import { useToast } from '../../composables/useToast'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
 
 const props = defineProps({
   mode: {
@@ -21,7 +21,7 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const { templateItem, fetchConstructionTemplateItem, createConstruction, updateConstruction, fetchConstructions } = useConstructionManagement()
-const { showSuccess, showError } = useToast()
+const { showMessage } = useGlobalMessage()
 
 // Danh sách hạng mục
 const constructionItems = ref([])
@@ -153,10 +153,10 @@ const handleSubmit = async () => {
 
     if (props.mode === 'update') {
       await updateConstruction(props.construction.id, dataToSubmit)
-      showSuccess('Cập nhật công trình thành công')
+      showMessage('Cập nhật công trình thành công', 'success')
     } else {
       await createConstruction(dataToSubmit)
-      showSuccess('Tạo công trình thành công')
+      showMessage('Tạo công trình thành công', 'success')
     }
 
     // Fetch lại dữ liệu sau khi tạo/cập nhật thành công
@@ -164,7 +164,7 @@ const handleSubmit = async () => {
     emit('close')
   } catch (error) {
     console.error(`Error ${props.mode === 'update' ? 'updating' : 'creating'} construction:`, error)
-    showError(`Không thể ${props.mode === 'update' ? 'cập nhật' : 'tạo'} công trình`)
+    showMessage(`Không thể ${props.mode === 'update' ? 'cập nhật' : 'tạo'} công trình`, 'error')
   }
 }
 
@@ -250,12 +250,7 @@ const handleFileUpload = async (event) => {
         <FormField label="Ngày Hoàn Thành Dự Kiến" type="date" v-model="formData.expectedCompletionDate" required />
       </div>
       <div class="col-12">
-        <FormField
-          label="Tài Liệu Thiết Kế"
-          type="file"
-          accept="image/*"
-          @change="handleFileUpload"
-        />
+        <FormField label="Tài Liệu Thiết Kế" type="file" accept="image/*" @change="handleFileUpload" />
         <small class="text-muted">Chỉ chấp nhận file ảnh (jpg, png, gif)</small>
       </div>
     </div>

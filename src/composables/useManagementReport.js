@@ -28,6 +28,32 @@ export function useManagementReport() {
     }
   }
 
+  const fetchReportsByThiCong = async () => {
+    try {
+      loading.value = true
+      const response = await api.get('/Report/thicong')
+      reports.value = response.data
+    } catch (err) {
+      error.value = err.message
+      console.error('Error fetching reports:', err)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const fetchReportsByKiThuat = async () => {
+    try {
+      loading.value = true
+      const response = await api.get('/Report/kithuat')
+      reports.value = response.data
+    } catch (err) {
+      error.value = err.message
+      console.error('Error fetching reports:', err)
+    } finally {
+      loading.value = false
+    }
+  }
+
   const createReport = async (reportData) => {
     try {
       loading.value = true
@@ -82,6 +108,8 @@ export function useManagementReport() {
     error,
     formData,
     fetchReports,
+    fetchReportsByThiCong,
+    fetchReportsByKiThuat,
     createReport,
     updateReport,
     updateReportStatus

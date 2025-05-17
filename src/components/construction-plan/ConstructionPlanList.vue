@@ -7,12 +7,12 @@ import UpdateButton from '../common/UpdateButton.vue'
 import StatusChangeDialog from '../common/StatusChangeDialog.vue'
 import ChangeStatusButton from '../common/ChangeStatusButton.vue'
 import { useConstructionPlan } from '../../composables/useConstructionPlan'
-import { useToast } from '../../composables/useToast'
 import PlanForm from './PlanForm.vue'
 import ModalDialog from '../common/ModalDialog.vue'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
 
 const { plans, updatePlanStatus, fetchPlans } = useConstructionPlan()
-const { showSuccess, showError } = useToast()
+const { showMessage } = useGlobalMessage()
 
 const props = defineProps({
   plans: {
@@ -81,11 +81,12 @@ const handleStatusSubmit = async (data) => {
       plan: item,
       newStatus
     })
+    showMessage('Cập nhật trạng thái thành công', 'success')
     showStatusDialog.value = false
     selectedPlan.value = null
   } catch (error) {
     console.error('Error updating status:', error)
-    showError('Không thể cập nhật trạng thái')
+    showMessage('Không thể cập nhật trạng thái', 'error')
   }
 }
 

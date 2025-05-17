@@ -36,14 +36,14 @@ const {
   error,
   reports,
   formData,
-  fetchReports,
+  fetchReportsByThiCong,
   createReport,
   updateReport,
   updateReportStatus
 } = useManagementReport()
 
 onMounted(() => {
-  fetchReports()
+  fetchReportsByThiCong()
 })
 const columns = [
   { key: 'id', label: 'Mã báo cáo' },
@@ -135,13 +135,8 @@ const getStatusLabel = (status) => {
     </div>
 
     <!-- Advanced Filter -->
-    <AdvancedFilter
-      :items="reports"
-      :searchFields="['constructionName', 'content', 'problemType']"
-      dateField="reportDate"
-      statusField="statusLogs[0].status"
-      v-model:filteredItems="filteredReports"
-    />
+    <AdvancedFilter :items="reports" :searchFields="['constructionName', 'content', 'problemType']"
+      dateField="reportDate" statusField="statusLogs[0].status" v-model:filteredItems="filteredReports" />
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
@@ -157,7 +152,7 @@ const getStatusLabel = (status) => {
         <span :class="'badge bg-' + (item.problemType === 'Chậm tiến độ' ? 'warning' :
           item.problemType === 'Thiếu vật liệu' ? 'info' :
             item.problemType === 'Sự cố thiết bị' ? 'danger' : 'secondary')">
-          {{item.problemType}}
+          {{ item.problemType }}
         </span>
       </template>
 
@@ -165,7 +160,7 @@ const getStatusLabel = (status) => {
         <span :class="'badge bg-' + (item.level === 'Nghiêm trọng' ? 'danger' :
           item.level === 'Cao' ? 'warning' :
             item.level === 'Trung bình' ? 'info' : 'success')">
-          {{item.level}}
+          {{ item.level }}
         </span>
       </template>
 
@@ -188,33 +183,19 @@ const getStatusLabel = (status) => {
       <div class="text-muted">
         Hiển thị {{ paginatedReports.length }} trên {{ filteredReports.length }} báo cáo
       </div>
-      <Pagination
-        :total-items="filteredReports.length"
-        :items-per-page="itemsPerPage"
-        :current-page="currentPage"
-        @update:currentPage="handlePageChange"
-      />
+      <Pagination :total-items="filteredReports.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        @update:currentPage="handlePageChange" />
     </div>
 
     <!-- Form tạo báo cáo mới -->
     <FormDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới">
-      <ReportForm
-        mode="create"
-        reportType="incident"
-        @submit="handleSubmit"
-        @cancel="showCreateForm = false"
-      />
+      <ReportForm mode="create" reportType="incident" @submit="handleSubmit" @cancel="showCreateForm = false" />
     </FormDialog>
 
     <!-- Form cập nhật báo cáo -->
     <FormDialog v-if="selectedReport" v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo">
-      <ReportForm
-        mode="update"
-        reportType="incident"
-        :report="selectedReport"
-        @submit="handleUpdateSubmit"
-        @cancel="showUpdateForm = false"
-      />
+      <ReportForm mode="update" reportType="incident" :report="selectedReport" @submit="handleUpdateSubmit"
+        @cancel="showUpdateForm = false" />
     </FormDialog>
   </div>
 </template>

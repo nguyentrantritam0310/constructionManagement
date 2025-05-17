@@ -85,33 +85,20 @@ const formatDate = (date) => {
     </div>
 
     <!-- Advanced Filter -->
-    <AdvancedFilter
-      :items="plans"
-      :searchFields="['constructionName', 'location', 'id']"
-      dateField="startDate"
-      statusField="statusName"
-      v-model:filteredItems="filteredPlans"
-    />
+    <AdvancedFilter :items="plans" :searchFields="['constructionItemName', 'location', 'id']" dateField="startDate"
+      statusField="statusName" v-model:filteredItems="filteredPlans" />
 
     <!-- Danh sách kế hoạch -->
-    <ConstructionPlanList
-      :plans="paginatedPlans"
-      @update-plan="handleUpdatePlan"
-      @update-status="handleUpdateStatus"
-      @update-volume="handleUpdateVolume"
-    />
+    <ConstructionPlanList :plans="paginatedPlans" @update-plan="handleUpdatePlan" @update-status="handleUpdateStatus"
+      @update-volume="handleUpdateVolume" />
 
     <!-- Phân trang -->
     <div class="d-flex justify-content-between align-items-center mt-4">
       <div class="text-muted">
         Hiển thị {{ paginatedPlans.length }} trên {{ filteredPlans.length }} kế hoạch
       </div>
-      <Pagination
-        :total-items="filteredPlans.length"
-        :items-per-page="itemsPerPage"
-        :current-page="currentPage"
-        @update:currentPage="handlePageChange"
-      />
+      <Pagination :total-items="filteredPlans.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        @update:currentPage="handlePageChange" />
     </div>
 
     <ModalDialog v-model:show="showCreateForm" title="Tạo Kế Hoạch Thi Công" size="lg">

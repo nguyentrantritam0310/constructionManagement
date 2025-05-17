@@ -10,12 +10,13 @@ import ModalDialog from '../common/ModalDialog.vue'
 import UpdateButton from '../common/UpdateButton.vue'
 import ChangeStatusButton from '../common/ChangeStatusButton.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
-import { useToast } from '../../composables/useToast'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+
 import StatusChangeDialog from '../common/StatusChangeDialog.vue'
 import ConstructionForm from './ConstructionForm.vue'
 
 const { selectedConstruction, fetchConstructionDetail, updateConstructionStatus, fetchConstructions } = useConstructionManagement()
-const { showSuccess, showError } = useToast()
+const { showMessage } = useGlobalMessage()
 
 const router = useRouter()
 const props = defineProps({
@@ -94,10 +95,10 @@ const handleStatusChange = async (data) => {
     const { newStatus, item } = data
     await updateConstructionStatus(item.id, newStatus)
     emit('refresh-constructions') // Emit event to refresh the list
-    showSuccess('Cập nhật trạng thái thành công')
+    showMessage('Cập nhật trạng thái thành công', 'success')
   } catch (error) {
     console.error('Error updating status:', error)
-    showError('Không thể cập nhật trạng thái')
+    showMessage('Không thể cập nhật trạng thái', 'error')
   }
 }
 
@@ -151,12 +152,7 @@ const resetFilters = () => {
               <span class="input-group-text">
                 <i class="fas fa-search"></i>
               </span>
-              <input
-                type="text"
-                class="form-control"
-                v-model="searchQuery"
-                placeholder="Tìm kiếm công trình..."
-              >
+              <input type="text" class="form-control" v-model="searchQuery" placeholder="Tìm kiếm công trình...">
             </div>
           </div>
           <div class="col-md-3">
@@ -171,18 +167,8 @@ const resetFilters = () => {
           </div>
           <div class="col-md-4">
             <div class="input-group">
-              <input
-                type="date"
-                class="form-control"
-                v-model="dateRangeFilter.start"
-                placeholder="Từ ngày"
-              >
-              <input
-                type="date"
-                class="form-control"
-                v-model="dateRangeFilter.end"
-                placeholder="Đến ngày"
-              >
+              <input type="date" class="form-control" v-model="dateRangeFilter.start" placeholder="Từ ngày">
+              <input type="date" class="form-control" v-model="dateRangeFilter.end" placeholder="Đến ngày">
             </div>
           </div>
           <div class="col-md-1">
@@ -197,7 +183,8 @@ const resetFilters = () => {
     <!-- Constructions Table -->
     <div class="card">
       <div class="card-body p-0">
-        <DataTable :columns="columns" :data="paginatedConstructions" @row-click="handleRowClick" class="construction-table">
+        <DataTable :columns="columns" :data="paginatedConstructions" @row-click="handleRowClick"
+          class="construction-table">
           <template #id="{ item }">
             <span class="fw-medium text-primary">CT-{{ item.id }}</span>
           </template>
@@ -265,24 +252,14 @@ const resetFilters = () => {
     </div>
 
     <!-- Change Status Dialog -->
-    <StatusChangeDialog
-      v-if="showStatusDialog && selectedConstruction"
-      :show="showStatusDialog"
-      :item="selectedConstruction"
-      type="construction"
-      title="Thay Đổi Trạng Thái Công Trình"
-      @update:show="showStatusDialog = $event"
-      @submit="handleStatusChange"
-    />
+    <StatusChangeDialog v-if="showStatusDialog && selectedConstruction" :show="showStatusDialog"
+      :item="selectedConstruction" type="construction" title="Thay Đổi Trạng Thái Công Trình"
+      @update:show="showStatusDialog = $event" @submit="handleStatusChange" />
 
     <!-- Update Dialog -->
     <ModalDialog v-model:show="showUpdateDialog" title="Cập Nhật Công Trình" size="lg">
-      <UpdateConstructionForm
-        v-if="selectedConstruction"
-        :construction="selectedConstruction"
-        @cancel="closeUpdateDialog"
-        @submit="handleUpdateSubmit"
-      />
+      <UpdateConstructionForm v-if="selectedConstruction" :construction="selectedConstruction"
+        @cancel="closeUpdateDialog" @submit="handleUpdateSubmit" />
     </ModalDialog>
   </div>
 </template>

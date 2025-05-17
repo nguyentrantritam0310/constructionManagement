@@ -19,10 +19,23 @@ export function useImportOrder() {
             loading.value = false
         }
     }
+    const getByDirector = async (data) => {
+        try {
+            loading.value = true
+            const response = await importOrderService.getByDirector(data)
+            return response
+        } catch (err) {
+            throw err
+        } finally {
+            loading.value = false
+        }
+    }
+
 
     return {
         loading,
         error,
-        createImportOrder
+        createImportOrder,
+        getByDirector
     }
 }

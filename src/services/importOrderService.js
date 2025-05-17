@@ -9,6 +9,14 @@ export const importOrderService = {
         })
         return response.data
     },
+    async getByDirector(data) {
+        const response = await api.get('/ImportOrder/director', data, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        return response.data
+    },
     async updateStatus(id, status) {
         const response = await api.patch(
             `/ImportOrder/${id}/status`,

@@ -11,9 +11,9 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import ChangeStatusForm from '../../components/common/ChangeStatusForm.vue'
 import MultiSelect from 'vue-multiselect'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
-import { useToast } from '../../composables/useToast'
 import Pagination from '@/components/common/Pagination.vue'
-
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+const { showMessage } = useGlobalMessage()
 const route = useRoute()
 const router = useRouter()
 const constructionId = route.params.id
@@ -26,9 +26,9 @@ const showTaskAssignment = ref(false)
 const selectedTask = ref(null)
 const showAssignmentModal = ref(false)
 const availableWorkers = ref([
-  { id: 'worker1', name: 'Thợ 1' },
-  { id: 'worker2', name: 'Thợ 2' },
-  { id: 'worker3', name: 'Thợ 3' }
+    { id: 'worker1', name: 'Thợ 1' },
+    { id: 'worker2', name: 'Thợ 2' },
+    { id: 'worker3', name: 'Thợ 3' }
 ])
 const selectedWorkers = ref([])
 const loading = ref(false)
@@ -37,7 +37,6 @@ const currentPage = ref(1)
 const itemsPerPage = 5
 
 const { selectedConstruction, fetchConstructionDetail } = useConstructionManagement()
-const { showSuccess, showError } = useToast()
 
 const breadcrumbItems = computed(() => [
     { text: 'Trang chủ', to: '/' },
@@ -46,15 +45,15 @@ const breadcrumbItems = computed(() => [
 ])
 
 onMounted(async () => {
-  try {
-    loading.value = true
-    await fetchConstructionDetail(constructionId)
-    construction.value = selectedConstruction.value
-  } catch (err) {
-    console.error('Error fetching construction details:', err)
-    error.value = 'Không thể tải thông tin công trình'
-  } finally {
-    loading.value = false
+    try {
+        loading.value = true
+        await fetchConstructionDetail(constructionId)
+        construction.value = selectedConstruction.value
+    } catch (err) {
+        console.error('Error fetching construction details:', err)
+        error.value = 'Không thể tải thông tin công trình'
+    } finally {
+        loading.value = false
     }
 })
 
@@ -134,52 +133,52 @@ const formatDate = (date) => {
 }
 
 const handleDownloadDesign = async () => {
-  try {
-    console.log('Downloading design file:', construction.value.designFile)
-    // Implement file download logic here
-    showSuccess('Tải xuống tài liệu thiết kế thành công')
-  } catch (err) {
-    console.error('Error downloading design file:', err)
-    showError('Không thể tải xuống tài liệu thiết kế')
-  }
+    try {
+        console.log('Downloading design file:', construction.value.designFile)
+        // Implement file download logic here
+        showMessage('Tải xuống tài liệu thiết kế thành công', success)
+    } catch (err) {
+        console.error('Error downloading design file:', err)
+        showMessage('Không thể tải xuống tài liệu thiết kế', error)
+    }
 }
 
 const attendanceDate = ref(new Date().toISOString().split('T')[0]) // Default to today's date
 // Ensure all workers have a default status
 const attendanceWorkers = ref([
-  { id: 'worker1', name: 'Thợ 1', phone: '0123456789', status: 'Có mặt' },
-  { id: 'worker2', name: 'Thợ 2', phone: '0987654321', status: 'Đi trễ' },
-  { id: 'worker3', name: 'Thợ 3', phone: '0912345678', status: 'Vắng mặt' }
+    { id: 'worker1', name: 'Thợ 1', phone: '0123456789', status: 'Có mặt' },
+    { id: 'worker2', name: 'Thợ 2', phone: '0987654321', status: 'Đi trễ' },
+    { id: 'worker3', name: 'Thợ 3', phone: '0912345678', status: 'Vắng mặt' }
 ])
 
 const attendanceColumns = [
-  { key: 'id', label: 'Mã thợ' },
-  { key: 'name', label: 'Họ và tên' },
-  { key: 'phone', label: 'Số điện thoại' },
-  { key: 'status', label: 'Trạng thái' }
+    { key: 'id', label: 'Mã thợ' },
+    { key: 'name', label: 'Họ và tên' },
+    { key: 'phone', label: 'Số điện thoại' },
+    { key: 'status', label: 'Trạng thái' }
 ]
 
 // Add a fallback for undefined status
 const updateAttendanceStatus = (worker, newStatus) => {
-  worker.status = newStatus; // Default to 'Có mặt' if undefined
+    worker.status = newStatus; // Default to 'Có mặt' if undefined
 }
 
 const confirmAttendance = () => {
-  console.log('Attendance data:', {
-    date: attendanceDate.value,
-    workers: attendanceWorkers.value
-  })
-  alert('Chấm công thành công!')
+    console.log('Attendance data:', {
+        date: attendanceDate.value,
+        workers: attendanceWorkers.value
+    })
+    alert('Chấm công thành công!')
 }
 
 const paginatedItems = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage
-  const end = start + itemsPerPage
-  return construction.value?.constructionItems.slice(start, end) || []
+    const start = (currentPage.value - 1) * itemsPerPage
+    const end = start + itemsPerPage
+    return construction.value?.constructionItems.slice(start, end) || []
 })
 
 const handlePageChange = (page) => {
-  currentPage.value = page
+    currentPage.value = page
 }
 </script>
 
@@ -403,14 +402,12 @@ const handlePageChange = (page) => {
                         <!-- Phân trang -->
                         <div class="d-flex justify-content-between align-items-center mt-4">
                             <div class="text-muted">
-                                Hiển thị {{ paginatedItems.length }} trên {{ construction?.constructionItems.length || 0 }} hạng mục
+                                Hiển thị {{ paginatedItems.length }} trên {{ construction?.constructionItems.length || 0
+                                }} hạng mục
                             </div>
-                            <Pagination
-                                :total-items="construction?.constructionItems.length || 0"
-                                :items-per-page="itemsPerPage"
-                                :current-page="currentPage"
-                                @update:currentPage="handlePageChange"
-                            />
+                            <Pagination :total-items="construction?.constructionItems.length || 0"
+                                :items-per-page="itemsPerPage" :current-page="currentPage"
+                                @update:currentPage="handlePageChange" />
                         </div>
                     </div>
 
@@ -422,14 +419,16 @@ const handlePageChange = (page) => {
                                 Danh sách kế hoạch
                             </h2>
                         </div>
-                        <DataTable :columns="planColumns" :data="construction.constructionPlans" @row-click="handlePlanClick" />
+                        <DataTable :columns="planColumns" :data="construction.constructionPlans"
+                            @row-click="handlePlanClick" />
 
                         <div v-if="selectedPlan" class="mt-4">
                             <h5>Nhiệm vụ trong kế hoạch: {{ selectedPlan.name }}</h5>
                             <p><strong>Kế hoạch tháng:</strong> {{ selectedPlan.monthlyPlanVolume }} m³</p>
                             <DataTable :columns="taskColumns" :data="selectedPlan.tasks">
                                 <template #actions="{ item }">
-                                    <button class="btn btn-sm btn-outline-primary" @click="handleAssignWorkers(item)">Phân công</button>
+                                    <button class="btn btn-sm btn-outline-primary"
+                                        @click="handleAssignWorkers(item)">Phân công</button>
                                 </template>
                             </DataTable>
                         </div>
@@ -440,20 +439,12 @@ const handlePageChange = (page) => {
                         <h4>Chấm công</h4>
                         <div class="mb-3">
                             <label for="attendanceDate" class="form-label">Chọn ngày</label>
-                            <input
-                                type="date"
-                                id="attendanceDate"
-                                v-model="attendanceDate"
-                                class="form-control"
-                            />
+                            <input type="date" id="attendanceDate" v-model="attendanceDate" class="form-control" />
                         </div>
                         <DataTable :data="attendanceWorkers" :columns="attendanceColumns">
                             <template #status="{ item }">
-                                <select
-                                    v-model="item.status"
-                                    class="form-select"
-                                    @change="updateAttendanceStatus(item, item.status)"
-                                >
+                                <select v-model="item.status" class="form-select"
+                                    @change="updateAttendanceStatus(item, item.status)">
                                     <option value="Có mặt">Có mặt</option>
                                     <option value="Đi trễ">Đi trễ</option>
                                     <option value="Vắng mặt">Vắng mặt</option>
@@ -484,24 +475,14 @@ const handlePageChange = (page) => {
         </ModalDialog>
 
         <!-- Modal for Assigning Workers -->
-        <ModalDialog
-            v-if="selectedTask"
-            :show="showAssignmentModal"
-            @update:show="showAssignmentModal = $event"
-            title="Phân công thợ"
-        >
-            <form @submit.prevent="assignWorkers({ task: selectedTask, workers: selectedWorkers, startDate: '', endDate: '', notes: '' })">
+        <ModalDialog v-if="selectedTask" :show="showAssignmentModal" @update:show="showAssignmentModal = $event"
+            title="Phân công thợ">
+            <form
+                @submit.prevent="assignWorkers({ task: selectedTask, workers: selectedWorkers, startDate: '', endDate: '', notes: '' })">
                 <div class="mb-3">
                     <label for="workers" class="form-label">Chọn thợ</label>
-                    <MultiSelect
-                        v-model="selectedWorkers"
-                        :options="availableWorkers"
-                        label="name"
-                        track-by="id"
-                        placeholder="Chọn thợ..."
-                        multiple
-                        class="form-control"
-                    />
+                    <MultiSelect v-model="selectedWorkers" :options="availableWorkers" label="name" track-by="id"
+                        placeholder="Chọn thợ..." multiple class="form-control" />
                 </div>
                 <div class="mb-3">
                     <label for="startDate" class="form-label">Ngày bắt đầu</label>
@@ -516,7 +497,8 @@ const handlePageChange = (page) => {
                     <textarea id="notes" class="form-control" rows="3"></textarea>
                 </div>
                 <div class="d-flex justify-content-end">
-                    <button type="button" class="btn btn-secondary me-2" @click="showAssignmentModal = false">Hủy</button>
+                    <button type="button" class="btn btn-secondary me-2"
+                        @click="showAssignmentModal = false">Hủy</button>
                     <button type="submit" class="btn btn-primary">Xác nhận</button>
                 </div>
             </form>

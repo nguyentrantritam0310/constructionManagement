@@ -3,8 +3,9 @@ import { ref, computed, watch, onMounted } from 'vue'
 import FormField from '../common/FormField.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
 import { useConstructionPlan } from '../../composables/useConstructionPlan'
-import { useToast } from '../../composables/useToast'
 import { useUser } from '../../composables/useUser'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import { useTask } from '../../composables/useTask'
 
 const props = defineProps({
   mode: {
@@ -32,9 +33,13 @@ const {
   fetchUsers,
 } = useUser()
 
+const { showMessage } = useGlobalMessage()
+
+const { fetchTasksByItemId } = useTask()
+
 const emit = defineEmits(['close'])
 
-const { showSuccess, showError } = useToast()
+const formError = ref('')
 
 // Khởi tạo formData với dữ liệu của plan nếu là chế độ update
 const initFormData = () => {
@@ -78,10 +83,24 @@ watch(() => formData.constructionID, (newVal) => {
 })
 
 const handleSubmit = async () => {
+  formError.value = ''
   try {
     // Kiểm tra dữ liệu trước khi gửi
     if (!formData.constructionID || !formData.constructionItemID || !formData.employeeID || !formData.startDate || !formData.expectedCompletionDate) {
-      showError('Vui lòng điền đầy đủ thông tin')
+      formError.value = 'Vui lòng điền đầy đủ thông tin'
+      return
+    }
+
+    // Lấy danh sách task theo hạng mục
+    const tasksOfItem = await fetchTasksByItemId(formData.constructionItemID)
+    // Tính tổng khối lượng hoạch định đã có
+    const totalPlanned = tasksOfItem.reduce((sum, t) => sum + (parseFloat(t.plannedVolume || t.workload) || 0), 0)
+    // Lấy tổng khối lượng hạng mục (giả sử lấy từ filteredConstructionItems)
+    const item = filteredConstructionItems.value.find(i => i.id === Number(formData.constructionItemID))
+    const totalWorkload = item?.totalWorkload || 0
+
+    if (totalPlanned >= totalWorkload) {
+      formError.value = 'Tổng khối lượng hoạch định đã đủ, không thể thêm kế hoạch mới!'
       return
     }
 
@@ -100,19 +119,19 @@ const handleSubmit = async () => {
     if (props.mode === 'update') {
       planData.id = props.plan.id
       await updatePlan(props.plan.id, planData)
-      showSuccess('Cập nhật kế hoạch thành công')
+      showMessage('Cập nhật kế hoạch thành công', 'success')
     } else {
       await createPlan(planData)
-      showSuccess('Tạo kế hoạch thành công')
+      showMessage('Tạo kế hoạch thành công', 'success')
     }
 
     emit('close')
   } catch (error) {
     console.error(`Error ${props.mode === 'update' ? 'updating' : 'creating'} plan:`, error)
     if (error.response?.data) {
-      showError(error.response.data.message || `Không thể ${props.mode === 'update' ? 'cập nhật' : 'tạo'} kế hoạch`)
+      showMessage(error.response.data.message || `Không thể ${props.mode === 'update' ? 'cập nhật' : 'tạo'} kế hoạch`, 'error')
     } else {
-      showError(`Không thể ${props.mode === 'update' ? 'cập nhật' : 'tạo'} kế hoạch`)
+      showMessage(`Không thể ${props.mode === 'update' ? 'cập nhật' : 'tạo'} kế hoạch`, 'error')
     }
   }
 }
@@ -124,6 +143,9 @@ const handleClose = () => {
 
 <template>
   <form @submit.prevent="handleSubmit">
+    <div v-if="formError" class="alert alert-danger py-2 mb-3">
+      {{ formError }}
+    </div>
     <div class="row g-3">
       <!-- Chọn công trình -->
       <div class="col-md-6">

@@ -15,6 +15,10 @@ defineProps({
   scrollable: {
     type: Boolean,
     default: false
+  },
+  customZIndex: {
+    type: [String, Number],
+    default: null
   }
 })
 
@@ -24,10 +28,12 @@ const emit = defineEmits(['update:show'])
 <template>
   <Teleport to="body">
     <!-- Backdrop -->
-    <div v-if="show" class="modal-backdrop fade show" @click="$emit('update:show', false)"></div>
+    <div v-if="show" class="modal-backdrop fade show" :style="customZIndex ? { zIndex: customZIndex - 1 } : {}"
+      @click="$emit('update:show', false)"></div>
 
     <!-- Modal -->
-    <div v-if="show" class="modal fade show" style="display: block;">
+    <div v-if="show" class="modal fade show" :style="customZIndex ? { zIndex: customZIndex } : {}"
+      style="display: block;">
       <div :class="[
         'modal-dialog',
         size ? `modal-${size}` : '',

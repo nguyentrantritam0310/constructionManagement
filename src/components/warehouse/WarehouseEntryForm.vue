@@ -6,8 +6,12 @@ import DataTable from '../common/DataTable.vue'
 import { useWarehouseEntry } from '../../composables/useWarehouseEntry'
 import { useAuth } from '../../composables/useAuth'
 import StatusBadge from '../common/StatusBadge.vue'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import { importOrderService } from '@/services/importOrderService'
 
-const { confirmWarehouseEntry } = useWarehouseEntry()
+const { showMessage } = useGlobalMessage()
+
+const { confirmWarehouseEntry, fetchByDirector } = useWarehouseEntry()
 const { currentUser } = useAuth()
 const employeeID = computed(() => currentUser.value?.id)
 
@@ -24,10 +28,18 @@ const props = defineProps({
   materialPlans: {
     type: Array,
     default: () => []
+  },
+  readonly: {
+    type: Boolean,
+    default: false
+  },
+  approvalMode: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['submit', 'cancel'])
+const emit = defineEmits(['submit', 'cancel', 'approve', 'reject'])
 
 const formData = ref({
   importOrderID: '',
@@ -144,6 +156,32 @@ const handleReportIssue = (material) => {
 const handleQuantityChange = (material, value) => {
   material.actualQuantity = parseInt(value) || 0
 }
+
+const handleApprove = async (item) => {
+  try {
+    await importOrderService.updateStatus(item.id, 1)
+    // Cập nhật lại danh sách hoặc reload
+    fetchByDirector()
+
+    // Hiển thị thông báo thành công
+    showMessage('Đã duyệt kế hoạch!', 'success')
+
+  } catch (err) {
+    console.error('Error fetching material plans:', err)
+    // Hiển thị thông báo lỗi
+    showMessage('Lỗi khi duyệt!', 'error')
+  }
+}
+const handleReject = async (item) => {
+  try {
+    await importOrderService.updateStatus(item.id, 2)
+    fetchByDirector()
+    showMessage('Đã từ chối kế hoạch!', 'success')
+  } catch (err) {
+    console.error('Error fetching material plans:', err)
+    showMessage('Lỗi khi từ chối!', 'error')
+  }
+}
 </script>
 
 <template>
@@ -171,7 +209,9 @@ const handleQuantityChange = (material, value) => {
           { key: 'materialID', label: 'Mã vật tư' },
           { key: 'materialName', label: 'Tên vật tư' },
           { key: 'totalImportQuantity', label: 'Tổng số lượng dự kiến' },
-          { key: 'totalActualQuantity', label: 'Tổng số lượng thực tế' },
+          ...(props.readonly ? [] : [
+            { key: 'totalActualQuantity', label: 'Tổng số lượng thực tế' }
+          ]),
           { key: 'unitOfMeasurement', label: 'Đơn vị' },
           { key: 'price', label: 'Giá' },
           { key: 'totalAmount', label: 'Thành tiền' }
@@ -208,14 +248,16 @@ const handleQuantityChange = (material, value) => {
           <h5 class="mb-0">Hạng mục #{{ constructionItemID }}</h5>
         </div>
         <div class="card-body p-0">
-          <DataTable :columns="columns" :data="materials">
-            <template #actualQuantity="{ item }">
+          <DataTable :columns="columns.filter(col =>
+            props.readonly ? !['actualQuantity', 'note'].includes(col.key) : true
+          )" :data="materials">
+            <template v-if="!props.readonly" #actualQuantity="{ item }">
               <FormField type="number" label="" :modelValue="item.actualQuantity"
                 @update:modelValue="val => handleQuantityChange(item, val)"
                 :disabled="item.status === 'Completed' || isCompleted" />
             </template>
 
-            <template #note="{ item }">
+            <template v-if="!props.readonly" #note="{ item }">
               <FormField type="text" label="" :modelValue="item.note" @update:modelValue="val => item.note = val"
                 placeholder="Ghi chú (nếu có)" :disabled="item.status === 'Completed' || isCompleted" />
             </template>
@@ -235,9 +277,19 @@ const handleQuantityChange = (material, value) => {
       <ActionButton type="secondary" @click="$emit('cancel')">
         Hủy
       </ActionButton>
-      <ActionButton type="primary" @click="handleSubmit" :disabled="isCompleted">
-        Xác nhận nhập kho
-      </ActionButton>
+      <template v-if="props.approvalMode">
+        <ActionButton :disabled="order.status !== 'Pending'" type=" danger" @click="handleReject(order)">
+          Từ chối
+        </ActionButton>
+        <ActionButton :disabled="order.status !== 'Pending'" type="primary" @click="handleApprove(order)">
+          Duyệt
+        </ActionButton>
+      </template>
+      <template v-else>
+        <ActionButton type="primary" @click="handleSubmit" :disabled="isCompleted">
+          Xác nhận nhập kho
+        </ActionButton>
+      </template>
     </div>
   </div>
 </template>

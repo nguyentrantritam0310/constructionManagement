@@ -2,11 +2,13 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
 import ConstructionList from '../../components/construction/ConstructionList.vue'
-import { useToast } from '../../composables/useToast'
 import { useFilter } from '../../composables/useFilter'
 import StatusChangeDialog from '../../components/common/StatusChangeDialog.vue'
 import ConstructionForm from '../../components/construction/ConstructionForm.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+
+const { showMessage } = useGlobalMessage()
 
 const {
   constructions,
@@ -18,7 +20,6 @@ const {
   fetchConstructionDetail
 } = useConstructionManagement()
 
-const { showSuccess, showError } = useToast()
 
 // Initialize filters
 const statusFilter = ref('')
@@ -85,12 +86,12 @@ onMounted(async () => {
 const handleCreateConstruction = async (constructionData) => {
   try {
     await createConstruction(constructionData)
-    showSuccess('Tạo công trình thành công')
+    showMessage('Tạo công trình thành công', 'success')
     closeCreateForm()
     await fetchConstructions() // Refresh the list after creating
   } catch (err) {
     console.error('Error creating construction:', err)
-    showError('Không thể tạo công trình')
+    showMessage('Không thể tạo công trình', 'error')
   }
 }
 
@@ -183,12 +184,8 @@ const handleUpdateSubmit = async () => {
       </button>
     </div>
 
-    <ConstructionList
-      :constructions="filteredConstructions"
-      @update-construction-status="openStatusDialog"
-      @open-update-form="openUpdateForm"
-      @refresh-constructions="fetchConstructions"
-    />
+    <ConstructionList :constructions="filteredConstructions" @update-construction-status="openStatusDialog"
+      @open-update-form="openUpdateForm" @refresh-constructions="fetchConstructions" />
 
     <!-- Create Dialog -->
     <ModalDialog v-model:show="showCreateDialog" title="Thêm Công Trình Mới" size="lg">
@@ -197,24 +194,14 @@ const handleUpdateSubmit = async () => {
 
     <!-- Update Dialog -->
     <ModalDialog v-model:show="showUpdateDialog" title="Cập Nhật Công Trình" size="lg">
-      <ConstructionForm
-        v-if="selectedConstruction"
-        mode="update"
-        :construction="selectedConstruction"
-        @close="handleUpdateSubmit"
-      />
+      <ConstructionForm v-if="selectedConstruction" mode="update" :construction="selectedConstruction"
+        @close="handleUpdateSubmit" />
     </ModalDialog>
 
     <!-- Status Change Dialog -->
-    <StatusChangeDialog
-      v-if="showStatusDialog && selectedConstruction"
-      :show="showStatusDialog"
-      :item="selectedConstruction"
-      type="construction"
-      title="Thay Đổi Trạng Thái Công Trình"
-      @update:show="showStatusDialog = $event"
-      @submit="handleUpdateConstructionStatus"
-    />
+    <StatusChangeDialog v-if="showStatusDialog && selectedConstruction" :show="showStatusDialog"
+      :item="selectedConstruction" type="construction" title="Thay Đổi Trạng Thái Công Trình"
+      @update:show="showStatusDialog = $event" @submit="handleUpdateConstructionStatus" />
   </div>
 </template>
 
@@ -223,4 +210,3 @@ const handleUpdateSubmit = async () => {
   padding: 1rem;
 }
 </style>
-

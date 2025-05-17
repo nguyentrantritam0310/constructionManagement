@@ -9,10 +9,10 @@ import ChangeStatusDialog from '../../components/common/ChangeStatusDialog.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ChangeStatusForm from '../../components/common/ChangeStatusForm.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
-import { useToast } from '../../composables/useToast'
 import ActionButton from '../../components/common/ActionButton.vue'
 import FormDialog from '../../components/common/FormDialog.vue'
 import ConstructionItemForm from '../../components/construction/ConstructionItemForm.vue'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,7 +22,7 @@ const activeTab = ref('info')
 const showStatusDialog = ref(false)
 const selectedItem = ref(null)
 const { selectedConstruction, fetchConstructionDetail } = useConstructionManagement()
-const { showSuccess, showError } = useToast()
+const { showMessage } = useGlobalMessage()
 const showItemForm = ref(false)
 const formMode = ref('add')
 
@@ -105,10 +105,10 @@ const downloadDesign = async () => {
   try {
     console.log('Downloading design file:', construction.value.designFile)
     // Implement download logic here
-    showSuccess('Tải file thiết kế thành công')
+    showMessage('Tải file thiết kế thành công', 'success')
   } catch (error) {
     console.error('Error downloading design file:', error)
-    showError('Không thể tải file thiết kế')
+    showMessage('Không thể tải file thiết kế', 'error')
   }
 }
 
