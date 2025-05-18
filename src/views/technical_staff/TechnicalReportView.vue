@@ -11,6 +11,10 @@ import FormDialog from '../../components/common/FormDialog.vue'
 import ReportForm from '../../components/common/ReportForm.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { useManagementReport } from '../../composables/useManagementReport'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
+
+const { showMessage } = useGlobalMessage()
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
@@ -49,7 +53,6 @@ onMounted(() => {
 const columns = [
   { key: 'id', label: 'Mã báo cáo' },
   { key: 'constructionName', label: 'Công trình' },
-  { key: 'problemType', label: 'Loại vấn đề' },
   { key: 'content', label: 'Mô tả' },
   { key: 'level', label: 'Mức độ' },
   { key: 'statusLogs[0].status', label: 'Trạng thái' },
@@ -78,19 +81,15 @@ const validateForm = () => {
   return true
 }
 
-const handleSubmit = async () => {
-  if (!validateForm()) {
-    alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
-    return
-  }
-
+const handleSubmit = async (reportData) => {
   try {
-    await createReport(newReport.value)
+    await createReport(reportData)
     showCreateForm.value = false
-    alert('Báo cáo đã được gửi thành công')
+    showMessage('Báo cáo đã được tạo thành công', 'success')
+    await fetchReportsByKiThuat() // Refresh the list
   } catch (err) {
     console.error('Error creating report:', err)
-    alert('Có lỗi xảy ra khi gửi báo cáo')
+    showMessage('Có lỗi xảy ra khi tạo báo cáo', 'error')
   }
 }
 
@@ -118,11 +117,13 @@ const formatDate = (date) => {
 const getStatusLabel = (status) => {
   switch (status) {
     case 0:
-      return 'Chờ phê duyệt'
+      return 'Pending'
     case 1:
-      return 'Đã phê duyệt'
+      return 'Approved'
     case 2:
-      return 'Đã từ chối'
+      return 'Rejected'
+    case 3:
+      return 'Completed'
     default:
       return 'Không xác định'
   }
@@ -136,13 +137,27 @@ const handleRowClick = (item) => {
   showDetailModal.value = true
 }
 
-const sampleImages = [
-  "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80",
-  "https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=400&q=80",
-  "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?auto=format&fit=crop&w=400&q=80",
-  "https://images.unsplash.com/photo-1523413363574-c30aa1c2a516?auto=format&fit=crop&w=400&q=80",
-  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=400&q=80"
-]
+const handleReject = async (report) => {
+  try {
+    await updateReportStatus(report.id, 'Rejected')
+    showMessage('Đã từ chối báo cáo', 'success')
+    await fetchReportsByKiThuat()
+  } catch (err) {
+    console.error('Error rejecting report:', err)
+    showMessage('Không thể từ chối báo cáo', 'error')
+  }
+}
+
+const handleApprove = async (report) => {
+  try {
+    await updateReportStatus(report.id, 'Approved')
+    showMessage('Đã duyệt báo cáo', 'success')
+    await fetchReportsByKiThuat()
+  } catch (err) {
+    console.error('Error approving report:', err)
+    showMessage('Không thể duyệt báo cáo', 'error')
+  }
+}
 </script>
 
 <template>
@@ -185,7 +200,7 @@ const sampleImages = [
         </span>
       </template>
 
-      <template #status="{ item }">
+      <template #statusLogs[0].status="{ item }">
         <StatusBadge :status="getStatusLabel(item.statusLogs[0].status)" />
       </template>
 
@@ -199,82 +214,13 @@ const sampleImages = [
       </template>
     </DataTable>
 
-    <ModalDialog v-model:show="showDetailModal" title="Chi Tiết Báo Cáo" size="lg">
-      <template v-if="detailReport">
-        <div class="report-detail-modal">
-          <!-- Header: Ngày tạo + Công trình + badge + trạng thái -->
-          <div class="header mb-4 pb-3">
-            <div class="d-flex flex-wrap align-items-center justify-content-between">
-              <div>
-                <div class="text-muted small mb-1">
-                  <i class="fas fa-calendar-alt me-1"></i>Ngày tạo:
-                  <span class="fw-medium">{{ formatDate(detailReport.reportDate) }}</span>
-                </div>
-                <div class="d-flex align-items-center gap-3 flex-wrap">
-                  <i class="fas fa-building fa-2x text-primary"></i>
-                  <div>
-                    <div class="fw-bold fs-5 mb-1">{{ detailReport.constructionName }}</div>
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                      <span class="badge badge-type">
-                        <i class="fas fa-exclamation-circle me-1"></i>
-                        {{ detailReport.problemType }}
-                      </span>
-                      <span class="badge badge-level" :class="detailReport.level">
-                        <i class="fas fa-signal me-1"></i>
-                        {{ detailReport.level }}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="d-flex align-items-center gap-2 mt-3 mt-md-0">
-                <span class="text-muted small"><i class="fas fa-info-circle me-1"></i>Trạng thái:</span>
-                <StatusBadge :status="getStatusLabel(detailReport.statusLogs[0].status)" />
-              </div>
-            </div>
-          </div>
-          <!-- Mô tả full width -->
-          <div class="row mb-3">
-            <div class="col-12 mb-3">
-              <div class="text-muted small mb-1"><i class="fas fa-align-left me-1"></i>Mô tả vấn đề</div>
-              <div class="bg-light rounded p-3">{{ detailReport.content }}</div>
-            </div>
-          </div>
-          <!-- Ảnh đính kèm -->
-          <div class="mb-3">
-            <div class="text-muted small mb-2"><i class="fas fa-images me-1"></i>Ảnh đính kèm</div>
-            <div class="row g-3">
-              <div v-for="i in 5" :key="i" class="col-12 col-md-4">
-                <div class="img-sample position-relative">
-                  <img :src="detailReport.attachments && detailReport.attachments[i - 1] && detailReport.attachments[i - 1].filePath
-                    ? detailReport.attachments[i - 1].filePath
-                    : sampleImages[i - 1]" alt="Ảnh mẫu" class="img-fluid shadow-sm" />
-                  <div class="img-upload-date text-muted small text-center mt-2">
-                    <i class="fas fa-clock me-1"></i>
-                    {{
-                      detailReport.attachments && detailReport.attachments[i - 1] && detailReport.attachments[i -
-                        1].filePath
-                        ? (detailReport.attachments[i - 1].uploadDate ? formatDate(detailReport.attachments[i -
-                          1].uploadDate) : 'Chưa cập nhật')
-                        : 'Chưa cập nhật'
-                    }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <!-- Nút thao tác -->
-          <div class="d-flex justify-content-end gap-2 mt-4">
-            <button class="btn btn-outline-danger" @click="handleReject(detailReport)">
-              <i class="fas fa-times-circle me-1"></i> Từ chối
-            </button>
-            <button class="btn btn-primary" @click="handleApprove(detailReport)">
-              <i class="fas fa-check-circle me-1"></i> Duyệt
-            </button>
-          </div>
-        </div>
-      </template>
-    </ModalDialog>
+    <ReportDetailDialog
+      v-if="detailReport"
+      v-model:show="showDetailModal"
+      :report="detailReport"
+      @reject="handleReject"
+      @approve="handleApprove"
+    />
 
     <!-- Phân trang -->
     <div class="d-flex justify-content-between align-items-center mt-4">
@@ -287,13 +233,23 @@ const sampleImages = [
 
     <!-- Form tạo báo cáo mới -->
     <FormDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới">
-      <ReportForm mode="create" reportType="technical" @submit="handleSubmit" @cancel="showCreateForm = false" />
+      <ReportForm
+        mode="create"
+        reportType="technical"
+        @submit="handleSubmit"
+        @cancel="showCreateForm = false"
+      />
     </FormDialog>
 
     <!-- Form cập nhật báo cáo -->
     <FormDialog v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo">
-      <ReportForm mode="update" reportType="technical" :report="selectedReport" @submit="handleUpdateSubmit"
-        @cancel="showUpdateForm = false" />
+      <ReportForm
+        mode="update"
+        reportType="technical"
+        :report="selectedReport"
+        @submit="handleUpdateSubmit"
+        @cancel="showUpdateForm = false"
+      />
     </FormDialog>
   </div>
 </template>

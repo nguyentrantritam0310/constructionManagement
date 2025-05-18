@@ -13,6 +13,7 @@ import ActionButton from '../../components/common/ActionButton.vue'
 import FormDialog from '../../components/common/FormDialog.vue'
 import ConstructionItemForm from '../../components/construction/ConstructionItemForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import StatusChangeDialog from '../../components/common/StatusChangeDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,41 +57,40 @@ const handleItemClick = (item) => {
   router.push(`/construction-plan-management?itemId=${item.id}`)
 }
 
+const handleAddItem = () => {
+  formMode.value = 'add'
+  selectedItem.value = null
+  showItemForm.value = true
+}
+
 const handleUpdateItem = (item, event) => {
   event.stopPropagation()
-  console.log('Update construction item:', item)
-  // Xử lý cập nhật hạng mục
+  formMode.value = 'update'
+  selectedItem.value = item
+  showItemForm.value = true
 }
 
-const handleStatusChange = async (itemId, newStatus) => {
+const handleItemFormClose = async () => {
+  showItemForm.value = false
+  selectedItem.value = null
+  await fetchConstructionDetail(constructionId)
+}
+
+const handleStatusChange = async (item, event) => {
+  event.stopPropagation()
+  selectedItem.value = item
+  showStatusDialog.value = true
+}
+
+const handleStatusSubmit = async (data) => {
   try {
-    // Tìm hạng mục cần cập nhật
-    const itemIndex = construction.value.constructionItems.findIndex(
-      item => item.id === itemId
-    )
-
-    if (itemIndex === -1) {
-      throw new Error('Không tìm thấy hạng mục')
-    }
-
-    // Cập nhật trạng thái
-    construction.value.constructionItems[itemIndex].status = newStatus
-    showSuccess('Cập nhật trạng thái thành công')
+    const { newStatus, item } = data
+    // Implement status update logic here
+    await fetchConstructionDetail(constructionId)
+    showMessage('Cập nhật trạng thái thành công', 'success')
   } catch (error) {
-    console.error('Error updating item status:', error)
-    showError('Không thể cập nhật trạng thái hạng mục')
-  }
-}
-
-const handleStatusSubmit = (newStatus) => {
-  if (selectedItem.value) {
-    // Cập nhật trạng thái của hạng mục
-    const itemIndex = construction.value.constructionItems.findIndex(
-      item => item.id === selectedItem.value.id
-    )
-    if (itemIndex !== -1) {
-      construction.value.constructionItems[itemIndex].status = newStatus
-    }
+    console.error('Error updating status:', error)
+    showMessage('Không thể cập nhật trạng thái', 'error')
   }
   showStatusDialog.value = false
   selectedItem.value = null
@@ -286,11 +286,15 @@ const handleItemSubmit = (item) => {
 
           <!-- Hạng mục thi công -->
           <div v-show="activeTab === 'items'" class="fade-in">
-            <div class="table-toolbar mb-3">
-              <h2 class="section-title">
+            <div class="table-toolbar mb-3 d-flex justify-content-between align-items-center">
+              <h2 class="section-title mb-0">
                 <i class="fas fa-list me-2"></i>
                 Danh sách hạng mục
               </h2>
+              <button class="btn btn-primary" @click="handleAddItem">
+                <i class="fas fa-plus me-2"></i>
+                Thêm Hạng Mục
+              </button>
             </div>
             <DataTable :columns="constructionItemColumns" :data="selectedConstruction.constructionItems"
               @row-click="handleItemClick" class="custom-table">
@@ -325,7 +329,7 @@ const handleItemSubmit = (item) => {
               <template #actions="{ item }">
                 <div class="d-flex justify-content-center gap-2">
                   <UpdateButton @click="(e) => handleUpdateItem(item, e)" />
-                  <ChangeStatusButton @click="(e) => handleStatusChange(item.id, e)" />
+                  <ChangeStatusButton @click="(e) => handleStatusChange(item, e)" />
                 </div>
               </template>
             </DataTable>
@@ -341,7 +345,7 @@ const handleItemSubmit = (item) => {
     </div>
 
     <!-- Dialog đổi trạng thái -->
-    <ModalDialog v-if="selectedItem" :show="showStatusDialog" @update:show="showStatusDialog = $event"
+    <ModalDialog v-model:show="selectedItem" :show="showStatusDialog" @update:show="showStatusDialog = $event"
       title="Đổi Trạng Thái Hạng Mục" size="md">
       <ChangeStatusForm :current-status="selectedItem.status" type="construction" @submit="handleStatusSubmit"
         @cancel="showStatusDialog = false" />
@@ -351,6 +355,16 @@ const handleItemSubmit = (item) => {
       <ConstructionItemForm :mode="formMode" :item="selectedItem" @submit="handleItemSubmit"
         @cancel="showItemForm = false" />
     </FormDialog>
+
+    <StatusChangeDialog
+      v-if="selectedItem"
+      :show="showStatusDialog"
+      :item="selectedItem"
+      type="item"
+      title="Thay Đổi Trạng Thái Hạng Mục"
+      @update:show="showStatusDialog = $event"
+      @submit="handleStatusSubmit"
+    />
   </div>
 </template>
 

@@ -34,7 +34,7 @@ defineProps({
               </slot>
             </td>
           </template>
-          <td v-if="$slots.actions">
+          <td v-if="$slots.actions" @click.stop>
             <slot name="actions" :item="item"></slot>
           </td>
         </tr>

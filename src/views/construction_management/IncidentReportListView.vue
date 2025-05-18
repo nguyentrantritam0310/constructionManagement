@@ -11,11 +11,17 @@ import FormDialog from '../../components/common/FormDialog.vue'
 import ReportForm from '../../components/common/ReportForm.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import UpdateReportForm from '../../components/incident-report/UpdateReportForm.vue'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
+
+const { showMessage } = useGlobalMessage()
 
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
 const selectedReport = ref(null)
+const showDetailDialog = ref(false)
+const detailReport = ref(null)
 
 const filteredReports = ref([])
 
@@ -48,7 +54,6 @@ onMounted(() => {
 const columns = [
   { key: 'id', label: 'Mã báo cáo' },
   { key: 'constructionName', label: 'Công trình' },
-  { key: 'problemType', label: 'Loại vấn đề' },
   { key: 'content', label: 'Mô tả' },
   { key: 'level', label: 'Mức độ' },
   { key: 'statusLogs[0].status', label: 'Trạng thái' },
@@ -75,19 +80,15 @@ const validateForm = () => {
   }
   return true
 }
-const handleSubmit = async () => {
-  if (!validateForm()) {
-    alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
-    return
-  }
-
+const handleSubmit = async (reportData) => {
   try {
-    await createReport(newReport.value)
+    await createReport(reportData)
     showCreateForm.value = false
-    alert('Báo cáo đã được gửi thành công')
+    showMessage('Báo cáo đã được tạo thành công', 'success')
+    await fetchReportsByThiCong() // Refresh the list
   } catch (err) {
     console.error('Error creating report:', err)
-    alert('Có lỗi xảy ra khi gửi báo cáo')
+    showMessage('Có lỗi xảy ra khi tạo báo cáo', 'error')
   }
 }
 const handleUpdateStatus = (report) => {
@@ -114,13 +115,42 @@ const handleUpdateSubmit = async (updatedReport) => {
 const getStatusLabel = (status) => {
   switch (status) {
     case 0:
-      return 'Chờ phê duyệt'
+      return 'Pending'
     case 1:
-      return 'Đã phê duyệt'
+      return 'Approved'
     case 2:
-      return 'Đã từ chối'
+      return 'Rejected'
+    case 3:
+      return 'Completed'
     default:
       return 'Không xác định'
+  }
+}
+
+const handleRowClick = (item) => {
+  detailReport.value = item
+  showDetailDialog.value = true
+}
+
+const handleReject = async (report) => {
+  try {
+    await updateReportStatus(report.id, 'Rejected')
+    showMessage('Đã từ chối báo cáo', 'success')
+    await fetchReportsByThiCong()
+  } catch (err) {
+    console.error('Error rejecting report:', err)
+    showMessage('Không thể từ chối báo cáo', 'error')
+  }
+}
+
+const handleApprove = async (report) => {
+  try {
+    await updateReportStatus(report.id, 'Approved')
+    showMessage('Đã duyệt báo cáo', 'success')
+    await fetchReportsByThiCong()
+  } catch (err) {
+    console.error('Error approving report:', err)
+    showMessage('Không thể duyệt báo cáo', 'error')
   }
 }
 </script>
@@ -147,7 +177,7 @@ const getStatusLabel = (status) => {
       {{ error }}
     </div>
 
-    <DataTable :columns="columns" :data="paginatedReports" class="report-table">
+    <DataTable :columns="columns" :data="paginatedReports" class="report-table" @row-click="handleRowClick">
       <template #problemType="{ item }">
         <span :class="'badge bg-' + (item.problemType === 'Chậm tiến độ' ? 'warning' :
           item.problemType === 'Thiếu vật liệu' ? 'info' :
@@ -164,7 +194,7 @@ const getStatusLabel = (status) => {
         </span>
       </template>
 
-      <template #status="{ item }">
+      <template #statusLogs[0].status="{ item }">
         <StatusBadge :status="getStatusLabel(item.statusLogs[0].status)" />
       </template>
 
@@ -189,14 +219,32 @@ const getStatusLabel = (status) => {
 
     <!-- Form tạo báo cáo mới -->
     <FormDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới">
-      <ReportForm mode="create" reportType="incident" @submit="handleSubmit" @cancel="showCreateForm = false" />
+      <ReportForm
+        mode="create"
+        reportType="incident"
+        @submit="handleSubmit"
+        @cancel="showCreateForm = false"
+      />
     </FormDialog>
 
     <!-- Form cập nhật báo cáo -->
     <FormDialog v-if="selectedReport" v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo">
-      <ReportForm mode="update" reportType="incident" :report="selectedReport" @submit="handleUpdateSubmit"
-        @cancel="showUpdateForm = false" />
+      <ReportForm
+        mode="update"
+        reportType="incident"
+        :report="selectedReport"
+        @submit="handleUpdateSubmit"
+        @cancel="showUpdateForm = false"
+      />
     </FormDialog>
+
+    <ReportDetailDialog
+      v-if="detailReport"
+      v-model:show="showDetailDialog"
+      :report="detailReport"
+      @reject="handleReject"
+      @approve="handleApprove"
+    />
   </div>
 </template>
 

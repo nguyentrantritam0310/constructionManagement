@@ -2,6 +2,8 @@
 import { ref, watch, onMounted } from 'vue'
 import FormField from '../common/FormField.vue'
 import { useMaterialType } from '../../composables/useMaterialType'
+import { useMaterialManagement } from '../../composables/useMaterialManagement'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
 
 const props = defineProps({
   mode: {
@@ -18,10 +20,22 @@ const props = defineProps({
 
 const emit = defineEmits(['submit', 'cancel'])
 
-const formData = ref({})
+const formData = ref({
+  materialName: '',
+  materialTypeID: '',
+  stockQuantity: 0,
+  unitPrice: 0,
+  specification: '',
+  note: '',
+  status: 'Available'
+})
+
+const formError = ref('')
 
 // Fetch material types
 const { materialTypes, loadMaterialTypes } = useMaterialType()
+const { createMaterial, updateMaterial } = useMaterialManagement()
+const { showMessage } = useGlobalMessage()
 
 // Initialize form data based on the mode and props
 const initFormData = () => {
@@ -43,8 +57,54 @@ watch(() => props.material, (newMaterial) => {
   }
 }, { immediate: true })
 
-const handleSubmit = () => {
-  emit('submit', formData.value) // Emit the updated form data
+const validateForm = () => {
+  if (!formData.value.materialName?.trim()) {
+    formError.value = 'Vui lòng nhập tên vật tư'
+    return false
+  }
+  if (!formData.value.materialTypeID) {
+    formError.value = 'Vui lòng chọn loại vật tư'
+    return false
+  }
+  if (formData.value.stockQuantity < 0) {
+    formError.value = 'Số lượng tồn kho không được âm'
+    return false
+  }
+  if (formData.value.unitPrice < 0) {
+    formError.value = 'Đơn giá không được âm'
+    return false
+  }
+  return true
+}
+
+const handleSubmit = async () => {
+  formError.value = ''
+  try {
+    if (!validateForm()) {
+      return
+    }
+
+    const materialData = {
+      ...formData.value,
+      stockQuantity: Number(formData.value.stockQuantity),
+      unitPrice: Number(formData.value.unitPrice),
+      materialTypeID: Number(formData.value.materialTypeID)
+    }
+
+    if (props.mode === 'create') {
+      await createMaterial(materialData)
+      showMessage('Thêm vật tư thành công', 'success')
+    } else {
+      await updateMaterial(props.material.id, materialData)
+      showMessage('Cập nhật vật tư thành công', 'success')
+    }
+
+    emit('submit')
+  } catch (error) {
+    console.error('Error submitting material:', error)
+    formError.value = error.response?.data?.message || 'Có lỗi xảy ra khi xử lý vật tư'
+    showMessage(formError.value, 'error')
+  }
 }
 
 const handleCancel = () => {
@@ -54,6 +114,9 @@ const handleCancel = () => {
 
 <template>
   <form @submit.prevent="handleSubmit">
+    <div v-if="formError" class="alert alert-danger py-2 mb-3">
+      {{ formError }}
+    </div>
     <div class="row g-3">
       <div class="col-md-6">
         <FormField
@@ -94,7 +157,7 @@ const handleCancel = () => {
       <div class="col-md-12">
         <FormField
           label="Chi Tiết Vật Tư"
-          type="textarea" 
+          type="textarea"
           v-model="formData.specification"
           required
         />
@@ -102,9 +165,8 @@ const handleCancel = () => {
       <div class="col-md-12">
         <FormField
           label="Ghi Chú"
-          type="textarea" 
+          type="textarea"
           v-model="formData.note"
-          required
         />
       </div>
     </div>
