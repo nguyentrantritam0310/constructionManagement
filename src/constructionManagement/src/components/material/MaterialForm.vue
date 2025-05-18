@@ -3,7 +3,7 @@ import { ref, watch, onMounted } from 'vue'
 import FormField from '../common/FormField.vue'
 import { useMaterialType } from '../../composables/useMaterialType'
 import { useMaterialManagement } from '../../composables/useMaterialManagement'
-import { useUnitofMeasurement } from '../../composables/useUnitofMeasurement'
+import { useUnitMeasurement } from '../../composables/useUnitMeasurement'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 
 const props = defineProps({
@@ -24,37 +24,21 @@ const emit = defineEmits(['submit', 'cancel'])
 const formData = ref({
   materialName: '',
   materialTypeID: '',
-  unitMeasurementID: '', // Add unitMeasurementID
   stockQuantity: 0,
   unitPrice: 0,
   specification: '',
   note: '',
-  status: 'Available'
+  status: 'Available',
+  unitMeasurementID: ''
 })
 
 const formError = ref('')
 
 // Fetch material types and unit measurements
 const { materialTypes, loadMaterialTypes } = useMaterialType()
-const { unitMeasurements, loadUnitMeasurements } = useUnitofMeasurement()
+const { unitMeasurements, loadUnitMeasurements } = useUnitMeasurement()
+const { createMaterial, updateMaterial } = useMaterialManagement()
 const { showMessage } = useGlobalMessage()
-
-const createMaterial = async (materialData) => {
-  try {
-    console.log('Creating material with data:', materialData)
-    await loadUnitMeasurements() // Use loadUnitMeasurements from useUnitofMeasurement.js
-    console.log('Unit Measurements:', unitMeasurements.value)
-    // Simulate material creation logic here (e.g., using another composable or service)
-    const createdMaterial = { ...materialData, id: Date.now() } // Mock response
-    console.log('Created Material:', createdMaterial)
-    return createdMaterial
-  } catch (error) {
-    console.error('Error creating material:', error)
-    throw error
-  }
-}
-
-const { updateMaterial } = useMaterialManagement()
 
 // Initialize form data based on the mode and props
 const initFormData = () => {
@@ -66,12 +50,6 @@ const initFormData = () => {
 onMounted(() => {
   loadMaterialTypes() // Load material types when the component is mounted
   loadUnitMeasurements() // Load unit measurements when the component is mounted
-    .then(() => {
-      console.log('Unit Measurements:', unitMeasurements.value)
-    })
-    .catch((error) => {
-      console.error('Error loading unit measurements:', error)
-    })
   initFormData()
 })
 
@@ -80,7 +58,6 @@ watch(() => props.material, (newMaterial) => {
   if (props.mode === 'update' && newMaterial) {
     Object.assign(formData.value, newMaterial)
     formData.value.materialTypeID = newMaterial.materialTypeID // Update default material type
-    formData.value.unitMeasurementID = newMaterial.unitMeasurementID // Update default unit measurement
   }
 }, { immediate: true })
 
@@ -94,7 +71,7 @@ const validateForm = () => {
     return false
   }
   if (!formData.value.unitMeasurementID) {
-    formError.value = 'Vui lòng chọn đơn vị tính'
+    formError.value = 'Vui lòng chọn đơn vị đo lường'
     return false
   }
   if (formData.value.stockQuantity < 0) {
@@ -122,8 +99,6 @@ const handleSubmit = async () => {
       materialTypeID: Number(formData.value.materialTypeID),
       unitMeasurementID: Number(formData.value.unitMeasurementID)
     }
-
-    console.log('Submitting material data:', materialData)
 
     if (props.mode === 'create') {
       await createMaterial(materialData)
@@ -166,7 +141,7 @@ const handleCancel = () => {
           type="select"
           v-model="formData.materialTypeID"
           :options="materialTypes.map(type => ({
-            value: type.id,
+            value: type.materialTypeID,
             label: type.materialTypeName
           }))"
           required
@@ -174,12 +149,12 @@ const handleCancel = () => {
       </div>
       <div class="col-md-4">
         <FormField
-          label="Đơn vị"
+          label="Đơn vị đo lường"
           type="select"
           v-model="formData.unitMeasurementID"
           :options="unitMeasurements.map(unit => ({
             value: unit.id,
-            label: unit.unitName
+            label: unit.name
           }))"
           required
         />
