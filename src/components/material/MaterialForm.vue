@@ -24,7 +24,7 @@ const emit = defineEmits(['submit', 'cancel'])
 const formData = ref({
   materialName: '',
   materialTypeID: '',
-  unitMeasurementID: '', // Add unitMeasurementID
+  unitOfMeasurementID: '',
   stockQuantity: 0,
   unitPrice: 0,
   specification: '',
@@ -39,22 +39,7 @@ const { materialTypes, loadMaterialTypes } = useMaterialType()
 const { unitMeasurements, loadUnitMeasurements } = useUnitofMeasurement()
 const { showMessage } = useGlobalMessage()
 
-const createMaterial = async (materialData) => {
-  try {
-    console.log('Creating material with data:', materialData)
-    await loadUnitMeasurements() // Use loadUnitMeasurements from useUnitofMeasurement.js
-    console.log('Unit Measurements:', unitMeasurements.value)
-    // Simulate material creation logic here (e.g., using another composable or service)
-    const createdMaterial = { ...materialData, id: Date.now() } // Mock response
-    console.log('Created Material:', createdMaterial)
-    return createdMaterial
-  } catch (error) {
-    console.error('Error creating material:', error)
-    throw error
-  }
-}
-
-const { updateMaterial } = useMaterialManagement()
+const { updateMaterial, createMaterial, materials } = useMaterialManagement()
 
 // Initialize form data based on the mode and props
 const initFormData = () => {
@@ -80,7 +65,7 @@ watch(() => props.material, (newMaterial) => {
   if (props.mode === 'update' && newMaterial) {
     Object.assign(formData.value, newMaterial)
     formData.value.materialTypeID = newMaterial.materialTypeID // Update default material type
-    formData.value.unitMeasurementID = newMaterial.unitMeasurementID // Update default unit measurement
+    formData.value.unitOfMeasurementID = newMaterial.unitMeasurementID // Update default unit measurement
   }
 }, { immediate: true })
 
@@ -93,7 +78,7 @@ const validateForm = () => {
     formError.value = 'Vui lòng chọn loại vật tư'
     return false
   }
-  if (!formData.value.unitMeasurementID) {
+  if (!formData.value.unitOfMeasurementID) {
     formError.value = 'Vui lòng chọn đơn vị tính'
     return false
   }
@@ -116,11 +101,13 @@ const handleSubmit = async () => {
     }
 
     const materialData = {
+      id: 0,
       ...formData.value,
       stockQuantity: Number(formData.value.stockQuantity),
       unitPrice: Number(formData.value.unitPrice),
       materialTypeID: Number(formData.value.materialTypeID),
-      unitMeasurementID: Number(formData.value.unitMeasurementID)
+      unitOfMeasurementID: Number(formData.value.unitOfMeasurementID),
+      status: 'Available'
     }
 
     console.log('Submitting material data:', materialData)
@@ -133,10 +120,9 @@ const handleSubmit = async () => {
       showMessage('Cập nhật vật tư thành công', 'success')
     }
 
-    emit('submit')
   } catch (error) {
     console.error('Error submitting material:', error)
-    formError.value = error.response?.data?.message || 'Có lỗi xảy ra khi xử lý vật tư'
+    formError.value = error.response?.data?.message
     showMessage(formError.value, 'error')
   }
 }
@@ -148,9 +134,6 @@ const handleCancel = () => {
 
 <template>
   <form @submit.prevent="handleSubmit">
-    <div v-if="formError" class="alert alert-danger py-2 mb-3">
-      {{ formError }}
-    </div>
     <div class="row g-3">
       <div class="col-md-6">
         <FormField
@@ -176,7 +159,7 @@ const handleCancel = () => {
         <FormField
           label="Đơn vị"
           type="select"
-          v-model="formData.unitMeasurementID"
+          v-model="formData.unitOfMeasurementID"
           :options="unitMeasurements.map(unit => ({
             value: unit.id,
             label: unit.unitName

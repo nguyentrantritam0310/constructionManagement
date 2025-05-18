@@ -45,11 +45,13 @@ export function useMaterialManagement() {
   const createMaterial = async (materialData) => {
     try {
       loading.value = true
+      console.log('Sending material data:', materialData)
       const response = await api.post('/Material', materialData)
       materials.value.push(response.data)
       return response.data
     } catch (err) {
-      error.value = err.message
+      console.error('Error creating material:', err.response?.data || err.message)
+      error.value = err.response?.data?.message || err.message
       throw err
     } finally {
       loading.value = false

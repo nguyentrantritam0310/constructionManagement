@@ -42,22 +42,7 @@ const closeForm = () => {
   selectedMaterial.value = null
 }
 
-const handleSubmit = async (materialData) => {
-  try {
-    if (formMode.value === 'create') {
-      await createMaterial(materialData)
-      alert('Thêm vật tư thành công')
-    } else if (formMode.value === 'update') {
-      await updateMaterial(materialData.id, materialData)
-      alert('Cập nhật vật tư thành công')
-    }
-    fetchMaterials() // Refresh the material list
-    closeForm()
-  } catch (error) {
-    console.error('Error handling material:', error)
-    alert('Có lỗi xảy ra khi xử lý vật tư')
-  }
-}
+
 
 const handlePageChange = (page) => {
   currentPage.value = page
@@ -107,7 +92,6 @@ const handlePageChange = (page) => {
       <MaterialForm
         :mode="formMode"
         :material="selectedMaterial"
-        @submit="handleSubmit"
         @cancel="closeForm"
       />
     </ModalDialog>
