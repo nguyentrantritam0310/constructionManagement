@@ -7,6 +7,10 @@ export function useFilter(items, options = {}) {
   const filters = ref(options.defaultFilters || {})
 
   const filteredItems = computed(() => {
+    if (!items.value || !Array.isArray(items.value)) {
+      return []
+    }
+
     let result = [...items.value]
 
     // Apply search

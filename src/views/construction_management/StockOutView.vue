@@ -15,6 +15,7 @@ import { useMaterialManagement } from '../../composables/useMaterialManagement'
 import { useMaterialExportOrder } from '../../composables/useMaterialExportOrder'
 import { useAuth } from '../../composables/useAuth'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import StockOutDetail from '../../components/warehouse/StockOutDetail.vue'
 
 const { showMessage } = useGlobalMessage()
 
@@ -364,40 +365,13 @@ const formatDate = (date, isActualCompletion = false) => {
 
     <!-- Modal for Stock Out Details -->
     <ModalDialog v-model:show="showDetails" title="Chi Tiết Phiếu Xuất" size="xl">
-      <div v-if="selectedStockOut">
-        <div class="mb-3">
-          <h4 class="text-primary mb-1">
-            <i class="fas fa-warehouse me-2"></i>Dự Án: {{ selectedStockOut.constructionName }}
-          </h4>
-          <h5 class="mb-1">Hạng mục: {{ selectedStockOut.constructionItemName }}</h5>
-          <p class="mb-1">
-            <i class="fas fa-calendar-alt text-muted me-1"></i>
-            Ngày Xuất: <b>{{ formatDate(selectedStockOut.exportDate) }}</b>
-          </p>
-          <p class="mb-1">
-            <i class="fas fa-user text-muted me-1"></i>
-            Người xuất: <b>{{ selectedStockOut.employeeName }}</b>
-          </p>
-        </div>
-        <DataTable :columns="[
-          { key: 'id', label: 'Mã Vật Tư' },
-          { key: 'name', label: 'Tên Vật Tư' },
-          { key: 'stock', label: 'Số Lượng Tồn' },
-          { key: 'actual', label: 'Số Lượng Xuất' },
-          { key: 'remaining', label: 'Số Lượng Còn Lại' },
-          { key: 'unitOfMeasurement', label: 'Đơn Vị' }
-        ]" :data="actualQuantities">
-          <template #id="{ item }">
-            <span class="fw-medium text-primary">VT-{{ item.id }}</span>
-          </template>
-
-          <template #name="{ item }">
-            <div>
-              <div class="fw-medium">{{ item.name }}</div>
-            </div>
-          </template>
-        </DataTable>
-      </div>
+      <StockOutDetail
+        v-if="selectedStockOut"
+        :stock-out="selectedStockOut"
+        :actual-quantities="actualQuantities"
+        @close="closeDetails"
+        @confirm="handleConfirmStockOut"
+      />
     </ModalDialog>
 
     <!-- Modal for Create Export Order -->
@@ -495,5 +469,209 @@ const formatDate = (date, isActualCompletion = false) => {
   padding: 0.5em 1em;
   border-radius: 0.5em;
   margin-left: 0.5em;
+}
+
+/* New styles for stock out details */
+.stock-out-details {
+  background: #fff;
+  border-radius: 0.75rem;
+}
+
+.detail-header {
+  padding: 1.5rem;
+  background: linear-gradient(to right, #f8f9fa, #ffffff);
+  border-radius: 0.75rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.project-name {
+  color: #2c3e50;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.project-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+  font-size: 0.95rem;
+}
+
+.meta-item i {
+  font-size: 1rem;
+}
+
+.export-summary {
+  background: #fff;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.summary-item:last-child {
+  border-bottom: none;
+}
+
+.summary-item .label {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.summary-item .value {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.materials-section {
+  padding: 1.5rem;
+}
+
+.section-title {
+  color: #2c3e50;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.materials-table {
+  margin-bottom: 0;
+}
+
+.materials-table thead th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #64748b;
+  padding: 1rem;
+  font-size: 0.9rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.materials-table tbody td {
+  padding: 1rem;
+  vertical-align: middle;
+}
+
+.material-id {
+  font-family: monospace;
+  font-weight: 600;
+  color: #3b82f6;
+  background: #eff6ff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.material-name {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.quantity-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.quantity-badge.stock {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.quantity-badge.export {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.quantity-badge.remaining {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-badge.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+
+.btn-secondary:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .project-meta {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .export-summary {
+    margin-top: 1rem;
+  }
+
+  .materials-table {
+    font-size: 0.9rem;
+  }
+
+  .quantity-badge {
+    padding: 0.2rem 0.5rem;
+  }
 }
 </style>

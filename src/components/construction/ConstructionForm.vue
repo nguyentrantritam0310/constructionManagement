@@ -4,6 +4,10 @@ import FormField from '../common/FormField.vue'
 import ActionButton from '../common/ActionButton.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import { useUnitofMeasurement } from '../../composables/useUnitofMeasurement'
+import { useWorkSubTypeVariant } from '../../composables/useWorkSubTypeVariant'
+import { useConstructionItem } from '../../composables/useConstructionItem'
+import ConstructionItemForm from './ConstructionItemForm.vue'
 
 const props = defineProps({
   mode: {
@@ -20,12 +24,17 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
-const { templateItem, fetchConstructionTemplateItem, createConstruction, updateConstruction, fetchConstructions } = useConstructionManagement()
+const { templateItem, fetchConstructionTemplateItem, createConstruction, updateConstruction, fetchConstructions, deleteConstruction } = useConstructionManagement()
 const { showMessage } = useGlobalMessage()
+const { unitMeasurements, loadUnitMeasurements } = useUnitofMeasurement()
+const { variants, loadVariants } = useWorkSubTypeVariant()
 
 // Danh sách hạng mục
 const constructionItems = ref([])
 const showAddForm = ref(false)
+const showItemForm = ref(false)
+const selectedItem = ref(null)
+const editingItemIndex = ref(-1)
 
 // Hạng mục mới
 const newItem = ref({
@@ -33,9 +42,8 @@ const newItem = ref({
   startDate: '',
   endDate: '',
   totalVolume: '',
-  unitOfMeasurement: '',
-  taskType: '',
-  description: ''
+  unitOfMeasurementID: '',
+  workSubTypeVariantID: ''
 })
 
 // Form data
@@ -62,14 +70,21 @@ const initFormData = () => {
       constructionItems.value = props.construction.constructionItems.map(item => ({
         ...item,
         startDate: item.startDate ? item.startDate.split('T')[0] : '',
-        endDate: item.endDate ? item.endDate.split('T')[0] : ''
+        expectedCompletionDate: item.expectedCompletionDate ? item.expectedCompletionDate.split('T')[0] : '',
+        unitName: item.unitName,
+        workSubTypeVariantID: item.workSubTypeVariantID,
+        unitOfMeasurementID: item.unitOfMeasurementID
       }))
     }
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   initFormData()
+  await Promise.all([
+    loadUnitMeasurements(),
+    loadVariants()
+  ])
 })
 
 // Watch cho props.construction để cập nhật formData khi construction thay đổi
@@ -82,7 +97,7 @@ watch(() => props.construction, (newConstruction) => {
 // Thêm một hàng nhập hạng mục mới
 const addNewItemRow = () => {
   if (!newItem.value.constructionItemName) {
-    showError('Vui lòng nhập tên hạng mục')
+    showMessage('Vui lòng nhập tên hạng mục', error)
     return
   }
   constructionItems.value.push({ ...newItem.value })
@@ -106,37 +121,36 @@ const resetNewItem = () => {
   newItem.value = {
     constructionItemName: '',
     startDate: '',
-    endDate: '',
+    expectedCompletionDate: '',
     totalVolume: '',
-    unitOfMeasurement: '',
-    taskType: '',
-    description: ''
+    unitOfMeasurementID: '',
+    workSubTypeVariantID: ''
   }
 }
 
 const validateForm = () => {
   if (!formData.value.constructionName.trim()) {
-    showError('Vui lòng nhập tên công trình')
+    showMessage('Vui lòng nhập tên công trình', 'error')
     return false
   }
   if (!formData.value.location.trim()) {
-    showError('Vui lòng nhập địa điểm')
+    showMessage('Vui lòng nhập địa điểm', 'error')
     return false
   }
   if (!formData.value.totalArea) {
-    showError('Vui lòng nhập tổng diện tích')
+    showMessage('Vui lòng nhập tổng diện tích', 'error')
     return false
   }
   if (!formData.value.startDate) {
-    showError('Vui lòng chọn ngày bắt đầu')
+    showMessage('Vui lòng chọn ngày bắt đầu', 'error')
     return false
   }
   if (!formData.value.expectedCompletionDate) {
-    showError('Vui lòng chọn ngày dự kiến hoàn thành')
+    showMessage('Vui lòng chọn ngày dự kiến hoàn thành', 'error')
     return false
   }
   if (new Date(formData.value.expectedCompletionDate) <= new Date(formData.value.startDate)) {
-    showError('Ngày hoàn thành phải sau ngày bắt đầu')
+    showMessage('Ngày hoàn thành phải sau ngày bắt đầu', 'error')
     return false
   }
   return true
@@ -146,85 +160,163 @@ const handleSubmit = async () => {
   if (!validateForm()) return
 
   try {
-    const dataToSubmit = {
-      ...formData.value,
-      constructionItems: constructionItems.value
+    // Step 1: Create construction first
+    const constructionData = {
+      constructionTypeID: Number(formData.value.constructionTypeID),
+      constructionStatusID: 1,
+      constructionName: formData.value.constructionName,
+      location: formData.value.location,
+      totalArea: Number(formData.value.totalArea),
+      startDate: `${formData.value.startDate}T00:00:00.000Z`,
+      expectedCompletionDate: `${formData.value.expectedCompletionDate}T00:00:00.000Z`,
+      designBlueprint: formData.value.designBlueprint
     }
 
+    // Log request data
+    console.log('Construction Data being sent:', {
+      ...constructionData,
+      designBlueprint: constructionData.designBlueprint ? 'File present' : 'No file'
+    })
+
+    let createdConstruction
     if (props.mode === 'update') {
-      await updateConstruction(props.construction.id, dataToSubmit)
+      console.log('Updating construction with ID:', props.construction.id)
+      createdConstruction = await updateConstruction(props.construction.id, constructionData)
       showMessage('Cập nhật công trình thành công', 'success')
+      // Fetch lại data sau khi cập nhật thành công
+      await fetchConstructions()
+      emit('close')
     } else {
-      await createConstruction(dataToSubmit)
-      showMessage('Tạo công trình thành công', 'success')
-    }
+      console.log('Creating new construction')
+      try {
+        createdConstruction = await createConstruction(constructionData)
+        console.log('Construction created successfully:', createdConstruction)
+        // Step 2: Create construction items using the new construction's ID
+        if (constructionItems.value.length > 0) {
+          console.log('Creating construction items:', constructionItems.value)
+          const { createConstructionItem } = useConstructionItem()
+          const itemPromises = constructionItems.value.map(item => {
+            const itemData = {
+              constructionID: createdConstruction.id,
+              constructionItemName: item.constructionItemName,
+              startDate: `${item.startDate}T00:00:00.000Z`,
+              expectedCompletionDate: `${item.expectedCompletionDate}T00:00:00.000Z`,
+              totalVolume: Number(item.totalVolume),
+              unitOfMeasurementID: Number(item.unitOfMeasurementID),
+              workSubTypeVariantID: Number(item.workSubTypeVariantID),
+              constructionItemStatusID: 1
+            }
+            console.log('Creating item with data:', itemData)
+            return createConstructionItem(itemData)
+          })
 
-    // Fetch lại dữ liệu sau khi tạo/cập nhật thành công
-    await fetchConstructions()
-    emit('close')
+          try {
+            const results = await Promise.all(itemPromises)
+            console.log('All items created successfully:', results)
+            showMessage('Tạo công trình thành công', 'success')
+          } catch (error) {
+            console.error('Error creating construction items:', {
+              message: error.message,
+              response: error.response?.data,
+              status: error.response?.status,
+              items: constructionItems.value
+            })
+            showMessage('Có lỗi xảy ra khi tạo công trình', 'error')
+            return
+          }
+        }
+
+        // Step 3: Refresh data and close form
+        console.log('Refreshing construction list...')
+        await fetchConstructions()
+        emit('close')
+      } catch (error) {
+        console.error('Error creating construction:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          requestData: constructionData
+        })
+        showMessage(`Không thể tạo công trình: ${error.response?.data?.message || error.message}`, 'error')
+      }
+    }
   } catch (error) {
-    console.error(`Error ${props.mode === 'update' ? 'updating' : 'creating'} construction:`, error)
-    showMessage(`Không thể ${props.mode === 'update' ? 'cập nhật' : 'tạo'} công trình`, 'error')
+    console.error('Unexpected error:', error)
+    showMessage('Có lỗi xảy ra', 'error')
   }
 }
 
 const handleConstructionTypeChange = async () => {
   if (formData.value.constructionTypeID) {
     await fetchConstructionTemplateItem(formData.value.constructionTypeID)
-    // Thêm các hạng mục mẫu vào danh sách
+    // Thay thế hoàn toàn danh sách hạng mục bằng các hạng mục mẫu
     if (templateItem.value && templateItem.value.length > 0) {
-      templateItem.value.forEach(item => {
-        constructionItems.value.push({
+      constructionItems.value = templateItem.value.map(item => ({
           constructionItemName: item.constructionTemplateItemName,
           startDate: '',
           endDate: '',
           totalVolume: '',
-          unitOfMeasurement: item.unitOfMeasurement,
-          taskType: item.workSubTypeVariantDescription,
-          description: item.description
-        })
-      })
+        unitOfMeasurementID: item.unitOfMeasurementID,
+        workSubTypeVariantID: item.workSubTypeVariantID,
+        unitName: item.unitName
+      }))
+    } else {
+      // Nếu không có hạng mục mẫu, xóa sạch danh sách
+      constructionItems.value = []
     }
+  } else {
+    // Nếu không chọn loại dự án, xóa sạch danh sách
+    constructionItems.value = []
   }
 }
 
 const handleFileUpload = async (event) => {
   const file = event.target.files[0]
   if (file) {
-    try {
-      // Kiểm tra định dạng file
       if (!file.type.startsWith('image/')) {
-        showError('Vui lòng chọn file ảnh')
+      showMessage('Vui lòng chọn file ảnh', 'error')
         return
       }
-
-      // Tạo FormData để gửi file
-      const formData = new FormData()
-      formData.append('file', file)
-
-      // Gọi API để upload file
-      const response = await fetch('/api/upload/image', {
-        method: 'POST',
-        body: formData
-      })
-
-      if (!response.ok) {
-        throw new Error('Upload failed')
-      }
-
-      const result = await response.json()
-      // Lưu tên file vào formData
-      formData.value.designBlueprint = result.filename
-    } catch (error) {
-      console.error('Error uploading file:', error)
-      showError('Có lỗi xảy ra khi upload file')
-    }
+    formData.value.designBlueprint = file
   }
+}
+
+const handleEditItem = (index) => {
+  selectedItem.value = { ...constructionItems.value[index] }
+  editingItemIndex.value = index
+  showItemForm.value = true
+}
+
+const handleUpdateItem = (itemData) => {
+  if (editingItemIndex.value >= 0) {
+    constructionItems.value[editingItemIndex.value] = {
+      ...itemData,
+      startDate: itemData.startDate.split('T')[0],
+      expectedCompletionDate: itemData.expectedCompletionDate.split('T')[0]
+    }
+    showMessage('Cập nhật hạng mục thành công', 'success')
+  } else {
+    constructionItems.value.push({
+      ...itemData,
+      startDate: itemData.startDate.split('T')[0],
+      expectedCompletionDate: itemData.expectedCompletionDate.split('T')[0]
+    })
+    showMessage('Thêm hạng mục thành công', 'success')
+  }
+  showItemForm.value = false
+  selectedItem.value = null
+  editingItemIndex.value = -1
+}
+
+const handleCancelItem = () => {
+  showItemForm.value = false
+  selectedItem.value = null
+  editingItemIndex.value = -1
 }
 </script>
 
 <template>
-  <form @submit.prevent="handleSubmit" class="p-3">
+  <div class="p-3">
     <div class="row g-3">
       <div class="col-md-6">
         <FormField label="Tên Dự Án" v-model="formData.constructionName" required />
@@ -240,13 +332,13 @@ const handleFileUpload = async (event) => {
       <div class="col-12">
         <FormField label="Địa Điểm Thi Công" v-model="formData.location" required />
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <FormField label="Tổng Diện Tích (m²)" type="number" v-model="formData.totalArea" required />
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <FormField label="Ngày Bắt Đầu" type="date" v-model="formData.startDate" required />
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <FormField label="Ngày Hoàn Thành Dự Kiến" type="date" v-model="formData.expectedCompletionDate" required />
       </div>
       <div class="col-12">
@@ -256,86 +348,113 @@ const handleFileUpload = async (event) => {
     </div>
 
     <div class="construction-items mt-4">
-      <h4>Danh Sách Hạng Mục</h4>
-
-      <!-- Danh sách hạng mục đã thêm -->
-      <div class="row g-3 align-items-end" v-for="(item, index) in constructionItems" :key="index">
-        <div class="col-md-6">
-          <FormField label="Tên Hạng Mục" v-model="item.constructionItemName" required />
-        </div>
-        <div class="col-md-3">
-          <FormField label="Ngày Bắt Đầu" type="date" v-model="item.startDate" required />
-        </div>
-        <div class="col-md-3">
-          <FormField label="Ngày Kết Thúc" type="date" v-model="item.endDate" required />
-        </div>
-        <div class="col-md-3">
-          <FormField label="Tổng Khối Lượng" type="number" v-model="item.totalVolume" required />
-        </div>
-        <div class="col-md-2">
-          <FormField label="Đơn Vị" type="select" v-model="item.unitOfMeasurement" :options="[
-            { value: '1', label: 'm' },
-            { value: '2', label: 'kg' },
-            { value: '3', label: 'khối' },
-            { value: '4', label: 'viên' }
-          ]" required />
-        </div>
-        <div class="col-md-4">
-          <FormField label="Loại Công Tác" v-model="item.taskType" required />
-        </div>
-        <div class="col-md-3">
-          <FormField label="Mô Tả" v-model="item.description" />
-        </div>
-        <div class="col-12 text-end">
-          <button type="button" class="btn btn-sm btn-danger" @click="removeItemRow(index)">
-            Xóa
-          </button>
-        </div>
-      </div>
-
-      <!-- Form thêm hạng mục mới -->
-      <div v-if="showAddForm" class="row g-3 align-items-end mt-3 border-top pt-3">
-        <div class="col-md-6">
-          <FormField label="Tên Hạng Mục" v-model="newItem.constructionItemName" required />
-        </div>
-        <div class="col-md-3">
-          <FormField label="Ngày Bắt Đầu" type="date" v-model="newItem.startDate" required />
-        </div>
-        <div class="col-md-3">
-          <FormField label="Ngày Kết Thúc" type="date" v-model="newItem.endDate" required />
-        </div>
-        <div class="col-md-3">
-          <FormField label="Tổng Khối Lượng" type="number" v-model="newItem.totalVolume" required />
-        </div>
-        <div class="col-md-2">
-          <FormField label="Đơn Vị" type="select" v-model="newItem.unitOfMeasurement" :options="[
-            { value: '1', label: 'm' },
-            { value: '2', label: 'kg' },
-            { value: '3', label: 'khối' },
-            { value: '4', label: 'viên' }
-          ]" required />
-        </div>
-        <div class="col-md-4">
-          <FormField label="Loại Công Tác" v-model="newItem.taskType" required />
-        </div>
-        <div class="col-md-3">
-          <FormField label="Mô Tả" v-model="newItem.description" />
-        </div>
-        <div class="col-12 text-end">
-          <button type="button" class="btn btn-sm btn-secondary me-2" @click="cancelAddItem">
-            Hủy
-          </button>
-          <button type="button" class="btn btn-sm btn-primary" @click="addNewItemRow">
-            Thêm
-          </button>
-        </div>
-      </div>
-
-      <!-- Nút thêm hạng mục -->
-      <div class="text-end mt-3">
-        <ActionButton v-if="!showAddForm" type="primary" icon="fas fa-plus" @click="showAddForm = true">
+      <div class="section-header d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">
+          <i class="fas fa-list-ul me-2"></i>
+          Danh Sách Hạng Mục
+        </h4>
+        <ActionButton
+          v-if="!showItemForm && props.mode === 'create'"
+          type="primary"
+          icon="fas fa-plus"
+          @click="showItemForm = true"
+        >
           Thêm Hạng Mục
         </ActionButton>
+      </div>
+
+      <div v-if="props.mode === 'update'" class="alert alert-info mb-4">
+        <i class="fas fa-info-circle me-2"></i>
+        Để quản lý hạng mục, vui lòng vào trang chi tiết công trình
+      </div>
+
+      <div v-if="constructionItems.length > 0" class="items-list mb-4">
+        <div v-for="(item, index) in constructionItems" :key="index" class="item-card mb-3">
+          <div class="item-header d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">{{ item.constructionItemName }}</h5>
+            <div v-if="props.mode === 'create'" class="btn-group">
+              <button type="button" class="btn btn-outline-danger btn-sm" @click="removeItemRow(index)">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+            </div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <FormField
+                label="Ngày Bắt Đầu"
+                type="date"
+                v-model="item.startDate"
+                required
+                :disabled="true"
+              />
+            </div>
+            <div class="col-md-3">
+              <FormField
+                label="Ngày Kết Thúc"
+                type="date"
+                v-model="item.expectedCompletionDate"
+                required
+                :disabled="true"
+              />
+            </div>
+            <div class="col-md-3">
+              <FormField
+                label="Tổng Khối Lượng"
+                type="number"
+                v-model="item.totalVolume"
+                required
+                :disabled="true"
+              />
+            </div>
+            <div class="col-md-3">
+              <FormField
+                label="Đơn Vị"
+                type="select"
+                v-model="item.unitOfMeasurementID"
+                :options="unitMeasurements.map(unit => ({
+                  value: unit.id,
+                  label: unit.shortName || unit.name
+                }))"
+                required
+                :disabled="true"
+              />
+            </div>
+            <div class="col-md-12">
+              <FormField
+                label="Loại Công Tác"
+                type="select"
+                v-model="item.workSubTypeVariantID"
+                :options="variants.map(variant => ({
+                  value: variant.id,
+                  label: variant.description
+                }))"
+                required
+                :disabled="true"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="showItemForm && props.mode === 'create'" class="add-item-form">
+        <div class="card">
+          <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Thêm Hạng Mục Mới</h5>
+            <button type="button" class="btn-close" @click="handleCancelItem"></button>
+          </div>
+          <div class="card-body">
+            <ConstructionItemForm
+              mode="create"
+              @submit="handleUpdateItem"
+              @cancel="handleCancelItem"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div v-if="!showItemForm && constructionItems.length === 0 && props.mode === 'create'" class="empty-state text-center py-5">
+        <i class="fas fa-clipboard-list fa-3x text-muted mb-3"></i>
+        <p class="text-muted">Chưa có hạng mục nào được thêm</p>
       </div>
     </div>
 
@@ -343,47 +462,136 @@ const handleFileUpload = async (event) => {
       <ActionButton type="secondary" icon="fas fa-times" @click="$emit('close')">
         Hủy
       </ActionButton>
-      <ActionButton type="primary" icon="fas fa-save" @click="handleSubmit">
+      <button type="button" class="btn btn-primary" @click="handleSubmit">
+        <i class="fas fa-save me-2"></i>
         {{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}
-      </ActionButton>
+      </button>
     </div>
-  </form>
+  </div>
 </template>
 
 <style scoped>
 .construction-items {
-  margin-top: 20px;
-  border: 1px solid #ddd;
-  padding: 15px;
-  border-radius: 4px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  padding: 1.5rem;
 }
 
-.construction-item-form {
-  margin-bottom: 20px;
+.section-header h4 {
+  color: #2c3e50;
+  font-size: 1.25rem;
+  font-weight: 600;
 }
 
-.add-item-btn {
-  background-color: #4CAF50;
-  color: white;
-  padding: 8px 16px;
+.item-card {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.2s ease;
+}
+
+.item-card:hover {
+  border-color: #dee2e6;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.item-header {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 1rem;
+}
+
+.item-header h5 {
+  color: #495057;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.empty-state {
+  border: 2px dashed #dee2e6;
+  border-radius: 8px;
+  color: #6c757d;
+}
+
+.empty-state i {
+  opacity: 0.5;
+}
+
+.add-item-form {
+  margin-top: 1.5rem;
+}
+
+.add-item-form .card {
   border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  margin-top: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.construction-items-list ul {
-  list-style: none;
-  padding: 0;
+.add-item-form .card-header {
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
 }
 
-.construction-items-list li {
-  padding: 8px;
-  border-bottom: 1px solid #eee;
+.add-item-form .card-footer {
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
 }
 
-h4 {
-  color: #666;
-  margin-bottom: 10px;
+.btn-close {
+  padding: 0.5rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.375rem;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn i {
+  font-size: 0.875rem;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.form-group {
+  margin-bottom: 0.5rem;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.25rem;
+}
+
+.form-group div {
+  font-weight: 500;
+  color: #212529;
+}
+
+.btn-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.btn-group .btn {
+  padding: 0.25rem 0.5rem;
+}
+
+.alert-info {
+  background-color: #e8f4f8;
+  border-color: #bee5eb;
+  color: #0c5460;
+}
+
+.alert i {
+  color: #17a2b8;
 }
 </style>

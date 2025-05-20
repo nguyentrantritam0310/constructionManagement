@@ -62,7 +62,7 @@ const columns = [
   { key: 'content', label: 'Mô tả' },
   { key: 'level', label: 'Mức độ' },
   { key: 'statusLogs[0].status', label: 'Trạng thái' },
-  { key: 'reportDate', label: 'Ngày tạo' }
+  { key: 'reportDate', label: 'Ngày tạo' },
 ]
 
 const problemTypes = [
@@ -150,7 +150,20 @@ const handleRowClick = (item) => {
   showDetailModal.value = true
 }
 
-const handleReject = async (report) => {
+const handleApproveClick = async (event, report) => {
+  event.stopPropagation()
+  try {
+    await updateReportStatus(report.id, 'Approved')
+    showMessage('Đã duyệt báo cáo thành công', 'success')
+    await fetchReports()
+  } catch (err) {
+    console.error('Error approving report:', err)
+    showMessage('Không thể duyệt báo cáo', 'error')
+  }
+}
+
+const handleRejectClick = async (event, report) => {
+  event.stopPropagation()
   try {
     await updateReportStatus(report.id, 'Rejected')
     showMessage('Đã từ chối báo cáo', 'success')
@@ -161,22 +174,11 @@ const handleReject = async (report) => {
   }
 }
 
-const handleApprove = async (report) => {
-  try {
-    await updateReportStatus(report.id, 'Approved')
-    showMessage('Đã duyệt báo cáo', 'success')
-    await fetchReports()
-  } catch (err) {
-    console.error('Error approving report:', err)
-    showMessage('Không thể duyệt báo cáo', 'error')
-  }
-}
-
 const technicalReports = computed(() =>
-  reports.value.filter(r => r.reportType === "Vấn đề kỹ thuật") // hoặc điều kiện phù hợp
+  reports.value.filter(r => r.reportType === "Sự cố kĩ thuật")
 )
 const progressReports = computed(() =>
-  reports.value.filter(r => r.reportType === "Sự cố thi công") // hoặc điều kiện phù hợp
+  reports.value.filter(r => r.reportType === "Sự cố thi công")
 )
 </script>
 
@@ -190,11 +192,11 @@ const progressReports = computed(() =>
       <div v-if="mainTab === 'report'" class="vertical-sub-tabs">
         <button class="vertical-sub-tab-btn" :class="{ active: reportTab === 'technical' }"
           @click="reportTab = 'technical'">
-          <i class="fas fa-tools me-1"></i> Vấn đề kỹ thuật
+          <i class="fas fa-wrench me-1"></i> Sự cố kĩ thuật
         </button>
         <button class="vertical-sub-tab-btn" :class="{ active: reportTab === 'progress' }"
           @click="reportTab = 'progress'">
-          <i class="fas fa-chart-line me-1"></i> Tiến độ thi công
+          <i class="fas fa-exclamation-triangle me-1"></i> Sự cố thi công
         </button>
       </div>
       <button class="vertical-tab-btn" :class="{ active: mainTab === 'material' }" @click="mainTab = 'material'">
@@ -207,8 +209,6 @@ const progressReports = computed(() =>
       <transition name="fade" mode="out-in">
         <div v-if="mainTab === 'report'" key="report">
           <div class="technical-report">
-            <!-- Advanced Filter -->
-
             <div v-if="loading" class="text-center py-4">
               <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
@@ -235,6 +235,23 @@ const progressReports = computed(() =>
                 <template #reportDate="{ item }">
                   {{ formatDate(item.reportDate) }}
                 </template>
+
+                <template #actions="{ item }">
+                  <div class="d-flex gap-2 justify-content-center">
+                    <button v-if="item.statusLogs[0].status === 0"
+                      class="btn btn-sm btn-success"
+                      @click="(e) => handleApproveClick(e, item)"
+                      title="Duyệt báo cáo">
+                      <i class="fas fa-check"></i>
+                    </button>
+                    <button v-if="item.statusLogs[0].status === 0"
+                      class="btn btn-sm btn-danger"
+                      @click="(e) => handleRejectClick(e, item)"
+                      title="Từ chối báo cáo">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                </template>
               </DataTable>
               <DataTable v-else :columns="columns" :data="paginatedProgressReports" class="report-table"
                 @row-click="handleRowClick">
@@ -252,6 +269,23 @@ const progressReports = computed(() =>
 
                 <template #reportDate="{ item }">
                   {{ formatDate(item.reportDate) }}
+                </template>
+
+                <template #actions="{ item }">
+                  <div class="d-flex gap-2 justify-content-center">
+                    <button v-if="item.statusLogs[0].status === 0"
+                      class="btn btn-sm btn-success"
+                      @click="(e) => handleApproveClick(e, item)"
+                      title="Duyệt báo cáo">
+                      <i class="fas fa-check"></i>
+                    </button>
+                    <button v-if="item.statusLogs[0].status === 0"
+                      class="btn btn-sm btn-danger"
+                      @click="(e) => handleRejectClick(e, item)"
+                      title="Từ chối báo cáo">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
                 </template>
               </DataTable>
             </div>
@@ -282,6 +316,7 @@ const progressReports = computed(() =>
         v-if="detailReport"
         v-model:show="showDetailModal"
         :report="detailReport"
+        :showActions="true"
         @reject="handleReject"
         @approve="handleApprove"
       />
@@ -527,5 +562,21 @@ const progressReports = computed(() =>
 .vertical-tabs-content {
   flex: 1;
   min-width: 0;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  border-radius: 0.2rem;
+  transition: all 0.2s;
+}
+
+.btn-sm:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.gap-2 {
+  gap: 0.5rem;
 }
 </style>

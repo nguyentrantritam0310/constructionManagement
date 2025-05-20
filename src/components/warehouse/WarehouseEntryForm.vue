@@ -190,7 +190,7 @@ const handleReject = async (item) => {
       <div class="d-flex justify-content-between align-items-center">
         <div>
           <h5 class="alert-heading">Đơn hàng #{{ order.id }}</h5>
-          <p class="mb-0">Người lập: {{ order.employeeName }}</p>
+          <p class="mb-0">Người lập: {{ order.plannerName || 'Chưa có thông tin' }}</p>
           <p class="mb-0">Ngày đặt: {{ new Date(order.importDate).toLocaleDateString('vi-VN') }}</p>
         </div>
         <div>
@@ -216,6 +216,12 @@ const handleReject = async (item) => {
           { key: 'price', label: 'Giá' },
           { key: 'totalAmount', label: 'Thành tiền' }
         ]" :data="materialTotals">
+        <template #materialID="{ item }">
+            <span class="text-primary"><b>VT-{{ item.materialID }}</b></span>
+          </template>
+          <template #materialName="{ item }">
+            <span><b>{{ item.materialName }}</b></span>
+          </template>
           <template #price="{ item }">
             {{ formatCurrency(item.price) }}
           </template>
@@ -251,6 +257,12 @@ const handleReject = async (item) => {
           <DataTable :columns="columns.filter(col =>
             props.readonly ? !['actualQuantity', 'note'].includes(col.key) : true
           )" :data="materials">
+            <template #materialID="{ item }">
+              <span class="text-primary"><b>VT-{{ item.materialID }}</b></span>
+            </template>
+            <template #materialName="{ item }">
+            <span><b>{{ item.materialName }}</b></span>
+          </template>
             <template v-if="!props.readonly" #actualQuantity="{ item }">
               <FormField type="number" label="" :modelValue="item.actualQuantity"
                 @update:modelValue="val => handleQuantityChange(item, val)"

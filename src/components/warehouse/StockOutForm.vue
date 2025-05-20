@@ -60,59 +60,241 @@ const removeMaterial = (index) => {
 </script>
 
 <template>
-  <div class="p-3">
-    <FormField label="Công Trình" type="select" v-model="formData.constructionID" :options="[]" required />
-
-    <FormField label="Ngày Xuất" type="date" v-model="formData.exportDate" required />
-
-    <FormField label="Ghi Chú" type="textarea" v-model="formData.note" rows="3" />
-
-    <div class="mb-3">
-      <label class="form-label fw-bold">
-        <i class="fas fa-boxes-stacked me-2"></i>Vật Tư Xuất
-      </label>
-      <div v-for="(material, index) in formData.material_ExportOrders" :key="index" class="card mb-2 shadow-sm">
-        <div class="card-body py-2">
-          <div class="row g-2 align-items-center">
-            <div class="col-md-5">
-              <FormField label="Tên Vật Tư" type="text" v-model="formData.material_ExportOrders[index].materialID"
-                required />
+  <div class="stock-out-form p-4">
+    <div class="row g-4">
+      <!-- Basic Information Section -->
+      <div class="col-12">
+        <div class="form-section">
+          <h5 class="section-title mb-4">
+            <i class="fas fa-info-circle me-2"></i>
+            Thông Tin Cơ Bản
+          </h5>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <FormField
+                label="Công Trình"
+                type="select"
+                v-model="formData.constructionID"
+                :options="[]"
+                required
+                class="form-field-custom"
+              />
             </div>
-            <div class="col-md-3">
-              <FormField label="Số Lượng" type="number" v-model="formData.material_ExportOrders[index].quantity"
-                required min="1" />
+            <div class="col-md-6">
+              <FormField
+                label="Ngày Xuất"
+                type="date"
+                v-model="formData.exportDate"
+                required
+                class="form-field-custom"
+              />
             </div>
-            <div class="col-md-3">
-              <FormField label="Ghi Chú" type="text" v-model="formData.material_ExportOrders[index].note" />
-            </div>
-            <div class="col-md-1 d-flex align-items-end">
-              <button type="button" class="btn btn-danger btn-sm" @click="removeMaterial(index)">
-                <i class="fas fa-trash"></i>
-              </button>
+            <div class="col-12">
+              <FormField
+                label="Ghi Chú"
+                type="textarea"
+                v-model="formData.note"
+                rows="3"
+                placeholder="Nhập ghi chú về phiếu xuất kho (nếu có)..."
+                class="form-field-custom"
+              />
             </div>
           </div>
         </div>
       </div>
-      <div class="text-end">
-        <button type="button" class="btn btn-outline-primary btn-sm" @click="addMaterial">
-          <i class="fas fa-plus me-2"></i>Thêm vật tư
-        </button>
+
+      <!-- Materials Section -->
+      <div class="col-12">
+        <div class="form-section">
+          <div class="d-flex justify-content-between align-items-center mb-4">
+            <h5 class="section-title mb-0">
+              <i class="fas fa-boxes-stacked me-2"></i>
+              Danh Sách Vật Tư Xuất
+            </h5>
+            <button type="button" class="btn btn-primary btn-sm" @click="addMaterial">
+              <i class="fas fa-plus me-2"></i>
+              Thêm Vật Tư
+            </button>
+          </div>
+
+          <!-- Empty State -->
+          <div v-if="formData.material_ExportOrders.length === 0" class="empty-state">
+            <div class="text-center py-5">
+              <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+              <p class="text-muted mb-0">Chưa có vật tư nào được thêm</p>
+            </div>
+          </div>
+
+          <!-- Materials List -->
+          <div v-else class="materials-list">
+            <div v-for="(material, index) in formData.material_ExportOrders"
+                 :key="index"
+                 class="material-item card mb-3 border-0 shadow-sm">
+              <div class="card-body">
+                <div class="row g-3">
+                  <div class="col-md-5">
+                    <FormField
+                      label="Tên Vật Tư"
+                      type="text"
+                      v-model="formData.material_ExportOrders[index].materialID"
+                      required
+                      class="form-field-custom"
+                    />
+                  </div>
+                  <div class="col-md-3">
+                    <FormField
+                      label="Số Lượng"
+                      type="number"
+                      v-model="formData.material_ExportOrders[index].quantity"
+                      required
+                      min="1"
+                      class="form-field-custom"
+                    />
+                  </div>
+                  <div class="col-md-3">
+                    <FormField
+                      label="Ghi Chú"
+                      type="text"
+                      v-model="formData.material_ExportOrders[index].note"
+                      placeholder="Ghi chú cho vật tư này..."
+                      class="form-field-custom"
+                    />
+                  </div>
+                  <div class="col-md-1 d-flex align-items-center justify-content-center">
+                    <button
+                      type="button"
+                      class="btn btn-outline-danger btn-sm btn-icon"
+                      @click="removeMaterial(index)"
+                      title="Xóa vật tư này"
+                    >
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
-<style>
-.card {
+<style scoped>
+.stock-out-form {
+  background-color: #fff;
+  border-radius: 1rem;
+}
+
+.form-section {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.03);
+}
+
+.section-title {
+  color: #2c3e50;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.form-field-custom :deep(.form-label) {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+
+.form-field-custom :deep(.form-control),
+.form-field-custom :deep(.form-select) {
   border-radius: 0.5rem;
+  border-color: #e2e8f0;
+  padding: 0.625rem 1rem;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
 }
 
-.card-body {
-  padding: 0.75rem 1rem;
+.form-field-custom :deep(.form-control:focus),
+.form-field-custom :deep(.form-select:focus) {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.table th,
-.table td {
-  vertical-align: middle;
+.material-item {
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+.material-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
+}
+
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+  transform: scale(1.05);
+}
+
+.empty-state {
+  border: 2px dashed #e2e8f0;
+  border-radius: 0.75rem;
+  background-color: #f8fafc;
+}
+
+.empty-state i {
+  color: #94a3b8;
+}
+
+.btn-primary {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  transform: translateY(-1px);
+}
+
+.btn-outline-danger {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+.btn-outline-danger:hover {
+  background-color: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .stock-out-form {
+    padding: 1rem;
+  }
+
+  .form-section {
+    padding: 1rem;
+  }
+
+  .btn-icon {
+    width: 32px;
+    height: 32px;
+  }
 }
 </style>

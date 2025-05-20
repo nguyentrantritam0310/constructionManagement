@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import api from '../api.js'
 import { constructionService } from '../services/constructionService'
-import { useGlobalMessage } from '../../src/composables/useGlobalMessage'
+import { useGlobalMessage } from './useGlobalMessage'
 const { showMessage } = useGlobalMessage()
 
 export function useConstructionManagement() {
@@ -10,16 +10,24 @@ export function useConstructionManagement() {
   const templateItem = ref([])
   const loading = ref(false)
   const error = ref(null)
+  const initialized = ref(false)
 
   const fetchConstructions = async () => {
     try {
       loading.value = true
       const data = await constructionService.getAll()
+      if (Array.isArray(data)) {
       constructions.value = data
+      } else {
+        console.error('Invalid data format received:', data)
+        constructions.value = []
+      }
+      initialized.value = true
     } catch (err) {
       error.value = err.message
       showMessage('Không thể tải danh sách công trình', 'error')
       console.error('Error fetching constructions:', err)
+      constructions.value = []
     } finally {
       loading.value = false
     }
@@ -50,28 +58,45 @@ export function useConstructionManagement() {
     }
   }
 
-  const dashboardStats = computed(() => ({
-    totalConstructions: constructions.value.length,
-    pendingConstructions: constructions.value.filter(c => c.status === 'Pending').length,
-    inProgressConstructions: constructions.value.filter(c => c.status === 'In Progress').length,
-    completedConstructions: constructions.value.filter(c => c.status === 'Completed').length,
-    pausedConstructions: constructions.value.filter(c => c.status === 'Paused').length,
-    canceledConstructions: constructions.value.filter(c => c.status === 'Canceled').length
-  }))
+  const dashboardStats = computed(() => {
+    if (!initialized.value || !Array.isArray(constructions.value)) {
+      return {
+        totalProjects: 0,
+        pendingProjects: 0,
+        inProgressProjects: 0,
+        completedProjects: 0,
+        pausedProjects: 0,
+        canceledProjects: 0
+      }
+    }
 
+    return {
+      totalProjects: constructions.value.length,
+      pendingProjects: constructions.value.filter(c => c.statusName === 'Chờ khởi công').length,
+      inProgressProjects: constructions.value.filter(c => c.statusName === 'Đang thi công').length,
+      completedProjects: constructions.value.filter(c => c.statusName === 'Hoàn thành').length,
+      pausedProjects: constructions.value.filter(c => c.statusName === 'Tạm dừng').length,
+      canceledProjects: constructions.value.filter(c => c.statusName === 'Hủy bỏ').length
+    }
+  })
 
   const upcomingDeadlines = computed(() => {
-    const today = new Date()
-    const thirtyDaysFromNow = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)
+    if (!initialized.value || !Array.isArray(constructions.value)) {
+      return []
+    }
+
+    const now = new Date()
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+
     return constructions.value
       .filter(construction => {
-        const deadline = new Date(construction.expectedCompletionDate)
-        return deadline >= today && deadline <= thirtyDaysFromNow
+        const endDate = new Date(construction.expectedCompletionDate)
+        return endDate > now && endDate <= thirtyDaysFromNow
       })
       .map(construction => ({
         name: construction.constructionName,
         deadline: construction.expectedCompletionDate,
-        status: construction.status,
+        status: construction.statusName,
         progress: calculateProgress(construction)
       }))
       .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
@@ -322,6 +347,7 @@ export function useConstructionManagement() {
     templateItem,
     loading,
     error,
+    initialized,
     fetchConstructions,
     fetchConstructionDetail,
     fetchConstructionTemplateItem,

@@ -5,7 +5,8 @@ import FilterSearch from './FilterSearch.vue'
 const props = defineProps({
   items: {
     type: Array,
-    required: true
+    required: true,
+    default: () => []
   },
   searchFields: {
     type: Array,
@@ -29,6 +30,10 @@ const statusFilter = ref('all')
 const dateRangeFilter = ref({ start: null, end: null })
 
 const filteredItems = computed(() => {
+  if (!props.items || !Array.isArray(props.items)) {
+    return []
+  }
+
   let filtered = [...props.items]
 
   // Apply search filter

@@ -13,12 +13,14 @@ import Pagination from '../../components/common/Pagination.vue'
 import { useManagementReport } from '../../composables/useManagementReport'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
+import TechnicalReportForm from '../../components/technical-report/TechnicalReportForm.vue'
 
 const { showMessage } = useGlobalMessage()
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
 const selectedReport = ref(null)
+const reportFormData = ref({})
 
 const filteredReports = ref([])
 
@@ -81,9 +83,9 @@ const validateForm = () => {
   return true
 }
 
-const handleSubmit = async (reportData) => {
+const handleSubmit = async (formData) => {
   try {
-    await createReport(reportData)
+    await createReport(formData)
     showCreateForm.value = false
     showMessage('Báo cáo đã được tạo thành công', 'success')
     await fetchReportsByKiThuat() // Refresh the list
@@ -98,15 +100,24 @@ const handleUpdateStatus = async (report) => {
   showUpdateForm.value = true
 }
 
-const handleUpdateSubmit = async (updatedReport) => {
+const handleUpdateSubmit = async (formData) => {
   try {
-    await updateReport(updatedReport.id, updatedReport)
+    const reportId = selectedReport.value.id
+    console.log('🔄 Updating report:', reportId)
+    console.log('📦 Form data contents:')
+    for (let [key, value] of formData.entries()) {
+      console.log(`${key}: ${value instanceof File ? `File(${value.name})` : value}`)
+    }
+
+    await updateReport(reportId, formData)
     showUpdateForm.value = false
     selectedReport.value = null
-    alert('Cập nhật báo cáo thành công')
+    reportFormData.value = {}
+    showMessage('Cập nhật báo cáo thành công', 'success')
+    await fetchReportsByKiThuat()
   } catch (err) {
     console.error('Error updating report:', err)
-    alert('Có lỗi xảy ra khi cập nhật báo cáo')
+    showMessage(err.message || 'Có lỗi xảy ra khi cập nhật báo cáo', 'error')
   }
 }
 
@@ -232,23 +243,33 @@ const handleApprove = async (report) => {
     </div>
 
     <!-- Form tạo báo cáo mới -->
-    <FormDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới">
+    <FormDialog
+      v-model:show="showCreateForm"
+      title="Tạo Báo Cáo Mới"
+      submitText="Tạo báo cáo"
+      :formData="reportFormData"
+      @submit="handleSubmit"
+    >
       <ReportForm
         mode="create"
         reportType="technical"
-        @submit="handleSubmit"
-        @cancel="showCreateForm = false"
+        v-model="reportFormData"
       />
     </FormDialog>
 
     <!-- Form cập nhật báo cáo -->
-    <FormDialog v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo">
+    <FormDialog
+      v-model:show="showUpdateForm"
+      title="Cập Nhật Báo Cáo"
+      submitText="Cập nhật"
+      :formData="reportFormData"
+      @submit="handleUpdateSubmit"
+    >
       <ReportForm
         mode="update"
         reportType="technical"
         :report="selectedReport"
-        @submit="handleUpdateSubmit"
-        @cancel="showUpdateForm = false"
+        v-model="reportFormData"
       />
     </FormDialog>
   </div>

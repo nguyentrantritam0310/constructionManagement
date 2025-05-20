@@ -83,29 +83,6 @@ onMounted(async () => {
   }
 })
 
-const handleCreateConstruction = async (constructionData) => {
-  try {
-    await createConstruction(constructionData)
-    showMessage('Tạo công trình thành công', 'success')
-    closeCreateForm()
-    await fetchConstructions() // Refresh the list after creating
-  } catch (err) {
-    console.error('Error creating construction:', err)
-    showMessage('Không thể tạo công trình', 'error')
-  }
-}
-
-const handleUpdateConstruction = async (constructionId, constructionData) => {
-  try {
-    await updateConstruction(constructionId, constructionData)
-    showSuccess('Cập nhật công trình thành công')
-    closeUpdateForm()
-  } catch (err) {
-    console.error('Error updating construction:', err)
-    showError('Không thể cập nhật công trình')
-  }
-}
-
 const handleUpdateConstructionStatus = async (data) => {
   try {
     await updateConstructionStatus(data.constructionId, data.newStatus)
@@ -149,28 +126,24 @@ const openStatusDialog = (construction) => {
   showStatusDialog.value = true
 }
 
-const handleConstructionUpdated = async (constructionData) => {
-  await handleUpdateConstruction(selectedConstruction.value.id, constructionData)
-}
-
 const handleCreateSubmit = async () => {
   try {
-    await fetchConstructions() // Refresh the list after creating
+    await fetchConstructions() // Chỉ refresh danh sách sau khi tạo
     showCreateDialog.value = false
   } catch (err) {
     console.error('Error refreshing constructions:', err)
-    showError('Không thể cập nhật danh sách công trình')
+    showMessage('Không thể cập nhật danh sách công trình', 'error')
   }
 }
 
 const handleUpdateSubmit = async () => {
   try {
-    await fetchConstructions() // Refresh the list after updating
+    await fetchConstructions() // Chỉ refresh danh sách sau khi cập nhật
     showUpdateDialog.value = false
     selectedConstruction.value = null
   } catch (err) {
     console.error('Error refreshing constructions:', err)
-    showError('Không thể cập nhật danh sách công trình')
+    showMessage('Không thể cập nhật danh sách công trình', 'error')
   }
 }
 </script>
@@ -194,8 +167,12 @@ const handleUpdateSubmit = async () => {
 
     <!-- Update Dialog -->
     <ModalDialog v-model:show="showUpdateDialog" title="Cập Nhật Công Trình" size="lg">
-      <ConstructionForm v-if="selectedConstruction" mode="update" :construction="selectedConstruction"
-        @close="handleUpdateSubmit" />
+      <ConstructionForm
+        v-if="selectedConstruction"
+        mode="update"
+        :construction="selectedConstruction"
+        @close="handleUpdateSubmit"
+      />
     </ModalDialog>
 
     <!-- Status Change Dialog -->

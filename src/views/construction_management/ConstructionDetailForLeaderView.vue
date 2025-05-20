@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Breadcrumb from '@/components/common/Breadcrumb.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
@@ -13,6 +13,12 @@ import MultiSelect from 'vue-multiselect'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
 import Pagination from '@/components/common/Pagination.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import { useConstructionPlan } from '../../composables/useConstructionPlan'
+import { useTask } from '../../composables/useTask'
+import { useEmployee } from '../../composables/useEmployee'
+import { useAttendance } from '../../composables/useAttendance'
+import { attendanceService } from '../../services/attendanceService'
+import FormField from '@/components/common/FormField.vue'
 const { showMessage } = useGlobalMessage()
 const route = useRoute()
 const router = useRouter()
@@ -25,713 +31,2568 @@ const selectedPlan = ref(null)
 const showTaskAssignment = ref(false)
 const selectedTask = ref(null)
 const showAssignmentModal = ref(false)
-const availableWorkers = ref([
-    { id: 'worker1', name: 'Thợ 1' },
-    { id: 'worker2', name: 'Thợ 2' },
-    { id: 'worker3', name: 'Thợ 3' }
-])
+const showTaskModal = ref(false)
+const selectedTasks = ref([])
+const { employees, loading: employeesLoading, error: employeesError, fetchEmployees } = useEmployee()
 const selectedWorkers = ref([])
+const assignmentStartDate = ref('')
+const assignmentEndDate = ref('')
+const assignmentNotes = ref('')
 const loading = ref(false)
 const error = ref(null)
 const currentPage = ref(1)
 const itemsPerPage = 5
+const currentPlanPage = ref(1)
+const plansPerPage = 5
+const showPlanModal = ref(false)
 
 const { selectedConstruction, fetchConstructionDetail } = useConstructionManagement()
+const { plans, loading: plansLoading, error: plansError, fetchPlans } = useConstructionPlan()
+const { tasks, loading: tasksLoading, error: tasksError, fetchTasks, changeTaskStatus } = useTask()
+const {
+  attendanceList,
+  currentDateAttendance,
+  loading: attendanceLoading,
+  error: attendanceError,
+  selectedDate,
+  availableDates,
+  fetchAttendance,
+  createAttendanceForWorkers,
+  updateEmployeeAttendanceStatus,
+  getAssignedWorkersForTask,
+  setAttendanceTabActive,
+  deleteAttendanceByEmployeeAndTask,
+  hasUnsavedChanges,
+  saveAttendanceChanges,
+  handleTabLeave,
+  resetUnsavedChanges
+} = useAttendance()
 
 const breadcrumbItems = computed(() => [
-    { text: 'Trang chủ', to: '/' },
-    { text: 'Quản lý dự án', to: '/project-management' },
-    { text: construction.value?.constructionName || 'Chi tiết công trình' }
+  { text: 'Trang chủ', to: '/' },
+  { text: 'Quản lý dự án', to: '/task-status' },
+  { text: construction.value?.constructionName || 'Chi tiết công trình' }
 ])
 
 onMounted(async () => {
-    try {
-        loading.value = true
-        await fetchConstructionDetail(constructionId)
-        construction.value = selectedConstruction.value
-    } catch (err) {
-        console.error('Error fetching construction details:', err)
-        error.value = 'Không thể tải thông tin công trình'
-    } finally {
-        loading.value = false
-    }
+  try {
+    loading.value = true
+    await Promise.all([
+      fetchConstructionDetail(constructionId),
+      fetchPlans(),
+      fetchEmployees(),
+      fetchAttendance()
+    ])
+    construction.value = selectedConstruction.value
+  } catch (err) {
+    console.error('Error fetching data:', err)
+    error.value = 'Không thể tải thông tin'
+  } finally {
+    loading.value = false
+  }
 })
 
 const constructionItemColumns = [
-    { key: 'name', label: 'Tên hạng mục' },
-    { key: 'startDate', label: 'Ngày bắt đầu' },
-    { key: 'endDate', label: 'Ngày kết thúc' },
-    { key: 'totalVolume', label: 'Tổng khối lượng' },
-    { key: 'unit', label: 'Đơn vị' },
-    { key: 'status', label: 'Trạng thái' }
+  { key: 'id', label: 'Mã hạng mục' },
+  { key: 'constructionItemName', label: 'Tên hạng mục' },
+  { key: 'startDate', label: 'Ngày bắt đầu' },
+  { key: 'expectedCompletionDate', label: 'Ngày kết thúc' },
+  { key: 'totalVolume', label: 'Tổng khối lượng' },
+  { key: 'unitName', label: 'Đơn vị' },
+  { key: 'constructionItemStatusName', label: 'Trạng thái' }
 ]
 
 const planColumns = [
-    { key: 'name', label: 'Tên kế hoạch' },
-    { key: 'projectCode', label: 'Mã công trình' },
-    { key: 'itemCode', label: 'Mã hạng mục' },
-    { key: 'supervisor', label: 'Chỉ huy phụ trách' },
-    { key: 'startDate', label: 'Ngày bắt đầu' },
-    { key: 'endDate', label: 'Ngày kết thúc' }
+  { key: 'id', label: 'Mã kế hoạch' },
+  { key: 'constructionItemName', label: 'Hạng mục' },
+  { key: 'employeeName', label: 'Người phụ trách' },
+  { key: 'startDate', label: 'Ngày bắt đầu' },
+  { key: 'expectedCompletionDate', label: 'Ngày kết thúc' },
+  { key: 'statusName', label: 'Trạng thái' }
 ]
 
 const taskColumns = [
-    { key: 'id', label: 'Mã nhiệm vụ' },
-    { key: 'name', label: 'Tên nhiệm vụ' },
-    { key: 'unit', label: 'Đơn vị' },
-    { key: 'plannedVolume', label: 'Khối lượng hoạch định' },
-    { key: 'currentVolume', label: 'Khối lượng hiện tại' },
-    { key: 'progress', label: 'Tiến độ' }
+  { key: 'id', label: 'Mã nhiệm vụ' },
+  { key: 'workload', label: 'Khối lượng hoạch định' },
+  { key: 'actualWorkload', label: 'Khối lượng thực tế' },
+  { key: 'currentVolume', label: 'Khối lượng còn lại' },
+  { key: 'statusName', label: 'Trạng thái' }
 ]
 
 const handleItemClick = (item) => {
-    router.push(`/construction-plan-management?itemId=${item.id}`)
+  router.push(`/construction-plan-management?itemId=${item.id}`)
 }
 
 const handleUpdateItem = (item, event) => {
-    event.stopPropagation()
-    console.log('Update construction item:', item)
-    // Xử lý cập nhật hạng mục
+  event.stopPropagation()
+  console.log('Update construction item:', item)
+  // Xử lý cập nhật hạng mục
 }
 
 const handleStatusChange = (item, event) => {
-    event.stopPropagation()
-    selectedItem.value = item
-    showStatusDialog.value = true
+  event.stopPropagation()
+  selectedItem.value = item
+  showStatusDialog.value = true
 }
 
 const handleStatusSubmit = (newStatus) => {
-    if (selectedItem.value) {
-        // Cập nhật trạng thái của hạng mục
-        const itemIndex = construction.value.constructionItems.findIndex(
-            item => item.id === selectedItem.value.id
-        )
-        if (itemIndex !== -1) {
-            construction.value.constructionItems[itemIndex].status = newStatus
-        }
+  if (selectedItem.value) {
+    // Cập nhật trạng thái của hạng mục
+    const itemIndex = construction.value.constructionItems.findIndex(
+      item => item.id === selectedItem.value.id
+    )
+    if (itemIndex !== -1) {
+      construction.value.constructionItems[itemIndex].status = newStatus
     }
-    showStatusDialog.value = false
-    selectedItem.value = null
+  }
+  showStatusDialog.value = false
+  selectedItem.value = null
 }
 
-const handlePlanClick = (plan) => {
+const handlePlanClick = async (plan) => {
+  selectedPlan.value = plan
+  try {
+    await fetchTasks(plan.id)
+    selectedTasks.value = tasks.value
+    showPlanModal.value = true
+  } catch (error) {
+    console.error('Error fetching tasks:', error)
+    showMessage('Không thể tải danh sách nhiệm vụ', 'error')
+  }
+}
+
+const handleUpdatePlan = async (plan, event) => {
+  event.stopPropagation()
+  try {
+    // Implement plan update logic here
+    console.log('Updating plan:', plan)
+    showMessage('Chức năng đang được phát triển', 'info')
+  } catch (error) {
+    console.error('Error updating plan:', error)
+    showMessage('Không thể cập nhật kế hoạch', 'error')
+  }
+}
+
+const handlePlanStatusChange = async (plan, event) => {
+  event.stopPropagation()
+  try {
     selectedPlan.value = plan
+    showStatusDialog.value = true
+  } catch (error) {
+    console.error('Error changing plan status:', error)
+    showMessage('Không thể thay đổi trạng thái kế hoạch', 'error')
+  }
 }
 
-const handleAssignWorkers = (task) => {
-    selectedTask.value = task
-    showAssignmentModal.value = true
+const handlePlanStatusSubmit = async (data) => {
+  try {
+    const { newStatus, item } = data
+    await updatePlanStatus(item.id, newStatus)
+    await fetchPlans()
+    showMessage('Cập nhật trạng thái thành công', 'success')
+  } catch (error) {
+    console.error('Error updating plan status:', error)
+    showMessage('Không thể cập nhật trạng thái', 'error')
+  } finally {
+    showStatusDialog.value = false
+    selectedPlan.value = null
+  }
 }
 
-const assignWorkers = (assignmentData) => {
-    console.log('Assignment data:', assignmentData)
-    showAssignmentModal.value = false
+const assignedWorkers = computed(() => {
+  if (!selectedTask.value) return []
+  return getAssignedWorkersForTask(selectedTask.value.id)
+})
+
+const handleAssignWorkers = async (task) => {
+  selectedTask.value = task
+  selectedWorkers.value = []
+  showAssignmentModal.value = true
+}
+
+const assignWorkers = async (event) => {
+  event.preventDefault()
+  try {
+    loading.value = true
+
+    // Tìm kế hoạch chứa task này
+    const plan = plans.value.find(p => p.id === selectedTask.value.constructionPlanID)
+    if (!plan) {
+      throw new Error('Không tìm thấy kế hoạch cho nhiệm vụ này')
+    }
+
+    // Tạo attendance records cho tất cả công nhân được chọn
+    await createAttendanceForWorkers(
+      selectedWorkers.value,
+      selectedTask.value.id,
+      plan.startDate,
+      plan.expectedCompletionDate
+    )
+
+    // Cập nhật UI và hiển thị thông báo thành công
+    showMessage('Phân công công nhân thành công', 'success')
+
+    // Refresh lại danh sách task và attendance để cập nhật UI
+    await Promise.all([
+      fetchTasks(selectedTask.value.constructionPlanID),
+      fetchAttendance() // Thêm fetch attendance để cập nhật danh sách công nhân đã phân công
+    ])
+
+    // Reset danh sách công nhân đã chọn để có thể phân công tiếp
+    selectedWorkers.value = []
+
+  } catch (error) {
+    console.error('Lỗi khi phân công công nhân:', error)
+    showMessage(error.message || 'Không thể phân công công nhân', 'error')
+  } finally {
+    loading.value = false
+  }
 }
 
 const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('vi-VN')
+  return new Date(date).toLocaleDateString('vi-VN')
 }
 
 const handleDownloadDesign = async () => {
-    try {
-        console.log('Downloading design file:', construction.value.designFile)
-        // Implement file download logic here
-        showMessage('Tải xuống tài liệu thiết kế thành công', success)
-    } catch (err) {
-        console.error('Error downloading design file:', err)
-        showMessage('Không thể tải xuống tài liệu thiết kế', error)
-    }
+  try {
+    console.log('Downloading design file:', construction.value.designFile)
+    // Implement file download logic here
+    showMessage('Tải xuống tài liệu thiết kế thành công', success)
+  } catch (err) {
+    console.error('Error downloading design file:', err)
+    showMessage('Không thể tải xuống tài liệu thiết kế', error)
+  }
 }
 
-const attendanceDate = ref(new Date().toISOString().split('T')[0]) // Default to today's date
-// Ensure all workers have a default status
+// Thêm biến cho chấm công
+const attendanceDate = ref(new Date().toISOString().split('T')[0])
 const attendanceWorkers = ref([
-    { id: 'worker1', name: 'Thợ 1', phone: '0123456789', status: 'Có mặt' },
-    { id: 'worker2', name: 'Thợ 2', phone: '0987654321', status: 'Đi trễ' },
-    { id: 'worker3', name: 'Thợ 3', phone: '0912345678', status: 'Vắng mặt' }
+  { id: 1, name: 'Nguyễn Văn A', email: 'nguyenvana@example.com', status: 'có mặt' },
+  { id: 2, name: 'Trần Văn B', email: 'tranvanb@example.com', status: 'có mặt' },
+  { id: 3, name: 'Lê Văn C', email: 'levanc@example.com', status: 'có mặt' },
+  { id: 4, name: 'Phạm Văn D', email: 'phamvand@example.com', status: 'có mặt' },
+  { id: 5, name: 'Hoàng Văn E', email: 'hoangvane@example.com', status: 'có mặt' }
 ])
 
 const attendanceColumns = [
-    { key: 'id', label: 'Mã thợ' },
-    { key: 'name', label: 'Họ và tên' },
-    { key: 'phone', label: 'Số điện thoại' },
-    { key: 'status', label: 'Trạng thái' }
+  { key: 'employeeID', label: 'Mã công nhân' },
+  { key: 'employeeName', label: 'Họ và tên' },
+  { key: 'email', label: 'Email' },
+  { key: 'status', label: 'Trạng thái' }
 ]
 
-// Add a fallback for undefined status
-const updateAttendanceStatus = (worker, newStatus) => {
-    worker.status = newStatus; // Default to 'Có mặt' if undefined
-}
-
-const confirmAttendance = () => {
-    console.log('Attendance data:', {
-        date: attendanceDate.value,
-        workers: attendanceWorkers.value
-    })
-    alert('Chấm công thành công!')
-}
-
 const paginatedItems = computed(() => {
-    const start = (currentPage.value - 1) * itemsPerPage
-    const end = start + itemsPerPage
-    return construction.value?.constructionItems.slice(start, end) || []
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return construction.value?.constructionItems.slice(start, end) || []
 })
 
 const handlePageChange = (page) => {
-    currentPage.value = page
+  currentPage.value = page
 }
+
+const paginatedPlans = computed(() => {
+  if (!plans.value) return []
+  const start = (currentPlanPage.value - 1) * plansPerPage
+  const end = start + plansPerPage
+  return plans.value.slice(start, end)
+})
+
+const handlePlanPageChange = (page) => {
+  currentPlanPage.value = page
+}
+
+// Thêm dữ liệu giả cho tasks
+const mockTasks = [
+  { id: 1, name: 'Đào móng', unit: 'm³', plannedVolume: 100, currentVolume: 60, progress: 60 },
+  { id: 2, name: 'Đổ bê tông móng', unit: 'm³', plannedVolume: 80, currentVolume: 40, progress: 50 },
+  { id: 3, name: 'Xây tường', unit: 'm²', plannedVolume: 500, currentVolume: 200, progress: 40 },
+  { id: 4, name: 'Lắp đặt điện', unit: 'm', plannedVolume: 1000, currentVolume: 300, progress: 30 },
+  { id: 5, name: 'Lắp đặt nước', unit: 'm', plannedVolume: 800, currentVolume: 400, progress: 50 }
+]
+
+const workerSearchQuery = ref('')
+
+const filteredWorkers = computed(() => {
+  if (!workerSearchQuery.value) return employees.value
+
+  const query = workerSearchQuery.value.toLowerCase()
+  return employees.value.filter(worker =>
+    worker.employeeName.toLowerCase().includes(query) ||
+    worker.email.toLowerCase().includes(query)
+  )
+})
+
+const toggleWorkerSelection = (worker) => {
+  const index = selectedWorkers.value.findIndex(w => w.id === worker.id)
+  if (index === -1) {
+    selectedWorkers.value.push(worker)
+  } else {
+    selectedWorkers.value.splice(index, 1)
+  }
+}
+
+// Thêm các biến reactive cho chấm công
+const selectedTaskForAttendance = ref(null)
+const attendanceDateRange = ref([])
+const attendanceStatuses = ref([])
+const showAttendanceModal = ref(false)
+
+// Hàm tạo danh sách ngày từ ngày bắt đầu đến ngày kết thúc
+const generateDateRange = (startDate, endDate) => {
+  const dates = []
+  const currentDate = new Date(startDate)
+  const lastDate = new Date(endDate)
+
+  while (currentDate <= lastDate) {
+    dates.push(new Date(currentDate))
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  return dates
+}
+
+// Hàm xử lý khi chọn task để chấm công
+const handleTaskAttendance = (task) => {
+  selectedTaskForAttendance.value = task
+  // Tạo danh sách ngày từ ngày bắt đầu đến ngày kết thúc của task
+  attendanceDateRange.value = generateDateRange(task.startDate, task.endDate)
+  // Khởi tạo trạng thái mặc định là "có mặt" cho tất cả ngày
+  attendanceStatuses.value = attendanceDateRange.value.map(date => ({
+    date: date,
+    status: 'có mặt',
+    workers: task.assignedWorkers?.map(worker => ({
+      id: worker.id,
+      name: worker.name,
+      status: 'có mặt'
+    })) || []
+  }))
+  showAttendanceModal.value = true
+}
+
+// Add pagination for workers
+const currentWorkerPage = ref(1)
+const workersPerPage = 5
+
+const paginatedWorkers = computed(() => {
+  const start = (currentWorkerPage.value - 1) * workersPerPage
+  const end = start + workersPerPage
+  return attendanceWorkers.value.slice(start, end)
+})
+
+const handleWorkerPageChange = (page) => {
+  currentWorkerPage.value = page
+}
+
+// Add these new functions for status icons
+const getStatusIcon = (status) => {
+  const icons = {
+    'có mặt': 'fas fa-check-circle',
+    'vắng mặt': 'fas fa-times-circle',
+    'đi trễ': 'fas fa-clock',
+    'nghỉ phép': 'fas fa-calendar-minus'
+  }
+  return icons[status] || 'fas fa-question-circle'
+}
+
+const getStatusIconClass = (status) => {
+  const classes = {
+    'có mặt': 'status-present',
+    'vắng mặt': 'status-absent',
+    'đi trễ': 'status-late',
+    'nghỉ phép': 'status-leave'
+  }
+  return classes[status] || ''
+}
+
+// Add new refs for assigned workers
+const showAssignedWorkers = ref(true)
+
+// Update refs for delete confirmation
+const showDeleteAlert = ref(false)
+const workerToDelete = ref(null)
+
+// Update function to remove worker from assignment
+const confirmDeleteWorker = (worker) => {
+  workerToDelete.value = worker
+  if (confirm(`Bạn có chắc chắn muốn xóa phân công của công nhân ${worker.name}?`)) {
+    removeWorker()
+  }
+}
+
+const removeWorker = async () => {
+  if (!workerToDelete.value) return
+
+  try {
+    // Gọi API xóa phân công
+    await deleteAttendanceByEmployeeAndTask(workerToDelete.value.id, selectedTask.value.id)
+
+    // Cập nhật UI
+    const index = selectedWorkers.value.findIndex(w => w.id === workerToDelete.value.id)
+    if (index !== -1) {
+      selectedWorkers.value.splice(index, 1)
+    }
+
+    // Refresh lại danh sách task để cập nhật UI
+    await fetchTasks(selectedTask.value.constructionPlanID)
+
+    // Reset workerToDelete
+    workerToDelete.value = null
+    showMessage('Xóa phân công công nhân thành công', 'success')
+  } catch (error) {
+    console.error('Error removing worker:', error)
+    showMessage('Không thể xóa phân công công nhân', 'error')
+  }
+}
+
+// Add to setup script
+const currentAttendancePage = ref(1)
+const attendancePerPage = 5
+
+// Add computed for paginated attendance
+const paginatedAttendance = computed(() => {
+  const start = (currentAttendancePage.value - 1) * attendancePerPage
+  const end = start + attendancePerPage
+  return currentDateAttendance.value.slice(start, end)
+})
+
+const handleAttendancePageChange = (page) => {
+  currentAttendancePage.value = page
+}
+
+// Watch for tab changes
+watch(activeTab, (newTab, oldTab) => {
+  if (newTab === 'attendance') {
+    setAttendanceTabActive(true)
+  } else {
+    setAttendanceTabActive(false)
+  }
+})
+
+// Update the groupedAttendance computed to modify task name display
+const groupedAttendance = computed(() => {
+  if (!currentDateAttendance.value) return []
+
+  // Group attendance records by employee
+  const grouped = currentDateAttendance.value.reduce((acc, record) => {
+    const key = record.employeeID
+    if (!acc[key]) {
+      acc[key] = {
+        employeeID: record.employeeID,
+        employeeName: record.employeeName,
+        email: record.email,
+        status: record.status,
+        tasks: []
+      }
+    }
+    acc[key].tasks.push({
+      taskId: record.constructionTaskID,
+      taskName: record.taskName || `${record.constructionTaskID}`,
+      workload: record.workload || 0,
+      unit: record.unitOfMeasurementName || '',
+      status: record.taskStatus || 'Đang thực hiện'
+    })
+    return acc
+  }, {})
+
+  // Convert to array and sort by employee name
+  return Object.values(grouped).sort((a, b) =>
+    a.employeeName.localeCompare(b.employeeName)
+  )
+})
+
+// Update pagination for grouped attendance
+const paginatedGroupedAttendance = computed(() => {
+  const start = (currentAttendancePage.value - 1) * attendancePerPage
+  const end = start + attendancePerPage
+  return groupedAttendance.value.slice(start, end)
+})
+
+// Add helper function for task status classes
+const getTaskStatusClass = (status) => {
+  const statusMap = {
+    'Chưa bắt đầu': 'status-pending',
+    'Đang thực hiện': 'status-in-progress',
+    'Hoàn thành': 'status-completed',
+    'Đã hủy': 'status-cancelled'
+  }
+  return statusMap[status] || 'status-pending'
+}
+
+// Add new refs for task details modal
+const showTaskDetailsModal = ref(false)
+const selectedEmployeeTasks = ref([])
+const selectedEmployeeName = ref('')
+
+// Add function to show task details
+const showTaskDetails = (tasks, employeeName) => {
+  selectedEmployeeTasks.value = tasks
+  selectedEmployeeName.value = employeeName
+  showTaskDetailsModal.value = true
+}
+
+// Thêm beforeunload event listener
+onMounted(() => {
+  window.addEventListener('beforeunload', (e) => {
+    if (hasUnsavedChanges.value) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+  })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', (e) => {
+    if (hasUnsavedChanges.value) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+  })
+})
+
+// Thêm hàm xử lý lưu chấm công
+const handleSaveAttendance = async () => {
+  try {
+    loading.value = true
+
+    // Create array of promises for each employee's status update
+    const updatePromises = Array.from(temporaryStatusChanges.value.entries()).map(([employeeId, status]) => {
+      const date = new Date(selectedDate.value)
+      date.setHours(0, 0, 0, 0) // Set time to midnight to match API format
+
+      return attendanceService.updateAttendanceStatusByEmployee(
+        employeeId,
+        date.toISOString(),
+        status
+      )
+    })
+
+    // Wait for all updates to complete
+    await Promise.all(updatePromises)
+
+    // Clear temporary changes
+    temporaryStatusChanges.value.clear()
+    hasUnsavedChanges.value = false
+
+    // Force refresh attendance data from API
+    await fetchAttendance(true)
+
+    showMessage('Lưu chấm công thành công', 'success')
+  } catch (error) {
+    console.error('Lỗi khi lưu chấm công:', error)
+    showMessage('Không thể lưu chấm công', 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
+// Add new ref to store temporary status changes
+const temporaryStatusChanges = ref(new Map())
+
+// Function to handle attendance status selection
+const handleAttendanceStatusChange = async (employeeId, newStatus) => {
+  try {
+    loading.value = true
+    const date = new Date(selectedDate.value)
+    date.setHours(0, 0, 0, 0)
+
+    await attendanceService.updateAttendanceStatusByEmployee(
+      employeeId,
+      date.toISOString(),
+      newStatus
+    )
+
+    // Refresh data after successful update
+    await fetchAttendance(true)
+    showMessage('Cập nhật trạng thái thành công', 'success')
+  } catch (error) {
+    console.error('Lỗi khi cập nhật trạng thái:', error)
+    showMessage('Không thể cập nhật trạng thái', 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
 </script>
 
 <template>
-    <div class="container-fluid py-4">
-        <div v-if="construction" class="project-detail">
-            <!-- Header Section -->
-            <div class="header-section mb-4">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <h1 class="project-title mb-2">{{ construction.constructionName }}</h1>
-                        <div class="project-meta">
-                            <span class="meta-item">
-                                <i class="fas fa-map-marker-alt"></i>
-                                {{ construction.location }}
-                            </span>
-                            <span class="meta-item">
-                                <i class="fas fa-calendar"></i>
-                                {{ construction.startDate }} - {{ construction.endDate }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="d-flex flex-column align-items-end">
-                        <StatusBadge :status="construction.status" class="mb-2" />
-                        <button class="btn btn-outline-primary btn-sm">
-                            <i class="fas fa-file-download me-1"></i>
-                            Tải bản thiết kế
-                        </button>
-                    </div>
-                </div>
+  <div class="container-fluid py-4">
+    <template v-if="construction">
+      <div class="project-detail">
+        <!-- Header Section -->
+        <div class="header-section mb-4">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h1 class="project-title mb-2">{{ construction.constructionName }}</h1>
+              <div class="project-meta">
+                <span class="meta-item">
+                  <i class="fas fa-map-marker-alt"></i>
+                  {{ construction.location }}
+                </span>
+                <span class="meta-item">
+                  <i class="fas fa-calendar"></i>
+                  {{ construction.startDate }} - {{ construction.endDate }}
+                </span>
+              </div>
             </div>
-
-            <!-- Quick Stats -->
-            <div class="row g-4 mb-4">
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-building"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Loại công trình</h3>
-                            <p>{{ construction.constructionType }}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-ruler-combined"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Tổng diện tích</h3>
-                            <p>{{ construction.totalArea }}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-tasks"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Số hạng mục</h3>
-                            <p>{{ construction.constructionItems.length }} hạng mục</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Thời gian còn lại</h3>
-                            <p>180 ngày</p>
-                        </div>
-                    </div>
-                </div>
+            <div class="d-flex flex-column align-items-end">
+              <StatusBadge :status="construction.status" class="mb-2" />
+              <button class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-file-download me-1"></i>
+                Tải bản thiết kế
+              </button>
             </div>
-
-            <!-- Main Content Tabs -->
-            <div class="content-tabs">
-                <ul class="nav nav-tabs nav-tabs-custom">
-                    <li class="nav-item">
-                        <a class="nav-link" :class="{ active: activeTab === 'info' }"
-                            @click.prevent="activeTab = 'info'" href="#">
-                            <i class="fas fa-info-circle me-2"></i>
-                            Thông tin chung
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" :class="{ active: activeTab === 'items' }"
-                            @click.prevent="activeTab = 'items'" href="#">
-                            <i class="fas fa-list me-2"></i>
-                            Hạng mục thi công
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" :class="{ active: activeTab === 'plans' }"
-                            @click.prevent="activeTab = 'plans'" href="#">
-                            <i class="fa-solid fa-clipboard me-2"></i>
-                            Kế hoạch thi công
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" :class="{ active: activeTab === 'attendance' }"
-                            @click.prevent="activeTab = 'attendance'" href="#">
-                            <!-- <i class="fas fa-list me-2"></i> -->
-                            <i class="fa-solid fa-calendar-check me-2"></i>
-                            Chấm công
-                        </a>
-                    </li>
-                </ul>
-
-                <!-- Tab Content -->
-                <div class="tab-content p-4 bg-white rounded-bottom shadow-sm">
-                    <!-- Thông tin chung -->
-                    <div v-show="activeTab === 'info'" class="fade-in">
-                        <div class="row g-4">
-                            <div class="col-md-8">
-                                <div class="info-section">
-                                    <h2 class="section-title">
-                                        <i class="fas fa-info-circle me-2"></i>
-                                        Chi tiết công trình
-                                    </h2>
-                                    <div class="info-grid">
-                                        <div class="info-item">
-                                            <label>Loại công trình</label>
-                                            <p>{{ construction.constructionType }}</p>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Tổng diện tích</label>
-                                            <p>{{ construction.totalArea }}</p>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Ngày khởi công</label>
-                                            <p>{{ construction.startDate }}</p>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Ngày dự kiến hoàn thành</label>
-                                            <p>{{ construction.endDate }}</p>
-                                        </div>
-                                        <div class="info-item full-width">
-                                            <label>Địa điểm xây dựng</label>
-                                            <p>{{ construction.location }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="document-section">
-                                    <h2 class="section-title">
-                                        <i class="fas fa-file-alt me-2"></i>
-                                        Tài liệu
-                                    </h2>
-                                    <div class="document-card">
-                                        <div class="document-icon">
-                                            <i class="fas fa-file-pdf"></i>
-                                        </div>
-                                        <div class="document-info">
-                                            <h4>Bản thiết kế</h4>
-                                            <p>{{ construction.designFile }}</p>
-                                            <button class="btn btn-sm btn-primary" @click="handleDownloadDesign">
-                                                <i class="fas fa-download me-1"></i>
-                                                Tải xuống
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Hạng mục thi công -->
-                    <div v-show="activeTab === 'items'" class="fade-in">
-                        <div class="table-toolbar mb-3">
-                            <h2 class="section-title">
-                                <i class="fas fa-list me-2"></i>
-                                Danh sách hạng mục
-                            </h2>
-                        </div>
-                        <DataTable :columns="constructionItemColumns" :data="paginatedItems"
-                            @row-click="handleItemClick" class="custom-table">
-                            <template #name="{ item }">
-                                <div class="fw-medium text-primary">{{ item.name }}</div>
-                            </template>
-
-                            <template #startDate="{ item }">
-                                <div class="date-info">
-                                    <i class="fas fa-calendar text-muted me-1"></i>
-                                    {{ formatDate(item.startDate) }}
-                                </div>
-                            </template>
-
-                            <template #endDate="{ item }">
-                                <div class="date-info">
-                                    <i class="fas fa-calendar-check text-muted me-1"></i>
-                                    {{ formatDate(item.endDate) }}
-                                </div>
-                            </template>
-
-                            <template #totalVolume="{ item }">
-                                <div class="volume-info">
-                                    <span class="fw-medium">{{ item.totalVolume }}</span>
-                                    <span class="text-muted ms-1">{{ item.unit }}</span>
-                                </div>
-                            </template>
-
-                            <template #status="{ item }">
-                                <StatusBadge :status="item.status" type="construction" />
-                            </template>
-
-                            <template #actions="{ item }">
-                                <div class="d-flex justify-content-center gap-2">
-                                    <UpdateButton @click="(e) => handleUpdateItem(item, e)" />
-                                    <ChangeStatusButton @click="(e) => handleStatusChange(item, e)" />
-                                </div>
-                            </template>
-                        </DataTable>
-
-                        <!-- Phân trang -->
-                        <div class="d-flex justify-content-between align-items-center mt-4">
-                            <div class="text-muted">
-                                Hiển thị {{ paginatedItems.length }} trên {{ construction?.constructionItems.length || 0
-                                }} hạng mục
-                            </div>
-                            <Pagination :total-items="construction?.constructionItems.length || 0"
-                                :items-per-page="itemsPerPage" :current-page="currentPage"
-                                @update:currentPage="handlePageChange" />
-                        </div>
-                    </div>
-
-                    <!-- Kế hoạch thi công -->
-                    <div v-show="activeTab === 'plans'" class="fade-in">
-                        <div class="table-toolbar mb-3">
-                            <h2 class="section-title">
-                                <i class="fas fa-list me-2"></i>
-                                Danh sách kế hoạch
-                            </h2>
-                        </div>
-                        <DataTable :columns="planColumns" :data="construction.constructionPlans"
-                            @row-click="handlePlanClick" />
-
-                        <div v-if="selectedPlan" class="mt-4">
-                            <h5>Nhiệm vụ trong kế hoạch: {{ selectedPlan.name }}</h5>
-                            <p><strong>Kế hoạch tháng:</strong> {{ selectedPlan.monthlyPlanVolume }} m³</p>
-                            <DataTable :columns="taskColumns" :data="selectedPlan.tasks">
-                                <template #actions="{ item }">
-                                    <button class="btn btn-sm btn-outline-primary"
-                                        @click="handleAssignWorkers(item)">Phân công</button>
-                                </template>
-                            </DataTable>
-                        </div>
-                    </div>
-
-                    <!-- Chấm công -->
-                    <div v-show="activeTab === 'attendance'" class="fade-in">
-                        <h4>Chấm công</h4>
-                        <div class="mb-3">
-                            <label for="attendanceDate" class="form-label">Chọn ngày</label>
-                            <input type="date" id="attendanceDate" v-model="attendanceDate" class="form-control" />
-                        </div>
-                        <DataTable :data="attendanceWorkers" :columns="attendanceColumns">
-                            <template #status="{ item }">
-                                <select v-model="item.status" class="form-select"
-                                    @change="updateAttendanceStatus(item, item.status)">
-                                    <option value="Có mặt">Có mặt</option>
-                                    <option value="Đi trễ">Đi trễ</option>
-                                    <option value="Vắng mặt">Vắng mặt</option>
-                                </select>
-                            </template>
-                        </DataTable>
-                        <button class="btn btn-primary mt-3" @click="confirmAttendance">
-                            Xác nhận chấm công
-                        </button>
-                    </div>
-                </div>
-
-
-            </div>
+          </div>
         </div>
 
-        <div v-else class="loading-container">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
+        <!-- Quick Stats -->
+        <div class="row g-4 mb-4">
+          <div class="col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <i class="fas fa-building"></i>
+              </div>
+              <div class="stat-content">
+                <h3>Loại công trình</h3>
+                <p>{{ construction.constructionType }}</p>
+              </div>
             </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <i class="fas fa-ruler-combined"></i>
+              </div>
+              <div class="stat-content">
+                <h3>Tổng diện tích</h3>
+                <p>{{ construction.totalArea }}</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <i class="fas fa-tasks"></i>
+              </div>
+              <div class="stat-content">
+                <h3>Số hạng mục</h3>
+                <p>{{ construction.constructionItems.length }} hạng mục</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <i class="fas fa-clock"></i>
+              </div>
+              <div class="stat-content">
+                <h3>Thời gian còn lại</h3>
+                <p>180 ngày</p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Dialog đổi trạng thái -->
-        <ModalDialog v-if="selectedItem" :show="showStatusDialog" @update:show="showStatusDialog = $event"
-            title="Đổi Trạng Thái Hạng Mục" size="md">
-            <ChangeStatusForm :current-status="selectedItem.status" type="construction" @submit="handleStatusSubmit"
-                @cancel="showStatusDialog = false" />
-        </ModalDialog>
+        <!-- Main Content Tabs -->
+        <div class="content-tabs">
+          <ul class="nav nav-tabs nav-tabs-custom">
+            <li class="nav-item">
+              <a class="nav-link" :class="{ active: activeTab === 'info' }" @click.prevent="activeTab = 'info'"
+                href="#">
+                <i class="fas fa-info-circle me-2"></i>
+                Thông tin chung
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" :class="{ active: activeTab === 'items' }" @click.prevent="activeTab = 'items'"
+                href="#">
+                <i class="fas fa-list me-2"></i>
+                Hạng mục thi công
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" :class="{ active: activeTab === 'plans' }" @click.prevent="activeTab = 'plans'"
+                href="#">
+                <i class="fa-solid fa-clipboard me-2"></i>
+                Kế hoạch thi công
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" :class="{ active: activeTab === 'attendance' }"
+                @click.prevent="activeTab = 'attendance'" href="#">
+                <i class="fa-solid fa-calendar-check me-2"></i>
+                Chấm công
+              </a>
+            </li>
+          </ul>
 
-        <!-- Modal for Assigning Workers -->
-        <ModalDialog v-if="selectedTask" :show="showAssignmentModal" @update:show="showAssignmentModal = $event"
-            title="Phân công thợ">
-            <form
-                @submit.prevent="assignWorkers({ task: selectedTask, workers: selectedWorkers, startDate: '', endDate: '', notes: '' })">
-                <div class="mb-3">
-                    <label for="workers" class="form-label">Chọn thợ</label>
-                    <MultiSelect v-model="selectedWorkers" :options="availableWorkers" label="name" track-by="id"
-                        placeholder="Chọn thợ..." multiple class="form-control" />
+          <!-- Tab Content -->
+          <div class="tab-content p-4 bg-white rounded-bottom shadow-sm">
+            <template v-if="activeTab === 'info'">
+              <div class="fade-in">
+                <div class="row g-4">
+                  <div class="col-md-8">
+                    <div class="info-section">
+                      <h2 class="section-title">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Chi tiết công trình
+                      </h2>
+                      <div class="info-grid">
+                        <div class="info-item">
+                          <label>Loại công trình</label>
+                          <p>{{ construction.constructionType }}</p>
+                        </div>
+                        <div class="info-item">
+                          <label>Tổng diện tích</label>
+                          <p>{{ construction.totalArea }}</p>
+                        </div>
+                        <div class="info-item">
+                          <label>Ngày khởi công</label>
+                          <p>{{ construction.startDate }}</p>
+                        </div>
+                        <div class="info-item">
+                          <label>Ngày dự kiến hoàn thành</label>
+                          <p>{{ construction.endDate }}</p>
+                        </div>
+                        <div class="info-item full-width">
+                          <label>Địa điểm xây dựng</label>
+                          <p>{{ construction.location }}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="document-section">
+                      <h2 class="section-title">
+                        <i class="fas fa-file-alt me-2"></i>
+                        Tài liệu
+                      </h2>
+                      <div class="document-card">
+                        <div class="document-icon">
+                          <i class="fas fa-file-pdf"></i>
+                        </div>
+                        <div class="document-info">
+                          <h4>Bản thiết kế</h4>
+                          <p>{{ construction.designFile }}</p>
+                          <button class="btn btn-sm btn-primary" @click="handleDownloadDesign">
+                            <i class="fas fa-download me-1"></i>
+                            Tải xuống
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div class="mb-3">
-                    <label for="startDate" class="form-label">Ngày bắt đầu</label>
-                    <input type="date" id="startDate" class="form-control" />
+              </div>
+            </template>
+
+            <template v-else-if="activeTab === 'items'">
+              <div class="fade-in">
+                <div class="table-toolbar mb-3">
+                  <h2 class="section-title">
+                    <i class="fas fa-list me-2"></i>
+                    Danh sách hạng mục
+                  </h2>
                 </div>
-                <div class="mb-3">
-                    <label for="endDate" class="form-label">Ngày kết thúc</label>
-                    <input type="date" id="endDate" class="form-control" />
+                <DataTable :columns="constructionItemColumns" :data="paginatedItems" @row-click="handleItemClick"
+                  class="custom-table">
+                  <template #id="{ item }">
+                    <div class="fw-medium text-primary">HM-{{ item.id }}</div>
+                  </template>
+
+                  <template #startDate="{ item }">
+                    <div class="date-info">
+                      <i class="fas fa-calendar text-muted me-1"></i>
+                      {{ formatDate(item.startDate) }}
+                    </div>
+                  </template>
+
+                  <template #expectedCompletionDate="{ item }">
+                    <div class="date-info">
+                      <i class="fas fa-calendar-check text-muted me-1"></i>
+                      {{ formatDate(item.expectedCompletionDate) }}
+                    </div>
+                  </template>
+
+                  <template #constructionItemName="{ item }">
+                    <div class="volume-info">
+                      <span class="fw-medium">{{ item.constructionItemName }}</span>
+                    </div>
+                  </template>
+
+                  <template #constructionItemStatusName="{ item }">
+                    <StatusBadge :status="item.constructionItemStatusName" />
+                  </template>
+                </DataTable>
+
+                <!-- Phân trang -->
+                <div class="d-flex justify-content-between align-items-center mt-4">
+                  <div class="text-muted">
+                    Hiển thị {{ paginatedItems.length }} trên {{ construction?.constructionItems.length || 0 }} hạng mục
+                  </div>
+                  <Pagination :total-items="construction?.constructionItems.length || 0" :items-per-page="itemsPerPage"
+                    :current-page="currentPage" @update:currentPage="handlePageChange" />
                 </div>
-                <div class="mb-3">
-                    <label for="notes" class="form-label">Ghi chú</label>
-                    <textarea id="notes" class="form-control" rows="3"></textarea>
+              </div>
+            </template>
+
+            <template v-else-if="activeTab === 'plans'">
+              <div class="fade-in">
+                <div class="table-toolbar mb-3">
+                  <h2 class="section-title">
+                    <i class="fas fa-list me-2"></i>
+                    Danh sách kế hoạch
+                  </h2>
                 </div>
-                <div class="d-flex justify-content-end">
-                    <button type="button" class="btn btn-secondary me-2"
-                        @click="showAssignmentModal = false">Hủy</button>
-                    <button type="submit" class="btn btn-primary">Xác nhận</button>
+
+                <div v-if="plansLoading" class="text-center py-4">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
                 </div>
-            </form>
-        </ModalDialog>
-    </div>
+
+                <div v-else-if="plansError" class="alert alert-danger">
+                  {{ plansError }}
+                </div>
+
+                <div v-else>
+                  <DataTable :columns="planColumns" :data="paginatedPlans" @row-click="handlePlanClick"
+                    class="custom-table">
+                    <template #id="{ item }">
+                      <div class="fw-medium text-primary">KH-{{ item.id }}</div>
+                    </template>
+
+                    <template #employeeName="{ item }">
+                      <div class="d-flex align-items-center">
+                        <div class="employee-status-indicator" :class="{
+                          'status-present': item.status === 'Có mặt',
+                          'status-absent': item.status === 'Vắng mặt'
+                        }">
+                          <i class="fas" :class="{
+                            'fa-check': item.status === 'Có mặt',
+                            'fa-times': item.status === 'Vắng mặt'
+                          }"></i>
+                        </div>
+                        <span class="fw-bold ms-2">{{ item.employeeName }}</span>
+                      </div>
+                    </template>
+
+                    <template #startDate="{ item }">
+                      <div class="date-info">
+                        <i class="fas fa-calendar text-muted me-1"></i>
+                        {{ formatDate(item.startDate) }}
+                      </div>
+                    </template>
+
+                    <template #expectedCompletionDate="{ item }">
+                      <div class="date-info">
+                        <i class="fas fa-calendar-check text-muted me-1"></i>
+                        {{ formatDate(item.expectedCompletionDate) }}
+                      </div>
+                    </template>
+
+                    <template #statusName="{ item }">
+                      <StatusBadge :status="item.statusName" />
+                    </template>
+                  </DataTable>
+
+                  <div class="d-flex justify-content-between align-items-center mt-4">
+                    <div class="text-muted">
+                      Hiển thị {{ paginatedPlans.length }} trên {{ plans?.length || 0 }} kế hoạch
+                    </div>
+                    <Pagination :total-items="plans?.length || 0" :items-per-page="plansPerPage"
+                      :current-page="currentPlanPage" @update:currentPage="handlePlanPageChange" />
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="activeTab === 'attendance'">
+              <div class="fade-in">
+                <div class="table-toolbar mb-3">
+                  <h2 class="section-title">
+                    <i class="fas fa-calendar-check me-2"></i>
+                    Chấm công
+                  </h2>
+                </div>
+
+                <div class="attendance-controls mb-4">
+                  <div class="row g-3 align-items-center">
+                    <div class="col-auto">
+                      <div class="date-picker-wrapper">
+                        <div class="input-group">
+                          <span class="input-group-text bg-white border-end-0">
+                            <i class="fas fa-calendar text-primary"></i>
+                          </span>
+                          <input
+                            type="date"
+                            class="form-control border-start-0 ps-0"
+                            v-model="selectedDate"
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="attendanceLoading" class="text-center py-4">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
+                </div>
+
+                <div v-else-if="attendanceError" class="alert alert-danger">
+                  {{ attendanceError }}
+                </div>
+
+                <div v-else class="attendance-table-container">
+                  <div v-if="groupedAttendance.length === 0" class="text-center py-5">
+                    <i class="fas fa-calendar-times mb-3" style="font-size: 3rem; color: #dee2e6;"></i>
+                    <h4 class="text-muted">Không có dữ liệu chấm công cho ngày này</h4>
+                    <p class="text-muted">Vui lòng chọn ngày khác hoặc thêm dữ liệu chấm công mới</p>
+                  </div>
+
+                  <template v-else>
+                    <DataTable
+                      :columns="[
+                        { key: 'employeeID', label: 'Mã công nhân' },
+                        { key: 'employeeName', label: 'Họ và tên' },
+                        { key: 'email', label: 'Email' },
+                        { key: 'tasks', label: 'Nhiệm vụ' },
+                        { key: 'status', label: 'Trạng thái' }
+                      ]"
+                      :data="paginatedGroupedAttendance"
+                      class="custom-table attendance-table"
+                    >
+                      <template #employeeID="{ item }">
+                        <div class="d-flex align-items-center">
+                          <span class="text-primary fw-bold">CN-{{ item.employeeID }}</span>
+                        </div>
+                      </template>
+
+                      <template #employeeName="{ item }">
+                        <div class="d-flex align-items-center">
+                          <div class="employee-status-indicator" :class="{
+                            'status-present': item.status === 'Có mặt',
+                            'status-absent': item.status === 'Vắng mặt'
+                          }">
+                            <i class="fas" :class="{
+                              'fa-check': item.status === 'Có mặt',
+                              'fa-times': item.status === 'Vắng mặt'
+                            }"></i>
+                          </div>
+                          <span class="fw-bold ms-2">{{ item.employeeName }}</span>
+                        </div>
+                      </template>
+
+                      <template #email="{ item }">
+                        <div class="d-flex align-items-center">
+                          <i class="fas fa-envelope text-muted me-2"></i>
+                          <span>{{ item.email }}</span>
+                        </div>
+                      </template>
+
+                      <template #tasks="{ item }">
+                        <div class="task-list">
+                          <div class="task-items">
+                            <div v-for="(task, index) in item.tasks.slice(0, 2)" :key="task.taskId" class="task-item">
+                              <span class="task-name fw-bold">{{ task.taskName }}</span>
+                            </div>
+                            <button
+                              v-if="item.tasks.length > 2"
+                              class="btn-view-more"
+                              @click="showTaskDetails(item.tasks, item.employeeName)"
+                            >
+                              +{{ item.tasks.length - 2 }}
+                            </button>
+                          </div>
+                        </div>
+                      </template>
+
+                      <template #status="{ item }">
+                        <div class="status-wrapper">
+
+                          <FormField
+                            type="select"
+                            :model-value="temporaryStatusChanges.get(item.employeeID) || item.status"
+                            :options="[
+                              { value: 'Có mặt', label: 'Có mặt' },
+                              { value: 'Vắng mặt', label: 'Vắng mặt' }
+                            ]"
+                            @update:model-value="(newStatus) => updateEmployeeAttendanceStatus(item.employeeID, newStatus)"
+                            class="status-select"
+                          />
+                        </div>
+                      </template>
+                    </DataTable>
+
+                    <div class="d-flex justify-content-between align-items-center mt-4">
+                      <div class="text-muted">
+                        <i class="fas fa-users me-1"></i>
+                        Hiển thị {{ paginatedGroupedAttendance.length }} trên {{ groupedAttendance.length }} công nhân
+                      </div>
+                      <Pagination
+                        :total-items="groupedAttendance.length"
+                        :items-per-page="attendancePerPage"
+                        :current-page="currentAttendancePage"
+                        @update:currentPage="handleAttendancePageChange"
+                      />
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
+      <div class="loading-container">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    </template>
+
+    <!-- Other modals -->
+    <template v-if="selectedItem">
+      <ModalDialog :show="showStatusDialog" @update:show="showStatusDialog = $event" title="Đổi Trạng Thái Hạng Mục"
+        size="md">
+        <ChangeStatusForm :current-status="selectedItem.status" type="construction" @submit="handleStatusSubmit"
+          @cancel="showStatusDialog = false" />
+      </ModalDialog>
+    </template>
+
+    <!-- Update Assignment Modal -->
+    <template v-if="selectedTask">
+      <ModalDialog :show="showAssignmentModal" @update:show="showAssignmentModal = $event" title="Phân công công nhân"
+        size="lg">
+        <div v-if="selectedTask.statusName !== 'Chờ khởi công'" class="alert alert-warning mb-3">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          Chỉ có thể phân công công nhân cho nhiệm vụ chờ khởi công
+        </div>
+        <form @submit.prevent="assignWorkers">
+          <div class="row g-4">
+            <!-- Right Column: Add New Workers -->
+            <div class="col-md-6">
+              <div class="card h-100">
+                <div class="card-header bg-white">
+                  <h5 class="mb-0">
+                    <i class="fas fa-user-plus me-2 text-primary"></i>
+                    Thêm công nhân mới
+                  </h5>
+                </div>
+                <div class="card-body">
+                  <div class="worker-search mb-3">
+                    <div class="input-group">
+                      <span class="input-group-text bg-light border-end-0">
+                        <i class="fas fa-search text-muted"></i>
+                      </span>
+                      <input type="text" class="form-control border-start-0 ps-0"
+                        placeholder="Tìm kiếm theo tên hoặc email..." v-model="workerSearchQuery"
+                        :disabled="selectedTask.statusName !== 'Chờ khởi công'">
+                    </div>
+                  </div>
+
+                  <div v-if="employeesLoading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                    </div>
+                  </div>
+
+                  <div v-else-if="employeesError" class="alert alert-danger">
+                    {{ employeesError }}
+                  </div>
+
+                  <div v-else class="worker-list">
+                    <div v-for="worker in filteredWorkers.filter(w => !assignedWorkers.some(aw => aw.id === w.id))"
+                      :key="worker.id" class="worker-card"
+                      :class="{
+                        'selected': selectedWorkers.includes(worker),
+                        'disabled': selectedTask.statusName !== 'Chờ khởi công'
+                      }"
+                      @click="selectedTask.statusName === 'Chờ khởi công' && toggleWorkerSelection(worker)">
+                      <div class="worker-info">
+                        <div class="worker-name">{{ worker.employeeName }}</div>
+                        <div class="worker-email">
+                          <i class="fas fa-envelope me-1"></i>
+                          {{ worker.email }}
+                        </div>
+                      </div>
+                      <div class="worker-check">
+                        <div class="check-circle" :class="{ 'checked': selectedWorkers.includes(worker) }">
+                          <i class="fas fa-check" v-if="selectedWorkers.includes(worker)"></i>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Left Column: Assigned Workers -->
+            <div class="col-md-6">
+              <div class="card h-100">
+                <div class="card-header bg-white">
+                  <h5 class="mb-0">
+                    <i class="fas fa-user-check me-2 text-primary"></i>
+                    Công nhân đã phân công
+                  </h5>
+                </div>
+                <div class="card-body p-0">
+                  <div class="assigned-workers-list p-3">
+                    <div v-if="assignedWorkers.length === 0" class="text-center text-muted py-3">
+                      <i class="fas fa-users-slash mb-2" style="font-size: 2rem;"></i>
+                      <p class="mb-0">Chưa có công nhân nào được phân công</p>
+                    </div>
+                    <div v-else>
+                      <div v-for="worker in assignedWorkers" :key="worker.id" class="assigned-worker-card">
+                        <div class="worker-info">
+                          <div class="worker-name">{{ worker.name }}</div>
+                          <div class="worker-email">
+                            <i class="fas fa-envelope me-1"></i>
+                            {{ worker.email }}
+                          </div>
+                          <div class="worker-assigned-date text-muted small">
+                            <i class="fas fa-calendar-alt me-1"></i>
+                            Phân công từ: {{ formatDate(worker.assignedDate) }}
+                          </div>
+                        </div>
+                        <button type="button" class="btn btn-icon btn-danger"
+                          @click="selectedTask.statusName === 'Chờ khởi công' && confirmDeleteWorker(worker)"
+                          :disabled="selectedTask.statusName !== 'Chờ khởi công'"
+                          title="Xóa phân công">
+                          <i class="fas fa-times"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer bg-white border-top-0 text-end">
+            <button type="submit" class="btn btn-primary px-4"
+              :disabled="selectedWorkers.length === 0 || selectedTask.statusName !== 'Chờ khởi công'">
+              <i class="fas fa-save me-1"></i>
+              Phân công
+            </button>
+          </div>
+        </form>
+      </ModalDialog>
+    </template>
+
+    <!-- Plan Details Modal -->
+    <template v-if="selectedPlan">
+      <ModalDialog :show="showPlanModal" @update:show="showPlanModal = $event"
+        :title="'Danh sách nhiệm vụ - KH-' + selectedPlan.id" size="xl">
+        <div v-if="tasksLoading" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+
+        <div v-else-if="tasksError" class="alert alert-danger">
+          {{ tasksError }}
+        </div>
+
+        <div v-else>
+          <DataTable :columns="taskColumns" :data="selectedTasks" class="task-table">
+            <template #id="{ item }">
+              <div class="fw-medium text-primary">NV-{{ item.id }}</div>
+            </template>
+
+            <template #workload="{ item }">
+              <span>{{ item.workload }} {{ item.unitOfMeasurementName }}</span>
+            </template>
+
+            <template #actualWorkload="{ item }">
+              <span>{{ item.actualWorkload || 0 }} {{ item.unitOfMeasurementName }}</span>
+            </template>
+
+            <template #currentVolume="{ item }">
+              <span>{{ item.currentVolume || (item.workload - (item.actualWorkload || 0)) }} {{
+                item.unitOfMeasurementName }}</span>
+            </template>
+
+            <template #statusName="{ item }">
+              <StatusBadge :status="item.statusName" />
+            </template>
+
+            <template #actions="{ item }">
+              <button class="btn btn-icon" @click.stop="handleAssignWorkers(item)" title="Phân công công nhân">
+                <i class="fas fa-user-plus"></i>
+              </button>
+            </template>
+          </DataTable>
+        </div>
+      </ModalDialog>
+    </template>
+
+    <!-- Add Task Details Modal -->
+    <ModalDialog
+      :show="showTaskDetailsModal"
+      @update:show="showTaskDetailsModal = $event"
+      :title="`Danh sách nhiệm vụ - ${selectedEmployeeName}`"
+      size="md"
+    >
+      <div class="task-details-list">
+        <div v-for="task in selectedEmployeeTasks" :key="task.taskId" class="task-detail-item">
+          <span class="task-name">{{ task.taskName }}</span>
+        </div>
+      </div>
+    </ModalDialog>
+  </div>
 </template>
 
 <style scoped>
 .project-detail {
-    animation: fadeIn 0.3s ease-out;
+  animation: fadeIn 0.3s ease-out;
 }
 
 .header-section {
-    background: linear-gradient(to right, #ffffff, #f8f9fa);
-    padding: 2rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(to right, #ffffff, #f8f9fa);
+  padding: 2rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .project-title {
-    font-size: 2rem;
-    color: #2c3e50;
-    font-weight: 600;
+  font-size: 2rem;
+  color: #2c3e50;
+  font-weight: 600;
 }
 
 .project-meta {
-    display: flex;
-    gap: 1.5rem;
-    color: #6c757d;
+  display: flex;
+  gap: 1.5rem;
+  color: #6c757d;
 }
 
 .meta-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .stat-card {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    transition: transform 0.2s ease;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: transform 0.2s ease;
 }
 
 .stat-card:hover {
-    transform: translateY(-2px);
+  transform: translateY(-2px);
 }
 
 .stat-icon {
-    width: 48px;
-    height: 48px;
-    background: #f8f9fa;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    color: #007bff;
+  width: 48px;
+  height: 48px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: #007bff;
 }
 
 .stat-content h3 {
-    font-size: 0.875rem;
-    color: #6c757d;
-    margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.25rem;
 }
 
 .stat-content p {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #2c3e50;
-    margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
 }
 
 .nav-tabs-custom {
-    border: none;
-    margin-top: 2rem;
+  border: none;
+  margin-top: 2rem;
 }
 
 .nav-tabs-custom .nav-link {
-    border: none;
-    padding: 1rem 1.5rem;
-    color: #6c757d;
-    font-weight: 500;
-    transition: all 0.2s ease;
+  border: none;
+  padding: 1rem 1.5rem;
+  color: #6c757d;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .nav-tabs-custom .nav-link:hover {
-    color: #007bff;
-    background: rgba(0, 123, 255, 0.05);
+  color: #007bff;
+  background: rgba(0, 123, 255, 0.05);
 }
 
 .nav-tabs-custom .nav-link.active {
-    color: #007bff;
-    background: white;
-    border-top: 3px solid #007bff;
+  color: #007bff;
+  background: white;
+  border-top: 3px solid #007bff;
 }
 
 .section-title {
-    font-size: 1.25rem;
-    color: #2c3e50;
-    margin-bottom: 1.5rem;
-    font-weight: 600;
+  font-size: 1.25rem;
+  color: #2c3e50;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
 }
 
 .info-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
 }
 
 .info-item {
-    padding: 1rem;
-    background: #f8f9fa;
-    border-radius: 0.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 0.5rem;
 }
 
 .info-item.full-width {
-    grid-column: 1 / -1;
+  grid-column: 1 / -1;
 }
 
 .info-item label {
-    font-size: 0.875rem;
-    color: #6c757d;
-    margin-bottom: 0.5rem;
-    display: block;
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.5rem;
+  display: block;
 }
 
 .info-item p {
-    margin: 0;
-    color: #2c3e50;
-    font-weight: 500;
+  margin: 0;
+  color: #2c3e50;
+  font-weight: 500;
 }
 
 .document-card {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1.5rem;
-    background: #f8f9fa;
-    border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 0.5rem;
 }
 
 .document-icon {
-    font-size: 2rem;
-    color: #dc3545;
+  font-size: 2rem;
+  color: #dc3545;
 }
 
 .document-info h4 {
-    font-size: 1rem;
-    margin-bottom: 0.25rem;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
 }
 
 .document-info p {
-    font-size: 0.875rem;
-    color: #6c757d;
-    margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.5rem;
 }
 
 .custom-table {
-    margin-bottom: 2rem;
+  margin-bottom: 2rem;
 }
 
 .custom-table :deep(th) {
-    background: #f8f9fa;
-    font-weight: 600;
-    padding: 1rem;
-    white-space: nowrap;
+  background: #f8f9fa;
+  font-weight: 600;
+  padding: 1rem;
+  white-space: nowrap;
 }
 
 .custom-table :deep(td) {
-    padding: 1rem;
-    vertical-align: middle;
+  padding: 1rem;
+  vertical-align: middle;
 }
 
 .custom-table :deep(tr) {
-    cursor: pointer;
-    transition: all 0.2s ease;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .custom-table :deep(tr:hover) {
-    background-color: rgba(0, 123, 255, 0.05);
+  background-color: rgba(0, 123, 255, 0.05);
 }
 
 .date-info {
-    font-size: 0.875rem;
-    color: #495057;
+  font-size: 0.875rem;
+  color: #495057;
 }
 
 .volume-info {
-    font-size: 0.875rem;
+  font-size: 0.875rem;
 }
 
 .action-btn {
-    padding: 0.25rem;
-    transition: all 0.2s ease;
+  padding: 0.25rem;
+  transition: all 0.2s ease;
 }
 
 .action-btn:hover {
-    transform: scale(1.1);
+  transform: scale(1.1);
 }
 
 .gap-2 {
-    gap: 0.5rem;
+  gap: 0.5rem;
 }
 
 .loading-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 400px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
 }
 
 .fade-in {
-    animation: fadeIn 0.3s ease-out;
+  animation: fadeIn 0.3s ease-out;
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
+  from {
+    opacity: 0;
+  }
 
-    to {
-        opacity: 1;
-    }
+  to {
+    opacity: 1;
+  }
 }
 
 .multiselect {
-    border: 1px solid #ced4da;
-    border-radius: 0.375rem;
-    padding: 0.375rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+}
+
+.info-group {
+  margin-bottom: 1rem;
+}
+
+.info-group label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #495057;
+}
+
+.info-group p {
+  margin: 0;
+  color: #2c3e50;
+}
+
+.section-subtitle {
+  color: #2c3e50;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.tasks-section {
+  background: #fff;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+}
+
+.progress {
+  background-color: #e9ecef;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.progress-bar {
+  background-color: #3498db;
+  transition: width 0.6s ease;
+}
+
+.task-details .card {
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.task-details .card-header {
+  background: linear-gradient(to right, #f8f9fa, #ffffff);
+  border-bottom: 1px solid #eee;
+}
+
+.table-responsive {
+  margin: 0 -1.5rem;
+  padding: 0 1.5rem;
+}
+
+.table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  border-top: none;
+}
+
+.table td {
+  vertical-align: middle;
+}
+
+.plan-details {
+  background: #f8f9fa;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+}
+
+.tasks-section {
+  background: #fff;
+  border-radius: 0.5rem;
+}
+
+.table {
+  margin-bottom: 0;
+}
+
+.table th {
+  white-space: nowrap;
+  background: #f8f9fa;
+  padding: 1rem;
+}
+
+.table td {
+  padding: 1rem;
+  vertical-align: middle;
+}
+
+.progress {
+  width: 100px;
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+.worker-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.worker-item {
+  transition: all 0.2s ease;
+}
+
+.worker-item:hover {
+  background-color: #f8f9fa;
+}
+
+.form-check-input:checked+.form-check-label .worker-item {
+  background-color: #e3f2fd;
+}
+
+.btn-link {
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.btn-link:hover {
+  transform: scale(1.1);
+}
+
+.task-table {
+  margin: 0;
+}
+
+.task-table :deep(th) {
+  background: #f8f9fa;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #495057;
+  white-space: nowrap;
+}
+
+.task-table :deep(td) {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.progress-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 120px;
+}
+
+.progress {
+  flex: 1;
+  background-color: #e9ecef;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.progress-bar {
+  background-color: #3498db;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 0.75rem;
+  color: #6c757d;
+  min-width: 40px;
+  text-align: right;
+}
+
+.btn-icon {
+  padding: 0.25rem;
+  color: #6c757d;
+  transition: all 0.2s ease;
+  border: none;
+  background: none;
+}
+
+.btn-icon:hover {
+  color: #007bff;
+  transform: scale(1.1);
+}
+
+.employee-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #495057;
+  font-size: 0.875rem;
+}
+
+.employee-info i {
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.task-info {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.task-name {
+  font-size: 1.1rem;
+  color: #2c3e50;
+}
+
+.task-details {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.worker-selection {
+  max-height: 450px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.worker-selection::-webkit-scrollbar {
+  width: 6px;
+}
+
+.worker-selection::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.worker-selection::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.worker-selection::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+.worker-search {
+  position: sticky;
+  top: 0;
+  background: white;
+  padding: 0.5rem 0;
+  z-index: 1;
+}
+
+.worker-search .input-group {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.worker-search .input-group-text {
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+}
+
+.worker-search .form-control {
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+.worker-search .form-control:focus {
+  box-shadow: none;
+  border-color: #dee2e6;
+}
+
+.worker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.25rem;
+}
+
+.worker-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #e9ecef;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.worker-card:hover {
+  border-color: #007bff;
+  background: #f8f9fa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.worker-card.selected {
+  border-color: #007bff;
+  background: #e7f1ff;
+}
+
+.worker-avatar {
+  width: 32px;
+  height: 32px;
+  background: #e9ecef;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+.worker-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.worker-name {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 0.25rem;
+}
+
+.worker-details {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.worker-specialty,
+.worker-experience {
+  font-size: 0.8125rem;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+}
+
+.worker-email {
+  font-size: 0.8125rem;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+}
+
+.worker-check {
+  flex-shrink: 0;
+}
+
+.check-circle {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #dee2e6;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.check-circle.checked {
+  background: #28a745;
+  border-color: #28a745;
+  color: white;
+}
+
+.check-circle i {
+  font-size: 0.75rem;
+}
+
+.attendance-container {
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.attendance-table-container {
+  flex: 1;
+  overflow: auto;
+  margin: 0 -1.5rem;
+  padding: 0 1.5rem;
+}
+
+.attendance-table {
+  margin-bottom: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.attendance-table th {
+  position: sticky;
+  top: 0;
+  background: #f8f9fa;
+  z-index: 1;
+  padding: 0.75rem;
+  text-align: center;
+  border: 1px solid #dee2e6;
+  white-space: nowrap;
+}
+
+.attendance-table td {
+  padding: 0.75rem;
+  border: 1px solid #dee2e6;
+  vertical-align: middle;
+}
+
+.worker-column {
+  position: sticky;
+  left: 0;
+  background: #f8f9fa;
+  z-index: 2;
+  min-width: 200px;
+}
+
+.date-column {
+  min-width: 120px;
+}
+
+.date-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.date {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.day-name {
+  font-size: 0.75rem;
+  color: #6c757d;
+  text-transform: uppercase;
+}
+
+.worker-name-cell {
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 1;
+}
+
+.worker-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.worker-name {
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.worker-specialty {
+  font-size: 0.8125rem;
+  color: #6c757d;
+}
+
+.status-cell {
+  text-align: center;
+}
+
+.form-select-sm {
+  padding-right: 2.5rem;
+  background-image: none;
+}
+
+.form-select-sm option {
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form-select-sm option i {
+  width: 1rem;
+  text-align: center;
+}
+
+.attendance-controls {
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1rem;
+}
+
+.date-picker-wrapper {
+  min-width: 200px;
+}
+
+.date-picker-wrapper .input-group {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.date-picker-wrapper .input-group:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.date-picker-wrapper .input-group:focus-within {
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.date-picker-wrapper input[type="date"] {
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.date-picker-wrapper input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.date-picker-wrapper input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  background: #0d6efd;
+  color: white;
+  border: none;
+  box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #0b5ed7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(13, 110, 253, 0.25);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: #0a58ca;
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(13, 110, 253, 0.2);
+}
+
+.btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background: #0d6efd;
+}
+
+.btn-primary i {
+  color: white;
+  opacity: 0.9;
+}
+
+.btn-primary:hover:not(:disabled) i {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .worker-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+  }
+
+  .status-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 0.75rem;
+  }
+
+  .btn-primary {
+    padding: 0.5rem 1rem;
+  }
+}
+
+/* Assignment Modal Styles */
+.assignment-container {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.assignment-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.assignment-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.assignment-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.assignment-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+.assigned-workers-list,
+.worker-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.assigned-workers-list::-webkit-scrollbar,
+.worker-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.assigned-workers-list::-webkit-scrollbar-track,
+.worker-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.assigned-workers-list::-webkit-scrollbar-thumb,
+.worker-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.assigned-workers-list::-webkit-scrollbar-thumb:hover,
+.worker-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+.assigned-worker-card,
+.worker-card {
+  background: #f8f9fa;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.assigned-worker-card:hover,
+.worker-card:hover {
+  background: #e9ecef;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.worker-card {
+  cursor: pointer;
+}
+
+.worker-card.selected {
+  background: #e7f1ff;
+  border: 1px solid #007bff;
+}
+
+.worker-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.worker-name {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 0.25rem;
+}
+
+.worker-email {
+  font-size: 0.8125rem;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+}
+
+.worker-check {
+  flex-shrink: 0;
+}
+
+.check-circle {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #dee2e6;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.check-circle.checked {
+  background: #28a745;
+  border-color: #28a745;
+  color: white;
+}
+
+.btn-icon {
+  padding: 0.5rem;
+  color: #dc3545;
+  transition: all 0.2s ease;
+  background: none;
+  border: none;
+}
+
+.btn-icon:hover {
+  color: #bb2d3b;
+  transform: scale(1.1);
+}
+
+.card {
+  border: 1px solid #dee2e6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.card-header {
+  border-bottom: 1px solid #dee2e6;
+  padding: 1rem;
+}
+
+@media (max-width: 768px) {
+  .col-md-6 {
+    margin-bottom: 1rem;
+  }
+}
+
+.worker-assigned-date {
+  font-size: 0.75rem;
+  color: #6c757d;
+  margin-top: 0.25rem;
+}
+
+.card-footer {
+  padding: 1rem;
+  border-top: 1px solid #dee2e6;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  border-color: #dc3545;
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #bb2d3b;
+  border-color: #bb2d3b;
+  transform: translateY(-1px);
+}
+
+.btn-danger:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.text-warning {
+  color: #ffc107 !important;
+}
+
+.task-list {
+  padding: 0.25rem;
+}
+
+.task-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.task-item {
+  background: #f8f9fa;
+  border-radius: 0.25rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  max-width: 80px;
+  text-align: center;
+}
+
+.task-item:hover {
+  background: #fff;
+  border-color: #dee2e6;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.task-name {
+  font-size: 0.8125rem;
+  color: #2c3e50;
+  line-height: 1.2;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-view-more {
+  background: #e9ecef;
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  color: #6c757d;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: 40px;
+  text-align: center;
+}
+
+.btn-view-more:hover {
+  background: #dee2e6;
+  color: #495057;
+}
+
+.task-details-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.task-detail-item {
+  background: #f8f9fa;
+  border-radius: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e9ecef;
+  text-align: center;
+}
+
+.task-detail-item .task-name {
+  white-space: normal;
+  max-width: none;
+}
+
+.status-select-wrapper {
+  min-width: 120px;
+}
+
+.status-select-wrapper select {
+  width: 100%;
+  padding: 0.375rem 2rem 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 0.25rem;
+  border: 1px solid #ced4da;
+  background-color: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.status-select-wrapper select:focus {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.status-select-wrapper select option {
+  padding: 0.5rem;
+}
+
+.status-select-wrapper select option[value="có mặt"] {
+  color: #198754;
+}
+
+.status-select-wrapper select option[value="vắng mặt"] {
+  color: #dc3545;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.task-item {
+  background: #f8f9fa;
+  border-radius: 0.375rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s ease;
+}
+
+.task-item:hover {
+  background: #fff;
+  border-color: #dee2e6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.25rem;
+}
+
+.task-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.task-name .fw-medium {
+  font-size: 0.875rem;
+  color: #2c3e50;
+  line-height: 1.3;
+
+}
+
+.task-id {
+  font-size: 0.75rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.task-status-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  margin-left: 0.5rem;
+  flex-shrink: 0;
+}
+
+.task-status-badge.status-pending {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.task-status-badge.status-in-progress {
+  background-color: #cce5ff;
+  color: #004085;
+}
+
+.task-status-badge.status-completed {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.task-status-badge.status-cancelled {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.task-workload {
+  font-size: 0.8125rem;
+  color: #6c757d;
+  padding-top: 0.25rem;
+  border-top: 1px solid #e9ecef;
+}
+
+.status-select {
+  min-width: 120px;
+}
+
+.status-select :deep(.form-select) {
+  padding: 0.375rem 2rem 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 0.25rem;
+  border: 1px solid #ced4da;
+  background-color: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.status-select :deep(.form-select:focus) {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.status-select :deep(.form-select option[value="có mặt"]) {
+  color: #198754;
+}
+
+.status-select :deep(.form-select option[value="vắng mặt"]) {
+  color: #dc3545;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-select {
+  width: 100%;
+  min-width: 120px;
+}
+
+.status-select :deep(.form-select) {
+  padding: 0.375rem 2rem 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 0.25rem;
+  border: 1px solid #ced4da;
+  background-color: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.status-select :deep(.form-select:focus) {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.status-select :deep(.form-select option[value="có mặt"]) {
+  color: #198754;
+}
+
+.status-select :deep(.form-select option[value="vắng mặt"]) {
+  color: #dc3545;
+}
+
+.status-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.current-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.current-status i {
+  font-size: 1rem;
+}
+
+.status-select {
+  width: 100%;
+  min-width: 120px;
+}
+
+.status-select :deep(.form-select) {
+  padding: 0.375rem 2rem 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 0.25rem;
+  border: 1px solid #ced4da;
+  background-color: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.status-select :deep(.form-select:focus) {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.status-select :deep(.form-select option[value="có mặt"]) {
+  color: #198754;
+}
+
+.status-select :deep(.form-select option[value="vắng mặt"]) {
+  color: #dc3545;
+}
+
+.worker-card.disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background: #f8f9fa;
+}
+
+.worker-card.disabled:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: #e9ecef;
+}
+
+.btn-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-icon:disabled:hover {
+  transform: none;
+  color: #dc3545;
+}
+
+.employee-status-indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: white;
+}
+
+.status-present {
+  background-color: #198754;
+  box-shadow: 0 0 0 2px rgba(25, 135, 84, 0.2);
+}
+
+.status-absent {
+  background-color: #dc3545;
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
+}
+
+.employee-status-indicator i {
+  font-size: 0.75rem;
 }
 </style>

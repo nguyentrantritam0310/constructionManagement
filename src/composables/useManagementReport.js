@@ -57,31 +57,65 @@ export function useManagementReport() {
   const createReport = async (reportData) => {
     try {
       loading.value = true
+      console.log('📝 Starting report creation')
 
-      // Create FormData object
-      const formData = new FormData()
-      formData.append('ConstructionID', reportData.constructionID)
-      formData.append('ReportType', reportData.reportType)
-      formData.append('Content', reportData.content)
-      formData.append('Level', reportData.level)
-
-      // Append images if they exist
-      if (reportData.images && reportData.images.length > 0) {
-        reportData.images.forEach(image => {
-          formData.append('Images', image)
-        })
+      // Ensure reportData is FormData
+      if (!(reportData instanceof FormData)) {
+        throw new Error('Expected FormData object for report creation')
       }
 
-      const response = await api.post('/Report', formData, {
+      // Log request details
+      console.log('📤 Request details:')
+      console.log('- Endpoint: /Report')
+      console.log('- Method: POST')
+      console.log('- Content-Type: multipart/form-data')
+      console.log('- FormData contents:')
+      for (let [key, value] of reportData.entries()) {
+        console.log(`  ${key}: ${value instanceof File ? `File(${value.name}, ${value.type})` : value}`)
+      }
+
+      const response = await api.post('/Report', reportData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       })
 
+      console.log('✅ Report created successfully:', response.data)
       reports.value.push(response.data)
       return response.data
     } catch (err) {
-      error.value = err.message
+      console.error('❌ Error creating report:', {
+        message: err.message,
+        status: err.response?.status,
+        statusText: err.response?.statusText
+      })
+
+      // Log detailed error information
+      if (err.response) {
+        console.error('Response details:', {
+          data: err.response.data,
+          headers: err.response.headers,
+          validationErrors: err.response.data?.errors
+        })
+
+        // Handle specific error cases
+        if (err.response.status === 400) {
+          const errorMessage = err.response.data?.errors
+            ? Object.entries(err.response.data.errors)
+                .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+                .join('\n')
+            : err.response.data?.message || 'Invalid request data'
+          error.value = `Validation error: ${errorMessage}`
+        } else {
+          error.value = `Server error: ${err.response.statusText}`
+        }
+      } else if (err.request) {
+        console.error('No response received:', err.request)
+        error.value = 'No response received from server'
+      } else {
+        console.error('Error setting up request:', err.message)
+        error.value = err.message
+      }
       throw err
     } finally {
       loading.value = false
@@ -91,95 +125,88 @@ export function useManagementReport() {
   const updateReport = async (reportId, reportData) => {
     try {
       loading.value = true
-      console.log('🔄 Starting report update with ID:', reportId)
-      console.log('📦 Full report data:', JSON.stringify(reportData, null, 2))
+      console.log('🔄 Starting report update')
 
-      // Create FormData object
-      const formData = new FormData()
-      formData.append('ID', reportId)
-      formData.append('ConstructionID', reportData.constructionID)
-      formData.append('ReportType', reportData.reportType)
-      formData.append('Content', reportData.content)
-      formData.append('Level', reportData.level)
-      formData.append('Status', reportData.status || 'Pending')
-
-      // Log individual field values
-      console.log('🔍 Validating fields:')
-      console.log('- ID:', reportId, typeof reportId)
-      console.log('- ConstructionID:', reportData.constructionID, typeof reportData.constructionID)
-      console.log('- ReportType:', reportData.reportType, typeof reportData.reportType)
-      console.log('- Content:', reportData.content, typeof reportData.content)
-      console.log('- Level:', reportData.level, typeof reportData.level)
-      console.log('- Status:', reportData.status || 'Pending')
-
-      // Append new images if they exist
-      if (reportData.newImages && reportData.newImages.length > 0) {
-        console.log('📸 New images to upload:', reportData.newImages.length)
-        reportData.newImages.forEach((image, index) => {
-          formData.append('NewImages', image)
-          console.log(`- New image ${index + 1}:`, {
-            name: image.name,
-            type: image.type,
-            size: image.size,
-            lastModified: image.lastModified
-          })
-        })
+      // Ensure reportData is FormData
+      if (!(reportData instanceof FormData)) {
+        throw new Error('Expected FormData object for report update')
       }
 
-      // Always append DeletedImagePaths, even if empty
-      if (reportData.deletedImagePaths && reportData.deletedImagePaths.length > 0) {
-        console.log('🗑️ Images to delete:', reportData.deletedImagePaths.length)
-        reportData.deletedImagePaths.forEach((path, index) => {
-          const cleanPath = path.startsWith('/') ? path.slice(1) : path
-          formData.append('DeletedImagePaths', cleanPath)
-          console.log(`- Deleted image path ${index + 1}:`, cleanPath)
-        })
-      } else {
-        // Add an empty string to satisfy the required field
-        formData.append('DeletedImagePaths', '')
-        console.log('- No images to delete, adding empty DeletedImagePaths field')
+      // Get ID from either parameter or FormData
+      const id = reportId || reportData.get('ID')
+      if (!id) {
+        throw new Error('Report ID is required for update')
       }
 
-      // Log complete FormData contents
-      console.log('📤 Final FormData contents:')
-      for (let pair of formData.entries()) {
-        console.log(`${pair[0]}: ${pair[1]}`)
+      // Log request details
+      console.log('📤 Request details:')
+      console.log('- Endpoint:', `/Report/${id}`)
+      console.log('- Method: PUT')
+      console.log('- Content-Type: multipart/form-data')
+      console.log('- FormData contents:')
+
+      // Log all form data entries
+      const formDataEntries = {};
+      for (let [key, value] of reportData.entries()) {
+        formDataEntries[key] = value instanceof File ? `File(${value.name})` : value;
+        console.log(`  ${key}: ${value instanceof File ? `File(${value.name}, ${value.type})` : value}`)
       }
 
-      const response = await api.put(`/Report/${reportId}`, formData, {
+      // Validate that required fields are present
+      const requiredFields = ['ID', 'ConstructionID', 'ReportType', 'Content', 'Level'];
+      const missingFields = requiredFields.filter(field => !formDataEntries[field]);
+
+      if (missingFields.length > 0) {
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+
+      const response = await api.put(`/Report/${id}`, reportData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       })
 
-      console.log('✅ Update successful. Response:', response.data)
+      console.log('✅ Report updated successfully:', response.data)
 
-      const index = reports.value.findIndex(r => r.id === reportId)
+      // Update local state
+      const index = reports.value.findIndex(r => r.id === id)
       if (index !== -1) {
         reports.value[index] = response.data
       }
       return response.data
     } catch (err) {
-      error.value = err.message
-      console.error('❌ Error updating report:', err)
-      console.error('Error details:', {
+      console.error('❌ Error updating report:', {
         message: err.message,
-        response: {
-          data: err.response?.data,
-          status: err.response?.status,
-          headers: err.response?.headers,
-          validationErrors: err.response?.data?.errors
-        }
+        status: err.response?.status,
+        statusText: err.response?.statusText
       })
 
-      // Log specific validation errors if they exist
-      if (err.response?.data?.errors) {
-        console.error('🚫 Validation Errors:')
-        Object.entries(err.response.data.errors).forEach(([field, errors]) => {
-          console.error(`- ${field}:`, errors)
+      // Log detailed error information
+      if (err.response) {
+        console.error('Response details:', {
+          data: err.response.data,
+          headers: err.response.headers,
+          validationErrors: err.response.data?.errors
         })
-      }
 
+        // Handle specific error cases
+        if (err.response.status === 400) {
+          const errorMessage = err.response.data?.errors
+            ? Object.entries(err.response.data.errors)
+                .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+                .join('\n')
+            : err.response.data?.message || 'Invalid request data'
+          error.value = `Validation error: ${errorMessage}`
+        } else {
+          error.value = `Server error: ${err.response.statusText}`
+        }
+      } else if (err.request) {
+        console.error('No response received:', err.request)
+        error.value = 'No response received from server'
+      } else {
+        console.error('Error setting up request:', err.message)
+        error.value = err.message
+      }
       throw err
     } finally {
       loading.value = false

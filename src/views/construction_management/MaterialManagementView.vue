@@ -6,6 +6,7 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { useMaterialManagement } from '../../composables/useMaterialManagement'
+import UpdateButton from '../../components/common/UpdateButton.vue'
 
 const {
   materials,
@@ -42,8 +43,6 @@ const closeForm = () => {
   selectedMaterial.value = null
 }
 
-
-
 const handlePageChange = (page) => {
   currentPage.value = page
 }
@@ -69,7 +68,7 @@ const handlePageChange = (page) => {
     ]" :data="paginatedMaterials">
       <template #actions="{ item }">
         <div class="d-flex justify-content-center gap-2">
-          <button class="btn btn-sm btn-primary" @click="openForm('update', item)">Sửa</button>
+          <UpdateButton @click.stop="openForm('update', item)" />
         </div>
       </template>
     </DataTable>
@@ -101,6 +100,20 @@ const handlePageChange = (page) => {
 <style scoped>
 .container-fluid {
   animation: fadeIn 0.3s ease-out;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.action-btn {
+  padding: 0.25rem;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  transform: scale(1.1);
+  color: #007bff;
 }
 
 @keyframes fadeIn {

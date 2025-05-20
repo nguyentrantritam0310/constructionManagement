@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import ModalDialog from './ModalDialog.vue'
 import StatusBadge from './StatusBadge.vue'
 import api from '../../api.js'
@@ -12,10 +12,18 @@ const props = defineProps({
   report: {
     type: Object,
     required: true
+  },
+  showActions: {
+    type: Boolean,
+    default: false
   }
 })
 
 const emit = defineEmits(['update:show', 'reject', 'approve'])
+
+// Thêm state cho modal zoom ảnh
+const showImageModal = ref(false)
+const selectedImage = ref(null)
 
 const formatDate = (date) => {
   if (!date) return 'Chưa cập nhật'
@@ -50,6 +58,11 @@ const handleApprove = () => {
 const handleImageError = (e) => {
   console.error('Failed to load image:', e.target.src)
   e.target.src = 'https://via.placeholder.com/400x300?text=Image+Not+Found'
+}
+
+const handleImageClick = (attachment) => {
+  selectedImage.value = attachment
+  showImageModal.value = true
 }
 
 const apiBaseUrl = computed(() => {
@@ -145,6 +158,7 @@ const hasAttachments = computed(() => {
                 :alt="'Ảnh ' + attachment.id"
                 class="img-fluid shadow-sm"
                 @error="handleImageError"
+                @click="handleImageClick(attachment)"
               />
               <div class="img-upload-date text-muted small text-center mt-2">
                 <i class="fas fa-clock me-1"></i>
@@ -156,13 +170,37 @@ const hasAttachments = computed(() => {
       </div>
 
       <!-- Nút thao tác -->
-      <div class="d-flex justify-content-end gap-2 mt-4">
+      <div v-if="showActions" class="d-flex justify-content-end gap-2 mt-4">
         <button class="btn btn-outline-danger" @click="handleReject">
           <i class="fas fa-times-circle me-1"></i> Từ chối
         </button>
         <button class="btn btn-primary" @click="handleApprove">
           <i class="fas fa-check-circle me-1"></i> Duyệt
         </button>
+      </div>
+    </div>
+  </ModalDialog>
+
+  <!-- Modal Zoom Ảnh -->
+  <ModalDialog
+    v-if="selectedImage"
+    :show="showImageModal"
+    @update:show="showImageModal = $event"
+    title="Xem Chi Tiết Ảnh"
+    size="xl"
+  >
+    <div class="image-zoom-container">
+      <img
+        :src="selectedImage.fullUrl"
+        :alt="'Ảnh ' + selectedImage.id"
+        class="img-zoom"
+        @error="handleImageError"
+      />
+      <div class="image-info mt-3">
+        <div class="text-muted small">
+          <i class="fas fa-clock me-1"></i>
+          Ngày tải lên: {{ formatDate(selectedImage.uploadDate) }}
+        </div>
       </div>
     </div>
   </ModalDialog>
@@ -202,7 +240,7 @@ const hasAttachments = computed(() => {
   color: #856404;
 }
 
-.report-detail-modal .badge-level.Trung\ bình {
+.report-detail-modal .badge-level[class*="Trung"] {
   background: #d1ecf1;
   color: #0c5460;
 }
@@ -212,7 +250,7 @@ const hasAttachments = computed(() => {
   color: #155724;
 }
 
-.report-detail-modal .badge-level.Nghiêm\ trọng {
+.report-detail-modal .badge-level.Nghiêm {
   background: #f8d7da;
   color: #721c24;
 }
@@ -234,5 +272,30 @@ const hasAttachments = computed(() => {
 
 .report-detail-modal .img-upload-date {
   margin-top: 0.5rem;
+}
+
+.image-zoom-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 1rem;
+}
+
+.img-zoom {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.image-info {
+  width: 100%;
+  text-align: center;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
 }
 </style>

@@ -41,10 +41,14 @@ const props = defineProps({
   report: {
     type: Object,
     default: () => ({})
+  },
+  modelValue: {
+    type: Object,
+    default: () => ({})
   }
 })
 
-const emit = defineEmits(['submit', 'cancel'])
+const emit = defineEmits(['update:modelValue'])
 
 const { constructions, fetchConstructions } = useConstructionManagement()
 
@@ -57,37 +61,148 @@ const formData = ref({
   reportType: props.reportType === 'technical' ? 'Sự cố kĩ thuật' : 'Sự cố thi công',
   content: '',
   level: '',
-  images: [],
-  newImages: [],
+  images: null,
+  newImages: null,
   deletedImagePaths: [],
   attachments: []
 })
 
+// Function to prepare and emit form data
+const emitFormData = () => {
+  // Validate required fields first
+  const requiredFields = {
+    constructionID: 'Construction ID',
+    reportType: 'Report Type',
+    content: 'Content',
+    level: 'Level'
+  }
+
+  const missingFields = Object.entries(requiredFields)
+    .filter(([key]) => !formData.value[key])
+    .map(([, label]) => label)
+
+  if (missingFields.length > 0) {
+    console.warn('❌ Missing required fields:', missingFields.join(', '))
+    return
+  }
+
+  // Create a FormData object for file uploads
+  const data = new FormData()
+
+  // If in update mode, add ID first
+  if (props.mode === 'update' && formData.value.id) {
+    data.append('ID', String(formData.value.id))
+    console.log('🔑 Adding report ID:', formData.value.id)
+  }
+
+  // Add basic fields with correct casing and type conversion
+  data.append('ConstructionID', String(formData.value.constructionID))
+  data.append('ReportType', formData.value.reportType)
+  data.append('Content', formData.value.content)
+  data.append('Level', formData.value.level)
+
+  // Handle file uploads
+  if (props.mode === 'create') {
+    // For create mode, append all images
+    if (formData.value.images instanceof FileList) {
+      Array.from(formData.value.images).forEach(file => {
+        data.append('Images', file)
+        console.log('📎 Adding image:', file.name, 'Type:', file.type, 'Size:', file.size)
+      })
+    }
+  } else {
+    // Handle new images if any
+    if (formData.value.newImages instanceof FileList) {
+      Array.from(formData.value.newImages).forEach(file => {
+        data.append('NewImages', file)
+        console.log('📎 Adding new image:', file.name, 'Type:', file.type, 'Size:', file.size)
+      })
+    }
+
+    // Always include DeletedImagePaths array
+    const deletedPaths = formData.value.deletedImagePaths || []
+    if (deletedPaths.length > 0) {
+      deletedPaths.forEach(path => {
+        const cleanPath = path.startsWith('/') ? path.slice(1) : path
+        data.append('DeletedImagePaths', cleanPath)
+        console.log('🗑️ Adding deleted path:', cleanPath)
+      })
+    } else {
+      // Add empty string to ensure the field is included in the request
+      data.append('DeletedImagePaths', '')
+      console.log('ℹ️ No deleted paths')
+    }
+
+    // Add remaining attachments
+    const attachments = formData.value.attachments || []
+    if (attachments.length > 0) {
+      attachments.forEach(att => {
+        if (att.filePath) {
+          const cleanPath = att.filePath.startsWith('/') ? att.filePath.slice(1) : att.filePath
+          data.append('Attachments', cleanPath)
+          console.log('📎 Keeping existing attachment:', cleanPath)
+        }
+      })
+    } else {
+      // Add empty string to ensure the field is included
+      data.append('Attachments', '')
+      console.log('ℹ️ No remaining attachments')
+    }
+  }
+
+  // Log final FormData contents for debugging
+  console.log('📤 Final FormData entries:')
+  for (let [key, value] of data.entries()) {
+    console.log(`${key}: ${value instanceof File ? `File(${value.name})` : value}`)
+  }
+
+  // Emit the FormData object
+  emit('update:modelValue', data)
+}
+
+// Watch for changes in modelValue prop
+watch(() => props.modelValue, (newValue) => {
+  if (newValue && Object.keys(newValue).length > 0) {
+    formData.value = { ...formData.value, ...newValue }
+  }
+}, { deep: true })
+
 // Watch for changes in report prop
 watch(() => props.report, (newReport) => {
   if (newReport && Object.keys(newReport).length > 0) {
-    console.log('Report data received:', newReport) // Debug
-    formData.value = {
+    console.log('Report data received:', newReport)
+    const updatedData = {
       id: newReport.id,
       constructionID: newReport.constructionID,
       reportType: newReport.reportType,
       content: newReport.content,
       level: newReport.level,
       status: newReport.statusLogs?.[0]?.status,
-      images: [],
-      newImages: [],
+      images: null,
+      newImages: null,
       deletedImagePaths: []
     }
+
     // Handle attachments with proper path formatting
     if (newReport.attachments && newReport.attachments.length > 0) {
-      formData.value.attachments = newReport.attachments.map(att => ({
+      updatedData.attachments = newReport.attachments.map(att => ({
         ...att,
         filePath: att.filePath.startsWith('/') ? att.filePath.slice(1) : att.filePath,
         displayUrl: getFileUrl(att.filePath)
       }))
+    } else {
+      updatedData.attachments = []
     }
+
+    formData.value = updatedData
+    emitFormData()
   }
 }, { immediate: true })
+
+// Watch formData changes and emit updates
+watch(formData, () => {
+  emitFormData()
+}, { deep: true })
 
 const issueTypes = [
   { value: 'equipment', label: 'Lỗi thiết bị' },
@@ -110,96 +225,6 @@ const statusOptions = [
   { value: 'Closed', label: 'Đã đóng', color: 'secondary', icon: 'archive' }
 ]
 
-const validateForm = () => {
-  if (!formData.value.constructionID || !formData.value.content || !formData.value.level) {
-    return false
-  }
-  return true
-}
-
-const handleSubmit = (e) => {
-  e.preventDefault()
-  console.log('🚀 Starting form submission')
-  console.log('📝 Form mode:', props.mode)
-  console.log('📋 Form data state:', {
-    constructionID: {
-      value: formData.value.constructionID,
-      type: typeof formData.value.constructionID
-    },
-    reportType: {
-      value: formData.value.reportType,
-      type: typeof formData.value.reportType
-    },
-    content: {
-      value: formData.value.content,
-      type: typeof formData.value.content,
-      length: formData.value.content?.length
-    },
-    level: {
-      value: formData.value.level,
-      type: typeof formData.value.level
-    },
-    status: {
-      value: formData.value.status,
-      type: typeof formData.value.status
-    },
-    images: {
-      existing: formData.value.attachments?.length || 0,
-      new: formData.value.newImages?.length || 0,
-      deleted: formData.value.deletedImagePaths?.length || 0
-    }
-  })
-
-  if (!validateForm()) {
-    console.warn('❌ Form validation failed')
-    console.log('Validation details:', {
-      hasConstructionID: Boolean(formData.value.constructionID),
-      hasContent: Boolean(formData.value.content),
-      hasLevel: Boolean(formData.value.level)
-    })
-    showMessage('Vui lòng nhập đầy đủ thông tin bắt buộc', 'error')
-    return
-  }
-
-  console.log('✅ Form validation passed')
-
-  // Log image details
-  if (formData.value.attachments?.length > 0) {
-    console.log('📎 Existing attachments:', formData.value.attachments.map(att => ({
-      id: att.id,
-      filePath: att.filePath,
-      displayUrl: att.displayUrl
-    })))
-  }
-
-  if (formData.value.newImages?.length > 0) {
-    console.log('🆕 New images:', formData.value.newImages.map(img => ({
-      name: img.name,
-      type: img.type,
-      size: img.size,
-      lastModified: img.lastModified
-    })))
-  }
-
-  if (formData.value.deletedImagePaths?.length > 0) {
-    console.log('🗑️ Deleted image paths:', formData.value.deletedImagePaths)
-  }
-
-  emit('submit', formData.value)
-}
-
-const getReportTypeLabel = () => {
-  return props.reportType === 'incident' ? 'Báo cáo sự cố thi công' : 'Báo cáo vấn đề kỹ thuật'
-}
-
-const getStatusInfo = (status) => {
-  return statusOptions.find(s => s.value === status) || statusOptions[0]
-}
-
-const getSeverityInfo = (severity) => {
-  return severityLevels.find(s => s.value === severity) || severityLevels[0]
-}
-
 const previewImages = ref([])
 
 const handleImageUpload = (event) => {
@@ -217,32 +242,72 @@ const handleImageUpload = (event) => {
     })
 
     if (props.mode === 'create') {
-      formData.value.images = Array.from(files)
+      formData.value.images = files
     } else {
-      formData.value.newImages = Array.from(files)
+      formData.value.newImages = files
     }
 
-    // Thêm preview cho ảnh mới
+    // Update preview images for new uploads
+    previewImages.value = []
     Array.from(files).forEach(file => {
       const reader = new FileReader()
       reader.onload = (e) => {
-        previewImages.value.push(e.target.result)
+        previewImages.value.push({
+          url: e.target.result,
+          file: file,
+          isNew: true
+        })
       }
       reader.readAsDataURL(file)
     })
+
+    // Emit updated form data
+    emitFormData()
   }
 }
 
-const handleDeleteImage = (imagePath) => {
-  if (props.mode === 'update') {
+const handleDeleteImage = (imagePath, isNew = false) => {
+  if (isNew) {
+    // Remove from preview images if it's a new upload
+    const fileIndex = previewImages.value.findIndex(img => img.url === imagePath)
+    if (fileIndex !== -1) {
+      previewImages.value.splice(fileIndex, 1)
+      // Clear file input if all new images are removed
+      if (previewImages.value.length === 0) {
+        formData.value.newImages = null
+      }
+    }
+  } else if (props.mode === 'update') {
+    // Add to deletedImagePaths if it's an existing image
+    if (!formData.value.deletedImagePaths) {
+      formData.value.deletedImagePaths = []
+    }
     formData.value.deletedImagePaths.push(imagePath)
+    // Remove from attachments array
     formData.value.attachments = formData.value.attachments.filter(att => att.filePath !== imagePath)
-  }
+    console.log('🗑️ Image marked for deletion:', imagePath)
+    console.log('Current deletedImagePaths:', formData.value.deletedImagePaths)
+}
+  // Emit updated form data
+  emitFormData()
 }
 
 const handleImageError = (e) => {
   console.error('Failed to load image:', e.target.src)
   e.target.src = 'https://via.placeholder.com/400x300?text=Image+Not+Found'
+}
+
+// Add back the utility functions
+const getReportTypeLabel = () => {
+  return props.reportType === 'incident' ? 'Báo cáo sự cố thi công' : 'Báo cáo vấn đề kỹ thuật'
+}
+
+const getStatusInfo = (status) => {
+  return statusOptions.find(s => s.value === status) || statusOptions[0]
+}
+
+const getSeverityInfo = (severity) => {
+  return severityLevels.find(s => s.value === severity) || severityLevels[0]
 }
 </script>
 
@@ -265,7 +330,7 @@ const handleImageError = (e) => {
       <p class="text-muted mb-0">Vui lòng điền đầy đủ thông tin báo cáo</p>
     </div>
 
-    <form @submit="handleSubmit" class="form-body">
+    <div class="form-body">
       <div class="row g-3">
         <div class="col-md-6">
           <FormField
@@ -333,14 +398,23 @@ const handleImageError = (e) => {
             </template>
           </FormField>
 
-          <!-- Image Preview -->
-          <div v-if="mode === 'update' && formData.attachments.length > 0" class="image-preview-container mt-2">
+          <!-- Existing Images Preview -->
+          <div v-if="mode === 'update' && formData.attachments?.length > 0" class="image-preview-container mt-2">
             <h6 class="mb-2">Ảnh hiện tại:</h6>
             <div class="row g-2">
               <div v-for="attachment in formData.attachments" :key="attachment.id" class="col-md-3 col-sm-4 col-6">
                 <div class="image-preview">
-                  <img :src="attachment.displayUrl" class="img-fluid rounded" alt="Current Image" @error="handleImageError">
-                  <button type="button" class="btn btn-sm btn-danger remove-image" @click="handleDeleteImage(attachment.filePath)">
+                  <img
+                    :src="attachment.displayUrl"
+                    class="img-fluid rounded"
+                    alt="Current Image"
+                    @error="handleImageError"
+                  >
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-danger remove-image"
+                    @click="handleDeleteImage(attachment.filePath)"
+                  >
                     <i class="fas fa-times"></i>
                   </button>
                 </div>
@@ -354,8 +428,17 @@ const handleImageError = (e) => {
             <div class="row g-2">
               <div v-for="(image, index) in previewImages" :key="index" class="col-md-3 col-sm-4 col-6">
                 <div class="image-preview">
-                  <img :src="image" class="img-fluid rounded" alt="Preview" @error="handleImageError">
-                  <button type="button" class="btn btn-sm btn-danger remove-image" @click="previewImages.splice(index, 1)">
+                  <img
+                    :src="image.url"
+                    class="img-fluid rounded"
+                    alt="Preview"
+                    @error="handleImageError"
+                  >
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-danger remove-image"
+                    @click="handleDeleteImage(image.url, true)"
+                  >
                     <i class="fas fa-times"></i>
                   </button>
                 </div>
@@ -364,17 +447,7 @@ const handleImageError = (e) => {
           </div>
         </div>
       </div>
-
-      <!-- Submit Buttons -->
-      <div class="mt-4 d-flex justify-content-end gap-2">
-        <button type="button" class="btn btn-secondary" @click="$emit('cancel')">
-          Hủy
-        </button>
-        <button type="submit" class="btn btn-primary">
-          {{ mode === 'create' ? 'Tạo báo cáo' : 'Cập nhật' }}
-        </button>
-      </div>
-    </form>
+    </div>
   </div>
 </template>
 
@@ -429,7 +502,10 @@ const handleImageError = (e) => {
 }
 
 .image-preview-container {
-  margin-top: 0.5rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
 }
 
 .image-preview {
@@ -437,6 +513,13 @@ const handleImageError = (e) => {
   border-radius: 8px;
   overflow: hidden;
   aspect-ratio: 1;
+  border: 2px solid #e9ecef;
+  transition: all 0.2s ease;
+}
+
+.image-preview:hover {
+  border-color: #dee2e6;
+  transform: translateY(-2px);
 }
 
 .image-preview img {
@@ -465,5 +548,12 @@ const handleImageError = (e) => {
 .remove-image:hover {
   background: #dc3545;
   color: white;
+  transform: scale(1.1);
+}
+
+.image-preview-container h6 {
+  color: #6c757d;
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
 }
 </style>

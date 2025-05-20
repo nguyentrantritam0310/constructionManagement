@@ -3,6 +3,7 @@ import ConstructionManagementView from '../views/technical_staff/ConstructionMan
 import DashboardView from '../views/technical_staff/DashboardView.vue'
 import MaterialPlanningView from '../views/technical_staff/MaterialPlanningView.vue'
 import TechnicalReportView from '../views/technical_staff/TechnicalReportView.vue'
+import ConstructionDetailView from '../views/technical_staff/ConstructionDetailView.vue'
 import { useAuth } from '../composables/useAuth'
 
 import IncidentReportListView from '../views/construction_management/IncidentReportListView.vue'
@@ -50,7 +51,7 @@ const router = createRouter({
     {
       path: '/construction-management/:id',
       name: 'construction-detail',
-      component: () => import('../views/technical_staff/ConstructionDetailView.vue'),
+      component: ConstructionDetailView,
       props: true,
       meta: { requiresAuth: true }
     },

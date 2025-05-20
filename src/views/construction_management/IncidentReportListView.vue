@@ -13,6 +13,7 @@ import Pagination from '../../components/common/Pagination.vue'
 import UpdateReportForm from '../../components/incident-report/UpdateReportForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
+import UpdateButton from '../../components/common/UpdateButton.vue'
 
 const { showMessage } = useGlobalMessage()
 
@@ -22,6 +23,7 @@ const showUpdateForm = ref(false)
 const selectedReport = ref(null)
 const showDetailDialog = ref(false)
 const detailReport = ref(null)
+const reportFormData = ref({})
 
 const filteredReports = ref([])
 
@@ -80,9 +82,9 @@ const validateForm = () => {
   }
   return true
 }
-const handleSubmit = async (reportData) => {
+const handleSubmit = async (formData) => {
   try {
-    await createReport(reportData)
+    await createReport(formData)
     showCreateForm.value = false
     showMessage('Báo cáo đã được tạo thành công', 'success')
     await fetchReportsByThiCong() // Refresh the list
@@ -100,15 +102,24 @@ const formatDate = (date) => {
   return new Date(date).toLocaleDateString('vi-VN')
 }
 
-const handleUpdateSubmit = async (updatedReport) => {
+const handleUpdateSubmit = async (formData) => {
   try {
-    await updateReport(updatedReport.id, updatedReport)
+    const reportId = selectedReport.value.id
+    console.log('🔄 Updating report:', reportId)
+    console.log('📦 Form data contents:')
+    for (let [key, value] of formData.entries()) {
+      console.log(`${key}: ${value instanceof File ? `File(${value.name})` : value}`)
+    }
+
+    await updateReport(reportId, formData)
     showUpdateForm.value = false
     selectedReport.value = null
-    alert('Cập nhật báo cáo thành công')
+    reportFormData.value = {}
+    showMessage('Cập nhật báo cáo thành công', 'success')
+    await fetchReportsByThiCong()
   } catch (err) {
     console.error('Error updating report:', err)
-    alert('Có lỗi xảy ra khi cập nhật báo cáo')
+    showMessage(err.message || 'Có lỗi xảy ra khi cập nhật báo cáo', 'error')
   }
 }
 
@@ -203,8 +214,9 @@ const handleApprove = async (report) => {
       </template>
 
       <template #actions="{ item }">
-        <ActionButton type="primary" icon="fas fa-edit" tooltip="Cập nhật trạng thái"
-          @click="handleUpdateStatus(item)" />
+        <div class="d-flex justify-content-center gap-2">
+          <UpdateButton @click.stop="handleUpdateStatus(item)" />
+        </div>
       </template>
     </DataTable>
 
@@ -218,23 +230,33 @@ const handleApprove = async (report) => {
     </div>
 
     <!-- Form tạo báo cáo mới -->
-    <FormDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới">
+    <FormDialog
+      v-model:show="showCreateForm"
+      title="Tạo Báo Cáo Mới"
+      submitText="Tạo báo cáo"
+      :formData="reportFormData"
+      @submit="handleSubmit"
+    >
       <ReportForm
         mode="create"
         reportType="incident"
-        @submit="handleSubmit"
-        @cancel="showCreateForm = false"
+        v-model="reportFormData"
       />
     </FormDialog>
 
     <!-- Form cập nhật báo cáo -->
-    <FormDialog v-if="selectedReport" v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo">
+    <FormDialog
+      v-model:show="showUpdateForm"
+      title="Cập Nhật Báo Cáo"
+      submitText="Cập nhật"
+      :formData="reportFormData"
+      @submit="handleUpdateSubmit"
+    >
       <ReportForm
         mode="update"
         reportType="incident"
         :report="selectedReport"
-        @submit="handleUpdateSubmit"
-        @cancel="showUpdateForm = false"
+        v-model="reportFormData"
       />
     </FormDialog>
 
@@ -249,12 +271,26 @@ const handleApprove = async (report) => {
 </template>
 
 <style scoped>
-.technical-report {
+.management-report {
   animation: fadeIn 0.3s ease-out;
 }
 
 .report-table {
   margin-bottom: 2rem;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.action-btn {
+  padding: 0.25rem;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  transform: scale(1.1);
+  color: #007bff;
 }
 
 @keyframes fadeIn {

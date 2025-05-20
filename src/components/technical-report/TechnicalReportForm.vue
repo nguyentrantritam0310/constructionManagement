@@ -19,7 +19,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['submit', 'cancel'])
+const emit = defineEmits(['update:modelValue'])
 
 const formData = ref({
   constructionCode: '',
@@ -38,6 +38,11 @@ watch(() => props.report, (newReport) => {
   }
 }, { immediate: true })
 
+// Watch for form data changes and emit them
+watch(formData, (newValue) => {
+  emit('update:modelValue', newValue)
+}, { deep: true })
+
 const issueTypes = [
   { value: 'equipment', label: 'Lỗi thiết bị' },
   { value: 'material', label: 'Thiếu vật tư' },
@@ -51,22 +56,6 @@ const severityLevels = [
   { value: 'high', label: 'Cao' },
   { value: 'critical', label: 'Nghiêm trọng' }
 ]
-
-const validateForm = () => {
-  if (!formData.value.constructionCode || !formData.value.issueType ||
-    !formData.value.description || !formData.value.severity) {
-    return false
-  }
-  return true
-}
-
-const handleSubmit = () => {
-  if (!validateForm()) {
-    alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
-    return
-  }
-  emit('submit', formData.value)
-}
 </script>
 
 <template>
