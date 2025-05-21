@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useDirectorProposal } from '../../composables/useDirectorProposal'
+import { useManagementReport } from '../../composables/useManagementReport'
 import DataTable from '../../components/common/DataTable.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
@@ -11,6 +12,9 @@ import ReportForm from '../../components/common/ReportForm.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import MaterialPlanApprovalList from '@/components/proposal-approval/MaterialPlanApprovalList.vue'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+
+const { showMessage } = useGlobalMessage()
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
@@ -48,8 +52,8 @@ const {
   fetchReports,
   createReport,
   updateReport,
-  updateReportStatus
-} = useDirectorProposal()
+  updateReportStatus,
+} = useManagementReport()
 
 onMounted(() => {
   fetchReports()
@@ -153,7 +157,7 @@ const handleRowClick = (item) => {
 const handleApproveClick = async (event, report) => {
   event.stopPropagation()
   try {
-    await updateReportStatus(report.id, 'Approved')
+    await updateReportStatus(report.id, 1)
     showMessage('Đã duyệt báo cáo thành công', 'success')
     await fetchReports()
   } catch (err) {
@@ -165,7 +169,7 @@ const handleApproveClick = async (event, report) => {
 const handleRejectClick = async (event, report) => {
   event.stopPropagation()
   try {
-    await updateReportStatus(report.id, 'Rejected')
+    await updateReportStatus(report.id, 2)
     showMessage('Đã từ chối báo cáo', 'success')
     await fetchReports()
   } catch (err) {
@@ -180,6 +184,41 @@ const technicalReports = computed(() =>
 const progressReports = computed(() =>
   reports.value.filter(r => r.reportType === "Sự cố thi công")
 )
+
+const showNoteModal = ref(false)
+const noteAction = ref(null)
+const noteReport = ref(null)
+const noteText = ref('')
+
+const openNoteModal = (action, report, event) => {
+  if (event) event.stopPropagation()
+  noteAction.value = action
+  noteReport.value = report
+  noteText.value = ''
+  showNoteModal.value = true
+}
+
+const handleNoteConfirm = async () => {
+  if (!noteReport.value) return
+  try {
+    const status = noteAction.value === 'approve' ? 1 : 2
+    await updateReportStatus(noteReport.value.id, status, noteText.value)
+    showMessage(
+      noteAction.value === 'approve'
+        ? 'Đã duyệt báo cáo thành công'
+        : 'Đã từ chối báo cáo',
+      'success'
+    )
+    await fetchReports()
+  } catch (err) {
+    showMessage('Có lỗi xảy ra', 'error')
+  } finally {
+    showNoteModal.value = false
+    noteReport.value = null
+    noteAction.value = null
+    noteText.value = ''
+  }
+}
 </script>
 
 <template>
@@ -238,16 +277,22 @@ const progressReports = computed(() =>
 
                 <template #actions="{ item }">
                   <div class="d-flex gap-2 justify-content-center">
-                    <button v-if="item.statusLogs[0].status === 0"
-                      class="btn btn-sm btn-success"
-                      @click="(e) => handleApproveClick(e, item)"
-                      title="Duyệt báo cáo">
+                    <button
+                      class="btn btn-sm"
+                      :class="item.statusLogs[0].status === 0 ? 'btn-success' : 'btn-outline-success'"
+                      @click="(e) => openNoteModal('approve', item, e)"
+                      :disabled="item.statusLogs[0].status !== 0"
+                      :title="item.statusLogs[0].status === 0 ? 'Duyệt báo cáo' : 'Báo cáo đã được xử lý'"
+                    >
                       <i class="fas fa-check"></i>
                     </button>
-                    <button v-if="item.statusLogs[0].status === 0"
-                      class="btn btn-sm btn-danger"
-                      @click="(e) => handleRejectClick(e, item)"
-                      title="Từ chối báo cáo">
+                    <button
+                      class="btn btn-sm"
+                      :class="item.statusLogs[0].status === 0 ? 'btn-danger' : 'btn-outline-danger'"
+                      @click="(e) => openNoteModal('reject', item, e)"
+                      :disabled="item.statusLogs[0].status !== 0"
+                      :title="item.statusLogs[0].status === 0 ? 'Từ chối báo cáo' : 'Báo cáo đã được xử lý'"
+                    >
                       <i class="fas fa-times"></i>
                     </button>
                   </div>
@@ -273,16 +318,22 @@ const progressReports = computed(() =>
 
                 <template #actions="{ item }">
                   <div class="d-flex gap-2 justify-content-center">
-                    <button v-if="item.statusLogs[0].status === 0"
-                      class="btn btn-sm btn-success"
-                      @click="(e) => handleApproveClick(e, item)"
-                      title="Duyệt báo cáo">
+                    <button
+                      class="btn btn-sm"
+                      :class="item.statusLogs[0].status === 0 ? 'btn-success' : 'btn-outline-success'"
+                      @click="(e) => openNoteModal('approve', item, e)"
+                      :disabled="item.statusLogs[0].status !== 0"
+                      :title="item.statusLogs[0].status === 0 ? 'Duyệt báo cáo' : 'Báo cáo đã được xử lý'"
+                    >
                       <i class="fas fa-check"></i>
                     </button>
-                    <button v-if="item.statusLogs[0].status === 0"
-                      class="btn btn-sm btn-danger"
-                      @click="(e) => handleRejectClick(e, item)"
-                      title="Từ chối báo cáo">
+                    <button
+                      class="btn btn-sm"
+                      :class="item.statusLogs[0].status === 0 ? 'btn-danger' : 'btn-outline-danger'"
+                      @click="(e) => openNoteModal('reject', item, e)"
+                      :disabled="item.statusLogs[0].status !== 0"
+                      :title="item.statusLogs[0].status === 0 ? 'Từ chối báo cáo' : 'Báo cáo đã được xử lý'"
+                    >
                       <i class="fas fa-times"></i>
                     </button>
                   </div>
@@ -316,10 +367,29 @@ const progressReports = computed(() =>
         v-if="detailReport"
         v-model:show="showDetailModal"
         :report="detailReport"
-        :showActions="true"
-        @reject="handleReject"
-        @approve="handleApprove"
+        :show-actions="true"
+        @reject="handleRejectClick"
+        @approve="handleApproveClick"
       />
+      <ModalDialog
+        v-if="showNoteModal"
+        :show="showNoteModal"
+        @update:show="showNoteModal = $event"
+        :title="noteAction === 'approve' ? 'Giải pháp đề xuất' : 'Lí do từ chối báo cáo'"
+      >
+        <div>
+          <textarea
+            v-model="noteText"
+            class="form-control"
+            rows="3"
+            :placeholder="noteAction === 'approve' ? 'Nhập giải pháp đề xuất...' : 'Nhập lí do từ chối...'"
+          ></textarea>
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <button class="btn btn-secondary" @click="showNoteModal = false">Hủy</button>
+            <button class="btn btn-primary" @click="handleNoteConfirm">Xác nhận</button>
+          </div>
+        </div>
+      </ModalDialog>
     </div>
   </div>
 </template>

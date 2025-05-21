@@ -19,7 +19,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['submit', 'cancel'])
+const emit = defineEmits(['submit', 'cancel', 'update-success'])
 
 const formData = ref({
   materialName: '',
@@ -118,7 +118,10 @@ const handleSubmit = async () => {
     } else {
       await updateMaterial(props.material.id, materialData)
       showMessage('Cập nhật vật tư thành công', 'success')
+      emit('update-success')
     }
+
+    emit('cancel')
 
   } catch (error) {
     console.error('Error submitting material:', error)

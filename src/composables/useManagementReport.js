@@ -213,17 +213,26 @@ export function useManagementReport() {
     }
   }
 
-  const updateReportStatus = async (reportId, newStatus) => {
+  const updateReportStatus = async (reportId, status, note = '') => {
     try {
       loading.value = true
-      const response = await api.patch(`/Report/${reportId}/status`, { status: newStatus })
+      const statusDTO = {
+        id: reportId,
+        status: status,
+        note: note || (status === 1 ? 'Đã duyệt báo cáo' : 'Đã từ chối báo cáo')
+      }
+
+      const response = await api.put(`/Report/${reportId}/status`, statusDTO)
+
+      // Update local state
       const index = reports.value.findIndex(r => r.id === reportId)
       if (index !== -1) {
         reports.value[index] = response.data
       }
       return response.data
     } catch (err) {
-      error.value = err.message
+      console.error('Error updating report status:', err)
+      error.value = err.response?.data?.message || err.message
       throw err
     } finally {
       loading.value = false

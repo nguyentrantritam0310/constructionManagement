@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import ModalDialog from './ModalDialog.vue'
 import StatusBadge from './StatusBadge.vue'
 import api from '../../api.js'
+import Pagination from './Pagination.vue'
 
 const props = defineProps({
   show: {
@@ -16,14 +17,40 @@ const props = defineProps({
   showActions: {
     type: Boolean,
     default: false
+  },
+  canEdit: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['update:show', 'reject', 'approve'])
+const emit = defineEmits(['update:show', 'reject', 'approve', 'resubmit', 'edit'])
 
 // Thêm state cho modal zoom ảnh
 const showImageModal = ref(false)
 const selectedImage = ref(null)
+
+const statusNote = ref('')
+const showStatusNoteInput = ref(false)
+const pendingAction = ref(null) // 'approve' or 'reject'
+
+// Add pagination state
+const statusLogsPerPage = 4
+const currentStatusPage = ref(1)
+
+const paginatedStatusLogs = computed(() => {
+  const start = (currentStatusPage.value - 1) * statusLogsPerPage
+  const end = start + statusLogsPerPage
+  return props.report.statusLogs.slice(start, end)
+})
+
+const totalStatusPages = computed(() => {
+  return Math.ceil(props.report.statusLogs.length / statusLogsPerPage)
+})
+
+const handleStatusPageChange = (page) => {
+  currentStatusPage.value = page
+}
 
 const formatDate = (date) => {
   if (!date) return 'Chưa cập nhật'
@@ -45,14 +72,26 @@ const getStatusLabel = (status) => {
   }
 }
 
-const handleReject = () => {
-  emit('reject', props.report)
-  emit('update:show', false)
+const handleStatusAction = (action) => {
+  pendingAction.value = action
+  showStatusNoteInput.value = true
 }
 
-const handleApprove = () => {
-  emit('approve', props.report)
-  emit('update:show', false)
+const confirmStatusAction = () => {
+  if (pendingAction.value === 'approve') {
+    emit('approve', props.report, statusNote.value)
+  } else {
+    emit('reject', props.report, statusNote.value)
+  }
+  showStatusNoteInput.value = false
+  statusNote.value = ''
+  pendingAction.value = null
+}
+
+const cancelStatusAction = () => {
+  showStatusNoteInput.value = false
+  statusNote.value = ''
+  pendingAction.value = null
 }
 
 const handleImageError = (e) => {
@@ -93,6 +132,66 @@ const formattedAttachments = computed(() => {
 
 const hasAttachments = computed(() => {
   return props.report.attachments && props.report.attachments.length > 0
+})
+
+const getLatestStatusLog = computed(() => {
+  if (!props.report.statusLogs || props.report.statusLogs.length === 0) return null
+  return props.report.statusLogs[0] // Assuming logs are ordered by date descending
+})
+
+const getStatusNoteLabel = computed(() => {
+  const status = getLatestStatusLog.value?.status
+  if (status === 1) return 'Giải pháp đề xuất'
+  if (status === 2) return 'Lý do từ chối'
+  return null
+})
+
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 0:
+      return 'fa-clock text-warning'
+    case 1:
+      return 'fa-check-circle text-success'
+    case 2:
+      return 'fa-times-circle text-danger'
+    case 3:
+      return 'fa-check-double text-info'
+    default:
+      return 'fa-question-circle text-secondary'
+  }
+}
+
+const getStatusText = (status) => {
+  switch (status) {
+    case 0:
+      return 'Chờ xử lý'
+    case 1:
+      return 'Đã duyệt'
+    case 2:
+      return 'Đã từ chối'
+    case 3:
+      return 'Hoàn thành'
+    default:
+      return 'Không xác định'
+  }
+}
+
+const canResubmit = computed(() => {
+  const currentStatus = props.report.statusLogs[0]?.status
+  return currentStatus === 2 // Rejected
+})
+
+const handleResubmit = () => {
+  emit('resubmit', props.report)
+}
+
+const handleEdit = () => {
+  emit('edit', props.report)
+}
+
+const canEdit = computed(() => {
+  const currentStatus = props.report.statusLogs[0]?.status
+  return currentStatus === 0 || currentStatus === 2 // Pending or Rejected
 })
 </script>
 
@@ -144,6 +243,24 @@ const hasAttachments = computed(() => {
         </div>
       </div>
 
+      <!-- Status Note Section -->
+      <div v-if="getLatestStatusLog && (getLatestStatusLog.status === 1 || getLatestStatusLog.status === 2)"
+           class="row mb-3">
+        <div class="col-12">
+          <div class="text-muted small mb-1">
+            <i class="fas" :class="getLatestStatusLog.status === 1 ? 'fa-check-circle text-success' : 'fa-times-circle text-danger'"></i>
+            {{ getStatusNoteLabel }}
+          </div>
+          <div class="bg-light rounded p-3 status-note">
+            {{ getLatestStatusLog.note }}
+            <div class="text-muted small mt-2">
+              <i class="fas fa-clock me-1"></i>
+              {{ formatDate(getLatestStatusLog.reportDate) }}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Ảnh đính kèm -->
       <div v-if="hasAttachments" class="mb-3">
         <div class="text-muted small mb-2">
@@ -169,14 +286,106 @@ const hasAttachments = computed(() => {
         </div>
       </div>
 
+      <!-- Status History Timeline -->
+      <div class="row mb-3">
+        <div class="col-12">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="text-muted small">
+              <i class="fas fa-history me-1"></i>Lịch sử trạng thái
+            </div>
+            <div class="text-muted small">
+              Hiển thị {{ paginatedStatusLogs.length }} trên {{ report.statusLogs.length }} trạng thái
+            </div>
+          </div>
+          <div class="status-timeline">
+            <div v-for="(log, index) in paginatedStatusLogs" :key="log.id"
+                 class="status-timeline-item"
+                 :class="{ 'is-latest': index === 0 && currentStatusPage === 1 }">
+              <div class="status-timeline-icon">
+                <i class="fas" :class="getStatusIcon(log.status)"></i>
+              </div>
+              <div class="status-timeline-content">
+                <div class="status-timeline-header">
+                  <span class="status-badge" :class="getStatusLabel(log.status).toLowerCase()">
+                    {{ getStatusText(log.status) }}
+                  </span>
+                  <span class="status-date">
+                    <i class="fas fa-clock me-1"></i>
+                    {{ formatDate(log.reportDate) }}
+                  </span>
+                </div>
+                <div v-if="log.note" class="status-note mt-2">
+                  {{ log.note }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Pagination -->
+          <div v-if="totalStatusPages > 1" class="d-flex justify-content-center mt-3">
+            <Pagination
+              :total-items="report.statusLogs.length"
+              :items-per-page="statusLogsPerPage"
+              :current-page="currentStatusPage"
+              @update:currentPage="handleStatusPageChange"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- Nút thao tác -->
-      <div v-if="showActions" class="d-flex justify-content-end gap-2 mt-4">
-        <button class="btn btn-outline-danger" @click="handleReject">
-          <i class="fas fa-times-circle me-1"></i> Từ chối
-        </button>
-        <button class="btn btn-primary" @click="handleApprove">
-          <i class="fas fa-check-circle me-1"></i> Duyệt
-        </button>
+      <div v-if="showActions" class="d-flex flex-column gap-3 mt-4">
+        <!-- Status note input -->
+        <div v-if="showStatusNoteInput" class="status-note-input">
+          <div class="form-group">
+            <label class="form-label">Ghi chú:</label>
+            <textarea
+              v-model="statusNote"
+              class="form-control"
+              rows="3"
+              :placeholder="pendingAction === 'approve' ? 'Nhập ghi chú khi duyệt...' : 'Nhập ghi chú khi từ chối...'"
+            ></textarea>
+          </div>
+          <div class="d-flex justify-content-end gap-2 mt-2">
+            <button class="btn btn-secondary" @click="cancelStatusAction">
+              Hủy
+            </button>
+            <button
+              class="btn"
+              :class="pendingAction === 'approve' ? 'btn-primary' : 'btn-danger'"
+              @click="confirmStatusAction"
+            >
+              {{ pendingAction === 'approve' ? 'Xác nhận duyệt' : 'Xác nhận từ chối' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div v-else class="d-flex justify-content-end gap-2">
+          <template v-if="props.canEdit">
+            <!-- Resubmit button - only show for rejected reports -->
+            <button v-if="canResubmit"
+                    class="btn btn-warning"
+                    @click="handleResubmit"
+                    title="Gửi lại báo cáo để xem xét">
+              <i class="fas fa-redo me-1"></i> Gửi lại báo cáo
+            </button>
+            <!-- Edit button - show for pending or rejected reports -->
+            <button v-if="canEdit"
+                    class="btn btn-primary"
+                    @click="handleEdit"
+                    title="Chỉnh sửa nội dung báo cáo">
+              <i class="fas fa-edit me-1"></i> Chỉnh sửa
+            </button>
+          </template>
+          <template v-else>
+            <button class="btn btn-outline-danger" @click="handleStatusAction('reject')">
+              <i class="fas fa-times-circle me-1"></i> Từ chối
+            </button>
+            <button class="btn btn-primary" @click="handleStatusAction('approve')">
+              <i class="fas fa-check-circle me-1"></i> Duyệt
+            </button>
+          </template>
+        </div>
       </div>
     </div>
   </ModalDialog>
@@ -297,5 +506,165 @@ const hasAttachments = computed(() => {
   padding: 1rem;
   background: #f8f9fa;
   border-radius: 8px;
+}
+
+.status-note-input {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+}
+
+.status-note-input .form-label {
+  font-weight: 500;
+  color: #495057;
+}
+
+.status-note-input textarea {
+  resize: none;
+  border-radius: 0.375rem;
+  border-color: #ced4da;
+}
+
+.status-note-input textarea:focus {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.status-note {
+  border-left: 4px solid;
+  border-color: var(--bs-primary);
+  background-color: #f8f9fa;
+}
+
+.status-note .text-muted {
+  font-size: 0.85rem;
+}
+
+.status-timeline {
+  position: relative;
+  padding: 1rem 0;
+}
+
+.status-timeline::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 1.25rem;
+  height: 100%;
+  width: 2px;
+  background: #e3f0fa;
+}
+
+.status-timeline-item {
+  position: relative;
+  padding-left: 3rem;
+  padding-bottom: 1.5rem;
+}
+
+.status-timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.status-timeline-item.is-latest .status-timeline-icon {
+  background: #fff;
+  border: 2px solid var(--bs-primary);
+}
+
+.status-timeline-icon {
+  position: absolute;
+  left: 0.75rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #e3f0fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.status-timeline-icon i {
+  font-size: 1rem;
+}
+
+.status-timeline-content {
+  background: #f8f9fa;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.status-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.status-badge {
+  font-weight: 500;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.9rem;
+}
+
+.status-badge.pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-badge.approved {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.rejected {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status-badge.completed {
+  background: #cce5ff;
+  color: #004085;
+}
+
+.status-date {
+  color: #6c757d;
+  font-size: 0.85rem;
+}
+
+.status-note {
+  color: #495057;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  background: #fff;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  border-left: 3px solid var(--bs-primary);
+}
+
+/* Add styles for pagination container */
+.status-timeline + .d-flex {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e3f0fa;
+}
+
+.btn-warning {
+  background-color: #ffc107;
+  border-color: #ffc107;
+  color: #000;
+  transition: all 0.2s ease;
+}
+
+.btn-warning:hover {
+  background-color: #ffca2c;
+  border-color: #ffc720;
+  color: #000;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 </style>

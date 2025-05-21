@@ -169,6 +169,24 @@ const handleApprove = async (report) => {
     showMessage('Không thể duyệt báo cáo', 'error')
   }
 }
+
+const handleResubmit = async (report) => {
+  try {
+    await updateReportStatus(report.id, 'Pending', 'Báo cáo đã được gửi lại')
+    showMessage('Đã gửi lại báo cáo thành công', 'success')
+    await fetchReportsByKiThuat()
+  } catch (err) {
+    console.error('Error resubmitting report:', err)
+    showMessage('Không thể gửi lại báo cáo', 'error')
+  }
+}
+
+const handleEdit = (report) => {
+  selectedReport.value = report
+  reportFormData.value = { ...report }
+  showUpdateForm.value = true
+  showDetailModal.value = false
+}
 </script>
 
 <template>
@@ -229,8 +247,11 @@ const handleApprove = async (report) => {
       v-if="detailReport"
       v-model:show="showDetailModal"
       :report="detailReport"
+      :can-edit="true"
       @reject="handleReject"
       @approve="handleApprove"
+      @resubmit="handleResubmit"
+      @edit="handleEdit"
     />
 
     <!-- Phân trang -->

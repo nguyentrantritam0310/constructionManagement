@@ -1,6 +1,7 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import FormField from '../common/FormField.vue'
+import { useMaterialManagement } from '../../composables/useMaterialManagement'
 
 const props = defineProps({
   mode: {
@@ -24,12 +25,38 @@ const formData = ref({
   material_ExportOrders: []
 })
 
+const { materials } = useMaterialManagement()
+
+// Add material options computed property
+const materialOptions = computed(() => {
+  return materials.value.map(material => ({
+    value: material.id,
+    label: `${material.materialName} (Tồn kho: ${material.stockQuantity})`,
+    stockQuantity: material.stockQuantity
+  }))
+})
+
+// Add selected material stock tracking
+const selectedMaterialStocks = ref({})
+
 // Watch for changes in exportOrder prop
 watch(() => props.exportOrder, (newOrder) => {
   if (newOrder && Object.keys(newOrder).length > 0) {
     formData.value = { ...newOrder }
   }
 }, { immediate: true })
+
+// Watch for material selection changes
+watch(() => formData.value.material_ExportOrders, (newOrders) => {
+  newOrders.forEach((order, index) => {
+    if (order.materialID) {
+      const material = materials.value.find(m => m.id === Number(order.materialID))
+      if (material) {
+        selectedMaterialStocks.value[index] = material.stockQuantity
+      }
+    }
+  })
+}, { deep: true })
 
 const validateForm = () => {
   if (!formData.value.constructionID || !formData.value.exportDate || formData.value.material_ExportOrders.length === 0) {
@@ -56,6 +83,16 @@ const addMaterial = () => {
 
 const removeMaterial = (index) => {
   formData.value.material_ExportOrders.splice(index, 1)
+}
+
+// Validate quantity against stock
+const validateQuantity = (index) => {
+  const order = formData.value.material_ExportOrders[index]
+  const stock = selectedMaterialStocks.value[index] || 0
+  if (order.quantity > stock) {
+    alert(`Số lượng xuất không được vượt quá tồn kho (${stock})`)
+    order.quantity = stock
+  }
 }
 </script>
 
@@ -135,11 +172,15 @@ const removeMaterial = (index) => {
                   <div class="col-md-5">
                     <FormField
                       label="Tên Vật Tư"
-                      type="text"
+                      type="select"
                       v-model="formData.material_ExportOrders[index].materialID"
+                      :options="materialOptions"
                       required
                       class="form-field-custom"
                     />
+                    <small v-if="selectedMaterialStocks[index]" class="text-muted">
+                      Tồn kho hiện tại: {{ selectedMaterialStocks[index] }}
+                    </small>
                   </div>
                   <div class="col-md-3">
                     <FormField
@@ -148,6 +189,8 @@ const removeMaterial = (index) => {
                       v-model="formData.material_ExportOrders[index].quantity"
                       required
                       min="1"
+                      :max="selectedMaterialStocks[index]"
+                      @input="validateQuantity(index)"
                       class="form-field-custom"
                     />
                   </div>
@@ -296,5 +339,21 @@ const removeMaterial = (index) => {
     width: 32px;
     height: 32px;
   }
+}
+
+.text-muted {
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+/* Add warning style for stock limit */
+.form-field-custom :deep(input[type="number"]:invalid) {
+  border-color: #dc3545;
+  background-color: #fff8f8;
+}
+
+.form-field-custom :deep(input[type="number"]:invalid:focus) {
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
 }
 </style>

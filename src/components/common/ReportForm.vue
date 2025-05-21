@@ -287,7 +287,7 @@ const handleDeleteImage = (imagePath, isNew = false) => {
     formData.value.attachments = formData.value.attachments.filter(att => att.filePath !== imagePath)
     console.log('🗑️ Image marked for deletion:', imagePath)
     console.log('Current deletedImagePaths:', formData.value.deletedImagePaths)
-}
+  }
   // Emit updated form data
   emitFormData()
 }
@@ -303,7 +303,18 @@ const getReportTypeLabel = () => {
 }
 
 const getStatusInfo = (status) => {
-  return statusOptions.find(s => s.value === status) || statusOptions[0]
+  switch (status) {
+    case 0:
+      return { value: 'Pending', label: 'Chờ xử lý', color: 'warning', icon: 'clock' }
+    case 1:
+      return { value: 'Approved', label: 'Đã duyệt', color: 'success', icon: 'check-circle' }
+    case 2:
+      return { value: 'Rejected', label: 'Đã từ chối', color: 'danger', icon: 'times-circle' }
+    case 3:
+      return { value: 'Completed', label: 'Hoàn thành', color: 'info', icon: 'check-double' }
+    default:
+      return { value: 'Pending', label: 'Chờ xử lý', color: 'warning', icon: 'clock' }
+  }
 }
 
 const getSeverityInfo = (severity) => {
@@ -317,9 +328,9 @@ const getSeverityInfo = (severity) => {
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="text-primary mb-0">{{ getReportTypeLabel() }}</h4>
         <div v-if="mode === 'update'" class="d-flex gap-2">
-          <div class="status-badge" :class="'bg-' + getStatusInfo(formData.level).color">
-            <i :class="'fas fa-' + getStatusInfo(formData.level).icon"></i>
-            <span>{{ getStatusInfo(formData.level).label }}</span>
+          <div class="status-badge" :class="'bg-' + getStatusInfo(formData.status).color">
+            <i :class="'fas fa-' + getStatusInfo(formData.status).icon"></i>
+            <span>{{ getStatusInfo(formData.status).label }}</span>
           </div>
           <div class="status-badge" :class="'bg-' + getSeverityInfo(formData.level).color">
             <i :class="'fas fa-' + getSeverityInfo(formData.level).icon"></i>
@@ -473,6 +484,7 @@ const getSeverityInfo = (severity) => {
   border-radius: 6px;
   font-weight: 500;
   color: #fff;
+  font-size: 0.9rem;
 }
 
 .status-badge i {

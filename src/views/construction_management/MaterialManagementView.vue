@@ -46,6 +46,10 @@ const closeForm = () => {
 const handlePageChange = (page) => {
   currentPage.value = page
 }
+
+const handleUpdateSuccess = async () => {
+  await fetchMaterials() // Refresh the data after successful update
+}
 </script>
 
 <template>
@@ -92,6 +96,7 @@ const handlePageChange = (page) => {
         :mode="formMode"
         :material="selectedMaterial"
         @cancel="closeForm"
+        @update-success="handleUpdateSuccess"
       />
     </ModalDialog>
   </div>
