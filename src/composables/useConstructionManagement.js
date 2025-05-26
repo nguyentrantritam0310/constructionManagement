@@ -4,6 +4,19 @@ import { constructionService } from '../services/constructionService'
 import { useGlobalMessage } from './useGlobalMessage'
 const { showMessage } = useGlobalMessage()
 
+// Thêm hàm helper để trích xuất tên tỉnh
+const extractProvince = (location) => {
+  if (!location) return null
+  const parts = location.split(',')
+  // Lấy phần tử cuối cùng và trim khoảng trắng
+  const province = parts[parts.length - 1]?.trim()
+  // Xử lý các trường hợp đặc biệt
+  if (province === 'Bình Định') return 'Bình Định'
+  if (province.includes('TP.HCM') || province.includes('Hồ Chí Minh')) return 'TP.HCM'
+  if (province.includes('Hà Nội')) return 'Hà Nội'
+  return province
+}
+
 export function useConstructionManagement() {
   const constructions = ref([])
   const selectedConstruction = ref(null)
@@ -17,7 +30,11 @@ export function useConstructionManagement() {
       loading.value = true
       const data = await constructionService.getAll()
       if (Array.isArray(data)) {
-      constructions.value = data
+        // Thêm provinceName vào mỗi construction
+        constructions.value = data.map(construction => ({
+          ...construction,
+          provinceName: extractProvince(construction.location)
+        }))
       } else {
         console.error('Invalid data format received:', data)
         constructions.value = []

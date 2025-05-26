@@ -104,7 +104,11 @@ const formatDate = (date, isActualCompletion = false) => {
   if (!date) {
     return isActualCompletion ? '(Chưa cập nhật)' : '-'
   }
-  return new Date(date).toLocaleDateString('vi-VN')
+  const dateObj = new Date(date)
+  if (dateObj.getFullYear() === 1 && dateObj.getMonth() === 0 && dateObj.getDate() === 1) {
+    return '(Chưa cập nhật)'
+  }
+  return dateObj.toLocaleDateString('vi-VN')
 }
 </script>
 

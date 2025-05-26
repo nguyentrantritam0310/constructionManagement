@@ -1,8 +1,18 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
+import { useMaterialManagement } from '../../composables/useMaterialManagement'
+import { useManagementReport } from '../../composables/useManagementReport'
+import { useAuth } from '../../composables/useAuth'
+import { useMaterialPlan } from '../../composables/useMaterialPlan'
+import { useImportOrder } from '../../composables/useImportOrder'
 
 const { constructions, fetchConstructions } = useConstructionManagement()
+const { materials, fetchMaterials } = useMaterialManagement()
+const { reports, fetchReports } = useManagementReport()
+const { currentUser } = useAuth()
+const { getMaterialPlanByImportOrderID } = useMaterialPlan()
+const { getByDirector } = useImportOrder()
 
 // Computed properties for dashboard statistics
 const dashboardStats = computed(() => {
@@ -66,11 +76,101 @@ const upcomingDeadlines = computed(() => {
     .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
 })
 
+// Thêm computed cho thống kê vật tư
+const materialStats = computed(() => {
+  const totalMaterials = materials.value.length
+  const lowStock = materials.value.filter(m => m.stockQuantity <= m.minQuantity).length
+  const totalValue = materials.value.reduce((sum, m) => sum + (m.stockQuantity * m.unitPrice), 0)
+
+  return {
+    totalMaterials,
+    lowStock,
+    totalValue
+  }
+})
+
+// Thêm computed cho thống kê báo cáo chi tiết
+const detailedReportStats = computed(() => {
+  if (!reports.value) return {
+    total: 0,
+    construction: { total: 0, pending: 0, approved: 0, rejected: 0 },
+    technical: { total: 0, pending: 0, approved: 0, rejected: 0 }
+  }
+
+  const getLatestStatus = (report) => {
+    if (!report.statusLogs || report.statusLogs.length === 0) return 0
+    return report.statusLogs.sort((a, b) =>
+      new Date(b.reportDate) - new Date(a.reportDate)
+    )[0].status
+  }
+
+  const constructionReports = reports.value.filter(r => r.reportType === 'Sự cố thi công')
+  const technicalReports = reports.value.filter(r => r.reportType === 'Sự cố kĩ thuật')
+
+  return {
+    total: reports.value.length,
+    construction: {
+      total: constructionReports.length,
+      pending: constructionReports.filter(r => getLatestStatus(r) === 0).length,
+      approved: constructionReports.filter(r => getLatestStatus(r) === 1).length,
+      rejected: constructionReports.filter(r => getLatestStatus(r) === 2).length
+    },
+    technical: {
+      total: technicalReports.length,
+      pending: technicalReports.filter(r => getLatestStatus(r) === 0).length,
+      approved: technicalReports.filter(r => getLatestStatus(r) === 1).length,
+      rejected: technicalReports.filter(r => getLatestStatus(r) === 2).length
+    }
+  }
+})
+
+// Thêm computed để kiểm tra role
+const isDirector = computed(() => {
+  return currentUser.value?.role === 'director'
+})
+
+const isManager = computed(() => {
+  return currentUser.value?.role === 'manager'
+})
+
+// Thêm state cho đơn nhập hàng
+const importOrders = ref([])
+const importOrderStats = computed(() => {
+  if (!importOrders.value) return {
+    total: 0,
+    pending: 0,
+    approved: 0,
+    completed: 0
+  }
+
+  return {
+    total: importOrders.value.length,
+    pending: importOrders.value.filter(p => p.status === 'Pending').length,
+    approved: importOrders.value.filter(p => p.status === 'Approved').length,
+    completed: importOrders.value.filter(p => p.status === 'Completed').length
+  }
+})
+
+// Thêm hàm fetch đơn nhập hàng
+const fetchImportOrders = async () => {
+  try {
+    const response = await getByDirector()
+    importOrders.value = response
+  } catch (error) {
+    console.error('Error fetching import orders:', error)
+  }
+}
+
 onMounted(async () => {
   try {
-    await fetchConstructions()
+    await Promise.all([
+      fetchConstructions(),
+      fetchMaterials(),
+      fetchReports(),
+      isDirector.value && fetchImportOrders() // Chỉ fetch khi là giám đốc
+    ])
   } catch (error) {
-    console.error('Error fetching constructions:', error)
+    console.error('Error fetching data:', error)
   }
 })
 
@@ -90,94 +190,276 @@ const formatCurrency = (value) => {
 <template>
   <div class="dashboard">
     <div class="dashboard-header">
-      <h2>
-        <i class="fas fa-tachometer-alt"></i>
-        Bảng Điều Khiển
-      </h2>
-      <p class="welcome-text">Chào buổi sáng, Admin!</p>
-    </div>
-
-    <!-- Thống kê tổng quan -->
-    <div class="stats-grid">
-      <!-- Tổng Số Công trình -->
-      <div class="stats-card primary">
-        <div class="stats-icon">
-          <i class="fas fa-project-diagram"></i>
-        </div>
-        <div class="stats-info">
-          <h3>Tổng Số Công trình</h3>
-          <span class="number">{{ dashboardStats.totalProjects }}</span>
-          <p>Công trình</p>
-        </div>
+      <div class="welcome-section">
+        <h2>
+          <i class="fas fa-tachometer-alt"></i>
+          Bảng Điều Khiển
+        </h2>
+        <p class="welcome-text">
+          Xin chào, {{ currentUser?.fullName || 'Admin' }}!
+          <span class="current-time">{{ new Date().toLocaleTimeString('vi-VN') }}</span>
+        </p>
       </div>
-
-      <!-- Đang Chờ -->
-      <div class="stats-card warning">
-        <div class="stats-icon">
-          <i class="fas fa-clock"></i>
-        </div>
-        <div class="stats-info">
-          <h3>Đang Chờ</h3>
-          <span class="number">{{ dashboardStats.pendingProjects }}</span>
-          <p>Công trình chờ khởi công</p>
-        </div>
-      </div>
-
-      <!-- Đang Thi Công -->
-      <div class="stats-card info">
-        <div class="stats-icon">
-          <i class="fas fa-hammer"></i>
-        </div>
-        <div class="stats-info">
-          <h3>Đang Thi Công</h3>
-          <span class="number">{{ dashboardStats.inProgressProjects }}</span>
-          <p>Công trình đang thực hiện</p>
-        </div>
-      </div>
-
-      <!-- Đã Hoàn Thành -->
-      <div class="stats-card success">
-        <div class="stats-icon">
-          <i class="fas fa-check-circle"></i>
-        </div>
-        <div class="stats-info">
-          <h3>Đã Hoàn Thành</h3>
-          <span class="number">{{ dashboardStats.completedProjects }}</span>
-          <p>Công trình hoàn thành</p>
-        </div>
-      </div>
-
-      <!-- Tạm Dừng -->
-      <div class="stats-card secondary">
-        <div class="stats-icon">
-          <i class="fas fa-pause-circle"></i>
-        </div>
-        <div class="stats-info">
-          <h3>Tạm Dừng</h3>
-          <span class="number">{{ dashboardStats.pausedProjects }}</span>
-          <p>Công trình tạm dừng</p>
-        </div>
-      </div>
-
-      <!-- Hủy Bỏ -->
-      <div class="stats-card danger">
-        <div class="stats-icon">
-          <i class="fas fa-times-circle"></i>
-        </div>
-        <div class="stats-info">
-          <h3>Hủy Bỏ</h3>
-          <span class="number">{{ dashboardStats.canceledProjects }}</span>
-          <p>Công trình hủy bỏ</p>
-        </div>
+      <div class="quick-actions">
       </div>
     </div>
 
-    <!-- Phần thông tin chi tiết -->
+    <!-- Thống kê công trình -->
+    <div class="stats-section mb-4">
+      <h3 class="section-title">
+        <i class="fas fa-building"></i>
+        Thống kê công trình
+      </h3>
+      <div class="stats-grid">
+        <!-- Tổng Số Công trình -->
+        <div class="stats-card primary">
+          <div class="stats-icon">
+            <i class="fas fa-project-diagram"></i>
+          </div>
+          <div class="stats-info">
+            <h3>Tổng Số Công trình</h3>
+            <span class="number">{{ dashboardStats.totalProjects }}</span>
+            <p>Công trình</p>
+          </div>
+        </div>
+
+        <!-- Đang Chờ -->
+        <div class="stats-card warning">
+          <div class="stats-icon">
+            <i class="fas fa-clock"></i>
+          </div>
+          <div class="stats-info">
+            <h3>Chờ Khởi Công</h3>
+            <span class="number">{{ dashboardStats.pendingProjects }}</span>
+            <p>Công trình</p>
+          </div>
+        </div>
+
+        <!-- Đang Thi Công -->
+        <div class="stats-card info">
+          <div class="stats-icon">
+            <i class="fas fa-hammer"></i>
+          </div>
+          <div class="stats-info">
+            <h3>Đang Thi Công</h3>
+            <span class="number">{{ dashboardStats.inProgressProjects }}</span>
+            <p>Công trình</p>
+          </div>
+        </div>
+
+        <!-- Đã Hoàn Thành -->
+        <div class="stats-card success">
+          <div class="stats-icon">
+            <i class="fas fa-check-circle"></i>
+          </div>
+          <div class="stats-info">
+            <h3>Đã Hoàn Thành</h3>
+            <span class="number">{{ dashboardStats.completedProjects }}</span>
+            <p>Công trình</p>
+          </div>
+        </div>
+
+        <!-- Tạm Dừng -->
+        <div class="stats-card secondary">
+          <div class="stats-icon">
+            <i class="fas fa-pause-circle"></i>
+          </div>
+          <div class="stats-info">
+            <h3>Tạm Dừng</h3>
+            <span class="number">{{ dashboardStats.pausedProjects }}</span>
+            <p>Công trình</p>
+          </div>
+        </div>
+
+        <!-- Hủy Bỏ -->
+        <div class="stats-card danger">
+          <div class="stats-icon">
+            <i class="fas fa-times-circle"></i>
+          </div>
+          <div class="stats-info">
+            <h3>Đã Hủy</h3>
+            <span class="number">{{ dashboardStats.canceledProjects }}</span>
+            <p>Công trình</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thống kê vật tư - Chỉ hiển thị cho Manager -->
+    <div v-if="isManager" class="stats-section mb-4">
+      <h3 class="section-title">
+        <i class="fas fa-boxes"></i>
+        Thống kê vật tư
+      </h3>
+      <div class="stats-grid">
+        <!-- Tổng số vật tư -->
+        <div class="stats-card info">
+          <div class="stats-icon">
+            <i class="fas fa-boxes"></i>
+          </div>
+          <div class="stats-info">
+            <h3>Tổng Số Vật Tư</h3>
+            <span class="number">{{ materialStats.totalMaterials }}</span>
+            <p>{{ materialStats.lowStock }} vật tư sắp hết</p>
+          </div>
+        </div>
+
+        <!-- Tổng giá trị vật tư -->
+        <div class="stats-card success">
+          <div class="stats-icon">
+            <i class="fas fa-dollar-sign"></i>
+          </div>
+          <div class="stats-info">
+            <h3>Tổng Giá Trị Vật Tư</h3>
+            <span class="number material-value">{{ formatCurrency(materialStats.totalValue) }}</span>
+            <p>Giá trị tồn kho</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thống kê báo cáo - Chỉ hiển thị cho Giám đốc -->
+    <div v-if="isDirector" class="stats-section mb-4">
+      <h3 class="section-title">
+        <i class="fas fa-file-alt"></i>
+        Thống kê báo cáo
+      </h3>
+
+      <!-- Báo cáo sự cố thi công -->
+      <div class="report-category mb-4">
+        <h4 class="category-title">
+          <i class="fas fa-hard-hat"></i>
+          Sự cố thi công ({{ detailedReportStats.construction.total }})
+        </h4>
+        <div class="stats-grid">
+          <div class="stats-card warning">
+            <div class="stats-icon">
+              <i class="fas fa-clock"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Chờ Duyệt</h3>
+              <span class="number">{{ detailedReportStats.construction.pending }}</span>
+              <p>Báo cáo đang chờ duyệt</p>
+            </div>
+          </div>
+
+          <div class="stats-card success">
+            <div class="stats-icon">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Đã Duyệt</h3>
+              <span class="number">{{ detailedReportStats.construction.approved }}</span>
+              <p>Báo cáo được chấp nhận</p>
+            </div>
+          </div>
+
+          <div class="stats-card danger">
+            <div class="stats-icon">
+              <i class="fas fa-times-circle"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Từ Chối</h3>
+              <span class="number">{{ detailedReportStats.construction.rejected }}</span>
+              <p>Báo cáo bị từ chối</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Báo cáo sự cố kỹ thuật -->
+      <div class="report-category mb-4">
+        <h4 class="category-title">
+          <i class="fas fa-tools"></i>
+          Sự cố kỹ thuật ({{ detailedReportStats.technical.total }})
+        </h4>
+        <div class="stats-grid">
+          <div class="stats-card warning">
+            <div class="stats-icon">
+              <i class="fas fa-clock"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Chờ Duyệt</h3>
+              <span class="number">{{ detailedReportStats.technical.pending }}</span>
+              <p>Báo cáo đang chờ duyệt</p>
+            </div>
+          </div>
+
+          <div class="stats-card success">
+            <div class="stats-icon">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Đã Duyệt</h3>
+              <span class="number">{{ detailedReportStats.technical.approved }}</span>
+              <p>Báo cáo được chấp nhận</p>
+            </div>
+          </div>
+
+          <div class="stats-card danger">
+            <div class="stats-icon">
+              <i class="fas fa-times-circle"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Từ Chối</h3>
+              <span class="number">{{ detailedReportStats.technical.rejected }}</span>
+              <p>Báo cáo bị từ chối</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kế hoạch vật tư -->
+      <div class="report-category">
+        <h4 class="category-title">
+          <i class="fas fa-clipboard-list"></i>
+          Kế hoạch vật tư ({{ importOrderStats.total }} kế hoạch)
+        </h4>
+        <div class="stats-grid">
+          <div class="stats-card warning">
+            <div class="stats-icon">
+              <i class="fas fa-clock"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Chờ Duyệt</h3>
+              <span class="number">{{ importOrderStats.pending }}</span>
+              <p>Kế hoạch đang chờ duyệt</p>
+            </div>
+          </div>
+
+          <div class="stats-card info">
+            <div class="stats-icon">
+              <i class="fas fa-check"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Đã Duyệt</h3>
+              <span class="number">{{ importOrderStats.approved }}</span>
+              <p>Kế hoạch được chấp nhận</p>
+            </div>
+          </div>
+
+          <div class="stats-card success">
+            <div class="stats-icon">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stats-info">
+              <h3>Đã Hoàn Thành</h3>
+              <span class="number">{{ importOrderStats.completed }}</span>
+              <p>Kế hoạch đã thực hiện</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="dashboard-content">
       <!-- Công trình sắp đến hạn -->
       <div class="upcoming-deadlines">
         <div class="section-header">
-          <h3><i class="fas fa-calendar-alt"></i> Công trình Sắp Đến Hạn</h3>
+          <h3>
+            <i class="fas fa-calendar-alt"></i>
+            Công trình Sắp Đến Hạn
+          </h3>
         </div>
         <div v-if="upcomingDeadlines.length > 0" class="deadline-list">
           <div v-for="(project, index) in upcomingDeadlines" :key="index" class="deadline-item">
@@ -209,7 +491,10 @@ const formatCurrency = (value) => {
       <!-- Thống kê theo loại Công trình -->
       <div class="project-types">
         <div class="section-header">
-          <h3><i class="fas fa-chart-pie"></i> Thống Kê Theo Loại</h3>
+          <h3>
+            <i class="fas fa-chart-pie"></i>
+            Thống Kê Theo Loại
+          </h3>
         </div>
         <div class="types-grid">
           <div v-for="(type, index) in constructionTypesStats" :key="index" class="type-card"
@@ -236,29 +521,98 @@ const formatCurrency = (value) => {
 }
 
 .dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 2rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.dashboard-header h2 {
+.welcome-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.current-time {
+  color: #6c757d;
+  font-size: 0.9rem;
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 2px solid #dee2e6;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.section-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.btn-outline-primary {
+  color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+.btn-outline-primary:hover {
+  background-color: #0d6efd;
+  color: white;
+}
+
+.btn-outline-secondary {
+  color: #6c757d;
+  border-color: #6c757d;
+}
+
+.btn-outline-secondary:hover {
+  background-color: #6c757d;
+  color: white;
+}
+
+.stats-section {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.section-title {
+  font-size: 1.2rem;
   color: #2c3e50;
-  font-size: 1.8rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
 
-.welcome-text {
-  color: #6c757d;
-  font-size: 1.1rem;
-  margin: 0;
-}
-
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
-  margin-bottom: 2rem;
+}
+
+.material-value {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  word-break: break-word;
 }
 
 .stats-card {
@@ -270,11 +624,24 @@ const formatCurrency = (value) => {
   gap: 1.5rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .stats-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stats-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100px;
+  height: 100%;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.1));
+  transform: skewX(-15deg);
 }
 
 .stats-icon {
@@ -285,6 +652,8 @@ const formatCurrency = (value) => {
   align-items: center;
   justify-content: center;
   font-size: 1.5rem;
+  position: relative;
+  z-index: 1;
 }
 
 .stats-card.primary .stats-icon {
@@ -343,18 +712,6 @@ const formatCurrency = (value) => {
   margin-top: 2rem;
 }
 
-.section-header {
-  margin-bottom: 1.5rem;
-}
-
-.section-header h3 {
-  font-size: 1.2rem;
-  color: #2c3e50;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
 .upcoming-deadlines,
 .project-types {
   background: white;
@@ -366,10 +723,17 @@ const formatCurrency = (value) => {
 .deadline-item {
   padding: 1.25rem;
   border-bottom: 1px solid #eee;
+  transition: transform 0.2s ease;
+  cursor: pointer;
 }
 
 .deadline-item:last-child {
   border-bottom: none;
+}
+
+.deadline-item:hover {
+  transform: translateX(5px);
+  background-color: #f8f9fa;
 }
 
 .deadline-info h4 {
@@ -448,6 +812,7 @@ const formatCurrency = (value) => {
   border-left: 4px solid;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s ease;
+  cursor: pointer;
 }
 
 .type-card:hover {
@@ -486,13 +851,60 @@ const formatCurrency = (value) => {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
-@media (max-width: 1200px) {
-  .dashboard-content {
+.report-category {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.category-title {
+  font-size: 1.1rem;
+  color: #2c3e50;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.report-category .stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.report-category .stats-card {
+  background: white;
+}
+
+@media (max-width: 768px) {
+  .dashboard-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .quick-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .quick-actions .btn {
+    flex: 1;
+  }
+
+  .stats-grid {
     grid-template-columns: 1fr;
   }
 
-  .types-grid {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  .material-value {
+    font-size: 1.3rem;
+  }
+
+  .report-category {
+    padding: 1rem;
+  }
+
+  .report-category .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
   }
 }
 </style>

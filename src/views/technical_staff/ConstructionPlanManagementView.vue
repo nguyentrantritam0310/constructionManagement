@@ -1,10 +1,9 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import ConstructionPlanList from '../../components/construction-plan/ConstructionPlanList.vue'
 import PlanForm from '../../components/construction-plan/PlanForm.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
-import AdvancedFilter from '../../components/common/AdvancedFilter.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { useConstructionPlan } from '../../composables/useConstructionPlan'
 
@@ -19,7 +18,56 @@ const {
   updatePlanStatus
 } = useConstructionPlan()
 
-const filteredPlans = ref([])
+// Filters
+const searchQuery = ref('')
+const statusFilter = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
+
+const filteredPlans = computed(() => {
+  let result = [...plans.value]
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(plan =>
+      plan.id?.toString().includes(query) ||
+      plan.constructionName?.toLowerCase().includes(query) ||
+      plan.constructionItemName?.toLowerCase().includes(query) ||
+      plan.employeeName?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter
+  if (statusFilter.value) {
+    result = result.filter(plan => plan.statusName === statusFilter.value)
+  }
+
+  // Apply date range filter
+  if (dateRange.value.start && dateRange.value.end) {
+    const start = new Date(dateRange.value.start)
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+
+    result = result.filter(plan => {
+      const planDate = new Date(plan.startDate)
+      return planDate >= start && planDate <= end
+    })
+  }
+
+  return result
+})
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  dateRange.value = {
+    start: null,
+    end: null
+  }
+}
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -73,6 +121,15 @@ const formatDate = (date) => {
   }
   return new Date(date).toLocaleDateString('vi-VN')
 }
+
+const statusOptions = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'Chờ khởi công', label: 'Chờ khởi công' },
+  { value: 'Đang thi công', label: 'Đang thi công' },
+  { value: 'Tạm dừng', label: 'Tạm dừng' },
+  { value: 'Hoàn thành', label: 'Hoàn thành' },
+  { value: 'Hủy bỏ', label: 'Hủy bỏ' }
+]
 </script>
 
 <template>
@@ -84,21 +141,70 @@ const formatDate = (date) => {
       </ActionButton>
     </div>
 
-    <!-- Advanced Filter -->
-    <AdvancedFilter :items="plans" :searchFields="['constructionItemName', 'location', 'id']" dateField="startDate"
-      statusField="statusName" v-model:filteredItems="filteredPlans" />
+    <!-- Filter Section -->
+    <div class="filter-section mb-4">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <input
+            type="text"
+            class="form-control"
+            v-model="searchQuery"
+            placeholder="Tìm kiếm theo mã, tên công trình, hạng mục..."
+          >
+        </div>
+        <div class="col-md-2">
+          <select class="form-control" v-model="statusFilter">
+            <option value="">Tất cả trạng thái</option>
+            <option value="Chờ khởi công">Chờ khởi công</option>
+            <option value="Đang thi công">Đang thi công</option>
+            <option value="Tạm dừng">Tạm dừng</option>
+            <option value="Hoàn thành">Hoàn thành</option>
+            <option value="Hủy bỏ">Hủy bỏ</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <input
+            type="date"
+            class="form-control"
+            v-model="dateRange.start"
+            placeholder="Từ ngày"
+          >
+        </div>
+        <div class="col-md-2">
+          <input
+            type="date"
+            class="form-control"
+            v-model="dateRange.end"
+            placeholder="Đến ngày"
+          >
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-secondary w-100" @click="resetFilters">
+            <i class="fas fa-undo me-2"></i>Đặt lại
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Danh sách kế hoạch -->
-    <ConstructionPlanList :plans="paginatedPlans" @update-plan="handleUpdatePlan" @update-status="handleUpdateStatus"
-      @update-volume="handleUpdateVolume" />
+    <ConstructionPlanList
+      :plans="paginatedPlans"
+      @update-plan="handleUpdatePlan"
+      @update-status="handleUpdateStatus"
+      @update-volume="handleUpdateVolume"
+    />
 
     <!-- Phân trang -->
     <div class="d-flex justify-content-between align-items-center mt-4">
       <div class="text-muted">
         Hiển thị {{ paginatedPlans.length }} trên {{ filteredPlans.length }} kế hoạch
       </div>
-      <Pagination :total-items="filteredPlans.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-        @update:currentPage="handlePageChange" />
+      <Pagination
+        :total-items="filteredPlans.length"
+        :items-per-page="itemsPerPage"
+        :current-page="currentPage"
+        @update:currentPage="handlePageChange"
+      />
     </div>
 
     <ModalDialog v-model:show="showCreateForm" title="Tạo Kế Hoạch Thi Công" size="lg">
@@ -112,11 +218,51 @@ const formatDate = (date) => {
   animation: fadeIn 0.3s ease-out;
 }
 
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.btn {
+  height: 42px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
   }
-
   to {
     opacity: 1;
   }

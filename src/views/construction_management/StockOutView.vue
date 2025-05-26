@@ -52,6 +52,35 @@ const employeeID = computed(() => currentUser.value?.id)
 
 const createOrderError = ref('')
 
+const filteredExportOrders = ref([])
+
+const statusOptions = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'Pending', label: 'Chờ xuất kho' },
+  { value: 'Completed', label: 'Đã xuất kho' },
+  { value: 'Issue', label: 'Có vấn đề' }
+]
+
+const searchQuery = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
+
+const paginatedExportOrders = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredExportOrders.value.slice(start, end)
+})
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  dateRange.value = {
+    start: null,
+    end: null
+  }
+}
+
 onMounted(async () => {
   await Promise.all([
     fetchExportOrders(),
@@ -163,16 +192,6 @@ watch(
 
 const currentPage = ref(1)
 const itemsPerPage = 5
-
-const paginatedExportOrders = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage
-  const end = start + itemsPerPage
-  return exportOrders.value.slice(start, end)
-})
-
-const handlePageChange = (page) => {
-  currentPage.value = page
-}
 
 const handleCreateExportOrder = async () => {
   // Kiểm tra số lượng xuất không vượt tồn kho
@@ -312,6 +331,24 @@ const formatDate = (date, isActualCompletion = false) => {
       <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
         Tạo Phiếu Xuất
       </ActionButton>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="filter-section mb-4">
+      <AdvancedFilter
+        :items="exportOrders"
+        :searchFields="['id', 'materialName', 'constructionName']"
+        :customFilters="[
+          {
+            field: 'quantity',
+            type: 'number',
+            label: 'Số lượng',
+            operator: '>'
+          }
+        ]"
+        dateField="exportDate"
+        v-model:filteredItems="filteredExportOrders"
+      />
     </div>
 
     <!-- Loading State -->
@@ -673,5 +710,58 @@ const formatDate = (date, isActualCompletion = false) => {
   .quantity-badge {
     padding: 0.2rem 0.5rem;
   }
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.input-group-text {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem 0 0 0.5rem;
+  padding: 0.5rem 1rem;
+  color: #6c757d;
+}
+
+.input-group .form-control {
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.btn {
+  height: 42px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
 }
 </style>

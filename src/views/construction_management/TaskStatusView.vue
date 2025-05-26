@@ -60,8 +60,27 @@ const formatDate = (date) => {
     </div>
 
     <!-- Advanced Filter -->
-    <AdvancedFilter :items="constructions" :searchFields="['constructionName', 'location', 'id']" dateField="startDate"
-      statusField="statusName" v-model:filteredItems="filteredConstructions" />
+    <AdvancedFilter
+      :items="constructions"
+      :searchFields="['constructionName', 'location', 'id']"
+      :customFilters="[
+        {
+          field: 'budget',
+          type: 'number',
+          label: 'Ngân sách',
+          operator: '>'
+        },
+        {
+          field: 'progress',
+          type: 'number',
+          label: 'Tiến độ (%)',
+          operator: '>'
+        }
+      ]"
+      dateField="startDate"
+      statusField="statusName"
+      v-model:filteredItems="filteredConstructions"
+    />
 
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">

@@ -12,7 +12,12 @@ import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const { showMessage } = useGlobalMessage()
-const filteredOrders = ref([])
+const searchQuery = ref('')
+const statusFilter = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
 
 const columns = [
   { key: 'id', label: 'Mã Đơn Hàng' },
@@ -39,18 +44,48 @@ const {
 
 const { getMaterialPlanByImportOrderID } = useMaterialPlan()
 
-const mappedOrders = computed(() => {
-  return importOrders.value.map(order => {
+const filteredOrders = computed(() => {
+  let result = [...importOrders.value]
+
+  // Map the orders with planner and receiver info
+  result = result.map(order => {
     const planner = order.importOrderEmployee?.find(e => e.role === 'Planner')
     const receiver = order.importOrderEmployee?.find(e => e.role === 'Receiver')
-      ? order.importOrderEmployee.find(e => e.role === 'Receiver')
-      : null
     return {
       ...order,
       plannerName: planner ? planner.employeeName : '',
       receiverName: receiver ? receiver.employeeName : '(chưa cập nhật)'
     }
   })
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(order =>
+      order.id?.toString().includes(query) ||
+      order.plannerName?.toLowerCase().includes(query) ||
+      order.receiverName?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter
+  if (statusFilter.value) {
+    result = result.filter(order => order.status === statusFilter.value)
+  }
+
+  // Apply date range filter
+  if (dateRange.value.start && dateRange.value.end) {
+    const start = new Date(dateRange.value.start)
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+
+    result = result.filter(order => {
+      const orderDate = new Date(order.importDate)
+      return orderDate >= start && orderDate <= end
+    })
+  }
+
+  return result
 })
 
 const currentPage = ref(1)
@@ -59,7 +94,7 @@ const itemsPerPage = 5
 const paginatedOrders = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
   const end = start + itemsPerPage
-  return mappedOrders.value.slice(start, end)
+  return filteredOrders.value.slice(start, end)
 })
 
 const handlePageChange = (page) => {
@@ -112,6 +147,15 @@ const formatDate = (date) => {
   }
   return new Date(date).toLocaleDateString('vi-VN')
 }
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  dateRange.value = {
+    start: null,
+    end: null
+  }
+}
 </script>
 
 <template>
@@ -120,9 +164,64 @@ const formatDate = (date) => {
       <h1 class="h3 mb-0">Nhập Kho</h1>
     </div>
 
-    <!-- Advanced Filter -->
-    <AdvancedFilter :items="importOrders" :searchFields="['supplier']" dateField="date" statusField="status"
-      v-model:filteredItems="filteredOrders" />
+    <!-- Filter Section -->
+    <div class="filter-section mb-4">
+      <div class="row g-3 align-items-center">
+        <div class="col-lg-3 col-md-6">
+          <div class="input-group">
+            <span class="input-group-text">
+              <i class="fas fa-search"></i>
+            </span>
+            <input
+              type="text"
+              class="form-control"
+              v-model="searchQuery"
+              placeholder="Tìm kiếm..."
+            >
+          </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+          <div class="input-group">
+            <span class="input-group-text">
+              <i class="fas fa-tasks"></i>
+            </span>
+            <select class="form-control" v-model="statusFilter">
+              <option value="">Tất cả trạng thái</option>
+              <option value="Rejected">Từ chối</option>
+              <option value="Completed">Hoàn thành</option>
+            </select>
+          </div>
+        </div>
+        <div class="col-lg-4 col-md-8">
+          <div class="d-flex gap-2">
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="fas fa-calendar"></i>
+              </span>
+              <input
+                type="date"
+                class="form-control"
+                v-model="dateRange.start"
+                placeholder="Từ ngày"
+              >
+            </div>
+            <div class="input-group">
+              <input
+                type="date"
+                class="form-control"
+                v-model="dateRange.end"
+                placeholder="Đến ngày"
+              >
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-2 col-md-4">
+          <button class="btn btn-secondary w-100" @click="resetFilters">
+            <i class="fas fa-undo me-2"></i>Đặt lại
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Danh sách đơn hàng -->
     <DataTable :columns="columns" :data="paginatedOrders" @row-click="openDetails">
@@ -131,19 +230,17 @@ const formatDate = (date) => {
       </template>
 
       <template #plannerName="{ item }">
-        <div>
-          <div class="fw-medium">{{ item.plannerName }}</div>
-        </div>
+        <div class="fw-medium">{{ item.plannerName }}</div>
       </template>
 
       <template #receiverName="{ item }">
-        <div>
-          <div class="fw-medium">{{ item.receiverName }}</div>
-        </div>
+        <div class="fw-medium">{{ item.receiverName }}</div>
       </template>
+
       <template #importDate="{ item }">
         {{ formatDate(item.importDate) }}
       </template>
+
       <template #status="{ item }">
         <StatusBadge :status="item.status" />
       </template>
@@ -208,5 +305,77 @@ const formatDate = (date) => {
 
 .status-rejected {
   background: #7f8c8d;
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.input-group-text {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem 0 0 0.5rem;
+  padding: 0.5rem 1rem;
+  color: #6c757d;
+}
+
+.input-group .form-control {
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.input-group + .input-group {
+  margin-left: 0.5rem;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.btn {
+  height: 42px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+@media (max-width: 992px) {
+  .d-flex.gap-2 {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .input-group + .input-group {
+    margin-left: 0;
+  }
 }
 </style>

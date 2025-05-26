@@ -22,7 +22,69 @@ const showUpdateForm = ref(false)
 const selectedReport = ref(null)
 const reportFormData = ref({})
 
-const filteredReports = ref([])
+const searchQuery = ref('')
+const statusFilter = ref('')
+const levelFilter = ref('')
+const problemTypeFilter = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
+
+const filteredReports = computed(() => {
+  let result = [...reports.value]
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(report =>
+      report.id?.toString().includes(query) ||
+      report.constructionName?.toLowerCase().includes(query) ||
+      report.content?.toLowerCase().includes(query) ||
+      report.problemType?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter
+  if (statusFilter.value) {
+    result = result.filter(report => getStatusLabel(report.statusLogs[0].status) === statusFilter.value)
+  }
+
+  // Apply level filter
+  if (levelFilter.value) {
+    result = result.filter(report => report.level === levelFilter.value)
+  }
+
+  // Apply problem type filter
+  if (problemTypeFilter.value) {
+    result = result.filter(report => report.problemType === problemTypeFilter.value)
+  }
+
+  // Apply date range filter
+  if (dateRange.value.start && dateRange.value.end) {
+    const start = new Date(dateRange.value.start)
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+
+    result = result.filter(report => {
+      const reportDate = new Date(report.reportDate)
+      return reportDate >= start && reportDate <= end
+    })
+  }
+
+  return result
+})
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  levelFilter.value = ''
+  problemTypeFilter.value = ''
+  dateRange.value = {
+    start: null,
+    end: null
+  }
+}
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -187,6 +249,22 @@ const handleEdit = (report) => {
   showUpdateForm.value = true
   showDetailModal.value = false
 }
+
+const statusOptions = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'Pending', label: 'Chờ duyệt' },
+  { value: 'Approved', label: 'Đã duyệt' },
+  { value: 'Rejected', label: 'Từ chối' },
+  { value: 'Completed', label: 'Hoàn thành' }
+]
+
+const levelOptions = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'Thấp', label: 'Thấp' },
+  { value: 'Trung bình', label: 'Trung bình' },
+  { value: 'Cao', label: 'Cao' },
+  { value: 'Nghiêm trọng', label: 'Nghiêm trọng' }
+]
 </script>
 
 <template>
@@ -198,9 +276,58 @@ const handleEdit = (report) => {
       </ActionButton>
     </div>
 
-    <!-- Advanced Filter -->
-    <AdvancedFilter :items="reports" :searchFields="['constructionName', 'content', 'problemType']"
-      dateField="reportDate" statusField="statusLogs[0].status" v-model:filteredItems="filteredReports" />
+    <!-- Filter Section -->
+    <div class="filter-section mb-4">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <input
+            type="text"
+            class="form-control"
+            v-model="searchQuery"
+            placeholder="Tìm kiếm..."
+          >
+        </div>
+        <div class="col-md-2">
+          <select class="form-control" v-model="statusFilter">
+            <option value="">Tất cả trạng thái</option>
+            <option value="Pending">Chờ duyệt</option>
+            <option value="Approved">Đã duyệt</option>
+            <option value="Rejected">Từ chối</option>
+            <option value="Completed">Hoàn thành</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <select class="form-control" v-model="levelFilter">
+            <option value="">Tất cả mức độ</option>
+            <option value="Thấp">Thấp</option>
+            <option value="Trung bình">Trung bình</option>
+            <option value="Cao">Cao</option>
+            <option value="Nghiêm trọng">Nghiêm trọng</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <input
+            type="date"
+            class="form-control"
+            v-model="dateRange.start"
+            placeholder="Từ ngày"
+          >
+        </div>
+        <div class="col-md-2">
+          <input
+            type="date"
+            class="form-control"
+            v-model="dateRange.end"
+            placeholder="Đến ngày"
+          >
+        </div>
+        <div class="col-md-1">
+          <button class="btn btn-secondary w-100" @click="resetFilters">
+            <i class="fas fa-undo me-2"></i>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">
@@ -299,6 +426,47 @@ const handleEdit = (report) => {
 <style scoped>
 .technical-report {
   animation: fadeIn 0.3s ease-out;
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.btn {
+  height: 42px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
 }
 
 .report-table {
