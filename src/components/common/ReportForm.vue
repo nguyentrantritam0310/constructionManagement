@@ -292,9 +292,12 @@ const handleDeleteImage = (imagePath, isNew = false) => {
   emitFormData()
 }
 
+const PLACEHOLDER_SRC = '/img/image-not-found.png'
+
 const handleImageError = (e) => {
-  console.error('Failed to load image:', e.target.src)
-  e.target.src = 'https://via.placeholder.com/400x300?text=Image+Not+Found'
+  if (!e.target.src.includes('image-not-found.png')) {
+    e.target.src = PLACEHOLDER_SRC
+  }
 }
 
 // Add back the utility functions

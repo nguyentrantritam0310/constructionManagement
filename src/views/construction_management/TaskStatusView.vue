@@ -45,7 +45,7 @@ const columns = [
 ]
 
 const handleConstructionClick = (construction) => {
-  router.push(`/construction-management-leader/${construction.id}`)
+  router.push(`/task-status/${construction.id}`)
 }
 
 const formatDate = (date) => {
@@ -56,31 +56,24 @@ const formatDate = (date) => {
 <template>
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1 class="h3 mb-0">Cập Nhật Trạng Thái Công Trình</h1>
+      <h1 class="h3 mb-0">Quản lý Công Trình</h1>
     </div>
 
     <!-- Advanced Filter -->
-    <AdvancedFilter
-      :items="constructions"
-      :searchFields="['constructionName', 'location', 'id']"
-      :customFilters="[
-        {
-          field: 'budget',
-          type: 'number',
-          label: 'Ngân sách',
-          operator: '>'
-        },
-        {
-          field: 'progress',
-          type: 'number',
-          label: 'Tiến độ (%)',
-          operator: '>'
-        }
-      ]"
-      dateField="startDate"
-      statusField="statusName"
-      v-model:filteredItems="filteredConstructions"
-    />
+    <AdvancedFilter :items="constructions" :searchFields="['constructionName', 'location', 'id']" :customFilters="[
+      {
+        field: 'budget',
+        type: 'number',
+        label: 'Ngân sách',
+        operator: '>'
+      },
+      {
+        field: 'progress',
+        type: 'number',
+        label: 'Tiến độ (%)',
+        operator: '>'
+      }
+    ]" dateField="startDate" statusField="statusName" v-model:filteredItems="filteredConstructions" />
 
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">

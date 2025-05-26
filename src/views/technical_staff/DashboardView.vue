@@ -191,10 +191,10 @@ const formatCurrency = (value) => {
   <div class="dashboard">
     <div class="dashboard-header">
       <div class="welcome-section">
-        <h2>
-          <i class="fas fa-tachometer-alt"></i>
-          Bảng Điều Khiển
-        </h2>
+      <h2>
+        <i class="fas fa-tachometer-alt"></i>
+        Bảng Điều Khiển
+      </h2>
         <p class="welcome-text">
           Xin chào, {{ currentUser?.fullName || 'Admin' }}!
           <span class="current-time">{{ new Date().toLocaleTimeString('vi-VN') }}</span>
@@ -210,75 +210,75 @@ const formatCurrency = (value) => {
         <i class="fas fa-building"></i>
         Thống kê công trình
       </h3>
-      <div class="stats-grid">
-        <!-- Tổng Số Công trình -->
-        <div class="stats-card primary">
-          <div class="stats-icon">
-            <i class="fas fa-project-diagram"></i>
-          </div>
-          <div class="stats-info">
-            <h3>Tổng Số Công trình</h3>
-            <span class="number">{{ dashboardStats.totalProjects }}</span>
-            <p>Công trình</p>
-          </div>
+    <div class="stats-grid">
+      <!-- Tổng Số Công trình -->
+      <div class="stats-card primary">
+        <div class="stats-icon">
+          <i class="fas fa-project-diagram"></i>
         </div>
+        <div class="stats-info">
+          <h3>Tổng Số Công trình</h3>
+          <span class="number">{{ dashboardStats.totalProjects }}</span>
+          <p>Công trình</p>
+        </div>
+      </div>
 
-        <!-- Đang Chờ -->
-        <div class="stats-card warning">
-          <div class="stats-icon">
-            <i class="fas fa-clock"></i>
-          </div>
-          <div class="stats-info">
+      <!-- Đang Chờ -->
+      <div class="stats-card warning">
+        <div class="stats-icon">
+          <i class="fas fa-clock"></i>
+        </div>
+        <div class="stats-info">
             <h3>Chờ Khởi Công</h3>
-            <span class="number">{{ dashboardStats.pendingProjects }}</span>
+          <span class="number">{{ dashboardStats.pendingProjects }}</span>
             <p>Công trình</p>
-          </div>
         </div>
+      </div>
 
-        <!-- Đang Thi Công -->
-        <div class="stats-card info">
-          <div class="stats-icon">
-            <i class="fas fa-hammer"></i>
-          </div>
-          <div class="stats-info">
-            <h3>Đang Thi Công</h3>
-            <span class="number">{{ dashboardStats.inProgressProjects }}</span>
+      <!-- Đang Thi Công -->
+      <div class="stats-card info">
+        <div class="stats-icon">
+          <i class="fas fa-hammer"></i>
+        </div>
+        <div class="stats-info">
+          <h3>Đang Thi Công</h3>
+          <span class="number">{{ dashboardStats.inProgressProjects }}</span>
             <p>Công trình</p>
-          </div>
         </div>
+      </div>
 
-        <!-- Đã Hoàn Thành -->
-        <div class="stats-card success">
-          <div class="stats-icon">
-            <i class="fas fa-check-circle"></i>
-          </div>
-          <div class="stats-info">
-            <h3>Đã Hoàn Thành</h3>
-            <span class="number">{{ dashboardStats.completedProjects }}</span>
+      <!-- Đã Hoàn Thành -->
+      <div class="stats-card success">
+        <div class="stats-icon">
+          <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stats-info">
+          <h3>Đã Hoàn Thành</h3>
+          <span class="number">{{ dashboardStats.completedProjects }}</span>
             <p>Công trình</p>
-          </div>
         </div>
+      </div>
 
-        <!-- Tạm Dừng -->
-        <div class="stats-card secondary">
-          <div class="stats-icon">
-            <i class="fas fa-pause-circle"></i>
-          </div>
-          <div class="stats-info">
-            <h3>Tạm Dừng</h3>
-            <span class="number">{{ dashboardStats.pausedProjects }}</span>
+      <!-- Tạm Dừng -->
+      <div class="stats-card secondary">
+        <div class="stats-icon">
+          <i class="fas fa-pause-circle"></i>
+        </div>
+        <div class="stats-info">
+          <h3>Tạm Dừng</h3>
+          <span class="number">{{ dashboardStats.pausedProjects }}</span>
             <p>Công trình</p>
-          </div>
         </div>
+      </div>
 
-        <!-- Hủy Bỏ -->
-        <div class="stats-card danger">
-          <div class="stats-icon">
-            <i class="fas fa-times-circle"></i>
-          </div>
-          <div class="stats-info">
+      <!-- Hủy Bỏ -->
+      <div class="stats-card danger">
+        <div class="stats-icon">
+          <i class="fas fa-times-circle"></i>
+        </div>
+        <div class="stats-info">
             <h3>Đã Hủy</h3>
-            <span class="number">{{ dashboardStats.canceledProjects }}</span>
+          <span class="number">{{ dashboardStats.canceledProjects }}</span>
             <p>Công trình</p>
           </div>
         </div>

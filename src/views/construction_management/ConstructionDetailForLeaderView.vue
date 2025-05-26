@@ -19,6 +19,7 @@ import { useEmployee } from '../../composables/useEmployee'
 import { useAttendance } from '../../composables/useAttendance'
 import { attendanceService } from '../../services/attendanceService'
 import FormField from '@/components/common/FormField.vue'
+import api from '../../api.js'
 const { showMessage } = useGlobalMessage()
 const route = useRoute()
 const router = useRouter()
@@ -250,8 +251,30 @@ const assignWorkers = async (event) => {
 }
 
 const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('vi-VN')
+  if (!date || date === '0001-01-01T00:00:00') {
+    return '(chưa cập nhật)'
+  }
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return '(chưa cập nhật)'
+  return d.toLocaleDateString('vi-VN')
 }
+
+const getNumItems = computed(() => {
+  return construction.value?.constructionItems?.length || 0
+})
+
+const formattedStartDate = computed(() => formatDate(construction.value?.startDate))
+const formattedEndDate = computed(() => formatDate(construction.value?.endDate))
+
+const remainingDays = computed(() => {
+
+  const today = new Date()
+  const end = new Date(construction.value.expectedCompletionDate)
+
+  const diff = Math.ceil((end - today) / (1000 * 60 * 60 * 24))
+  if (diff < 0) return 'Đã hoàn thành'
+  return `${diff} ngày`
+})
 
 const handleDownloadDesign = async () => {
     try {
@@ -613,6 +636,143 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
   }
 }
 
+// Xử lý ảnh thiết kế
+const imageUrl = ref(null)
+const imageLoadError = ref(false)
+const imageLoading = ref(false)
+const showImageModal = ref(false)
+const isZoomed = ref(false)
+const zoomScale = ref(1)
+const zoomPosition = ref({ x: 0, y: 0 })
+const isDragging = ref(false)
+const dragStart = ref({ x: 0, y: 0 })
+
+const getImageUrl = (path) => {
+  if (!path) return null
+  if (path.startsWith('http')) return path
+  const baseUrl = api.defaults.baseURL || 'http://localhost:5244'
+  const cleanBaseUrl = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl
+  return `${cleanBaseUrl}/${path}`
+}
+
+const loadImage = async () => {
+  if (!construction.value?.designBlueprint) {
+    imageUrl.value = null
+    imageLoadError.value = false
+    return
+  }
+  imageLoading.value = true
+  imageLoadError.value = false
+  try {
+    const url = getImageUrl(construction.value.designBlueprint)
+    // Kiểm tra kết nối
+    const response = await fetch(url, { method: 'HEAD' })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    imageUrl.value = url
+    imageLoadError.value = false
+  } catch (error) {
+    imageUrl.value = null
+    imageLoadError.value = true
+  } finally {
+    imageLoading.value = false
+  }
+}
+
+watch(() => construction.value?.designBlueprint, () => {
+  loadImage()
+}, { immediate: true })
+
+const retryLoadImage = () => {
+  loadImage()
+}
+
+const handleImageError = (e) => {
+  imageLoadError.value = true
+  imageLoading.value = false
+}
+
+const handleImageLoad = () => {
+  imageLoadError.value = false
+  imageLoading.value = false
+}
+
+const handleZoom = () => {
+  if (!imageUrl.value || imageLoadError.value) return
+  isZoomed.value = !isZoomed.value
+  zoomScale.value = 1
+  zoomPosition.value = { x: 0, y: 0 }
+}
+
+const handleWheel = (e) => {
+  if (!isZoomed.value) return
+  e.preventDefault()
+  const delta = e.deltaY > 0 ? -0.1 : 0.1
+  const newScale = Math.max(1, Math.min(3, zoomScale.value + delta))
+  zoomScale.value = newScale
+}
+
+const handleMouseDown = (e) => {
+  if (!isZoomed.value) return
+  isDragging.value = true
+  dragStart.value = {
+    x: e.clientX - zoomPosition.value.x,
+    y: e.clientY - zoomPosition.value.y
+  }
+}
+
+const handleMouseMove = (e) => {
+  if (!isDragging.value) return
+  zoomPosition.value = {
+    x: e.clientX - dragStart.value.x,
+    y: e.clientY - dragStart.value.y
+  }
+}
+
+const handleMouseUp = () => {
+  isDragging.value = false
+}
+
+onMounted(() => {
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isZoomed.value) {
+      handleZoom()
+    }
+  })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('mouseup', handleMouseUp)
+})
+
+const downloadDesign = async () => {
+  try {
+    if (!construction.value?.designBlueprint) {
+      showMessage('Không có file thiết kế', 'warning')
+      return
+    }
+    const url = getImageUrl(construction.value.designBlueprint)
+    if (!url) {
+      showMessage('Không thể tải file thiết kế', 'error')
+      return
+    }
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Không thể tải file')
+    const blob = await response.blob()
+    const link = document.createElement('a')
+    link.href = window.URL.createObjectURL(blob)
+    link.download = `design_${construction.value.constructionName}.png`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(link.href)
+    showMessage('Tải file thiết kế thành công', 'success')
+  } catch (error) {
+    showMessage('Không thể tải file thiết kế', 'error')
+  }
+}
 </script>
 
 <template>
@@ -631,12 +791,12 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
                             </span>
                             <span class="meta-item">
                                 <i class="fas fa-calendar"></i>
-                                {{ construction.startDate }} - {{ construction.endDate }}
+                                {{ formatDate(construction.startDate) }} - {{ formatDate(construction.expectedCompletionDate) }}
                             </span>
                         </div>
                     </div>
                     <div class="d-flex flex-column align-items-end">
-                        <StatusBadge :status="construction.status" class="mb-2" />
+                        <StatusBadge :status="construction.statusName" class="mb-2" />
                         <button class="btn btn-outline-primary btn-sm">
                             <i class="fas fa-file-download me-1"></i>
                             Tải bản thiết kế
@@ -654,7 +814,7 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
                         </div>
                         <div class="stat-content">
                             <h3>Loại công trình</h3>
-                            <p>{{ construction.constructionType }}</p>
+                            <p>{{ construction.constructionTypeName || '(chưa cập nhật)' }}</p>
                         </div>
                     </div>
                 </div>
@@ -665,7 +825,7 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
                         </div>
                         <div class="stat-content">
                             <h3>Tổng diện tích</h3>
-                            <p>{{ construction.totalArea }}</p>
+                            <p>{{ construction.totalArea || '(chưa cập nhật)' }}</p>
                         </div>
                     </div>
                 </div>
@@ -676,7 +836,7 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
                         </div>
                         <div class="stat-content">
                             <h3>Số hạng mục</h3>
-                            <p>{{ construction.constructionItems.length }} hạng mục</p>
+                            <p>{{ getNumItems }} hạng mục</p>
                         </div>
                     </div>
                 </div>
@@ -687,7 +847,7 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
                         </div>
                         <div class="stat-content">
                             <h3>Thời gian còn lại</h3>
-                            <p>180 ngày</p>
+                            <p>{{ remainingDays }}</p>
                         </div>
                     </div>
                 </div>
@@ -740,23 +900,23 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
                                     <div class="info-grid">
                                         <div class="info-item">
                                             <label>Loại công trình</label>
-                                            <p>{{ construction.constructionType }}</p>
+                                            <p>{{ construction.constructionTypeName || '(chưa cập nhật)' }}</p>
                                         </div>
                                         <div class="info-item">
                                             <label>Tổng diện tích</label>
-                                            <p>{{ construction.totalArea }}</p>
+                                            <p>{{ construction.totalArea || '(chưa cập nhật)' }}</p>
                                         </div>
                                         <div class="info-item">
                                             <label>Ngày khởi công</label>
-                                            <p>{{ construction.startDate }}</p>
+                                            <p>{{ formatDate(construction.startDate) }}</p>
                                         </div>
                                         <div class="info-item">
                                             <label>Ngày dự kiến hoàn thành</label>
-                                            <p>{{ construction.endDate }}</p>
+                                            <p>{{ formatDate(construction.expectedCompletionDate) }}</p>
                                         </div>
                                         <div class="info-item full-width">
                                             <label>Địa điểm xây dựng</label>
-                                            <p>{{ construction.location }}</p>
+                                            <p>{{ construction.location || '(chưa cập nhật)' }}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -768,17 +928,74 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
                                         Tài liệu
                                     </h2>
                                     <div class="document-card">
-                                        <div class="document-icon">
-                                            <i class="fas fa-file-pdf"></i>
+                                      <div v-if="imageLoading" class="design-preview">
+                                        <div class="image-loading">
+                                          <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                          </div>
                                         </div>
-                                        <div class="document-info">
-                                            <h4>Bản thiết kế</h4>
-                                            <p>{{ construction.designFile }}</p>
-                                            <button class="btn btn-sm btn-primary" @click="handleDownloadDesign">
+                                      </div>
+                                      <template v-else-if="imageUrl && !imageLoadError">
+                                        <div class="design-preview" :class="{ 'zoomed': isZoomed }" @click="handleZoom">
+                                          <div class="zoom-container">
+                                            <div class="image-wrapper">
+                                              <img
+                                                :src="imageUrl"
+                                                :alt="construction?.constructionName || 'Bản thiết kế'"
+                                                class="design-image"
+                                                :style="isZoomed ? { transform: `scale(${zoomScale})`, cursor: isDragging ? 'grabbing' : 'grab' } : {}"
+                                                @wheel="handleWheel"
+                                                @mousedown="handleMouseDown"
+                                                @error="handleImageError"
+                                                @load="handleImageLoad"
+                                                loading="lazy"
+                                              />
+                                            </div>
+                                          </div>
+                                          <div class="design-overlay" v-if="!isZoomed">
+                                            <div class="overlay-content">
+                                              <button class="btn btn-light btn-sm me-2" @click.stop="downloadDesign" :disabled="imageLoadError">
                                                 <i class="fas fa-download me-1"></i>
                                                 Tải xuống
+                                              </button>
+                                              <span class="text-light">
+                                                <i class="fas fa-search-plus me-1"></i>
+                                                Click để phóng to
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div v-if="isZoomed" class="zoom-controls">
+                                            <button class="btn btn-light btn-sm" @click.stop="handleZoom">
+                                              <i class="fas fa-times"></i>
                                             </button>
+                                            <div class="zoom-info">
+                                              <i class="fas fa-search-plus me-1"></i>
+                                              {{ Math.round(zoomScale * 100) }}%
+                                            </div>
+                                          </div>
+                                          <div v-if="isZoomed" class="zoom-exit-message">
+                                            <div class="message-content">
+                                              <i class="fas fa-mouse-pointer me-2"></i>
+                                              Click bất kỳ đâu để thoát
+                                            </div>
+                                          </div>
                                         </div>
+                                      </template>
+                                      <div v-else class="no-design">
+                                        <div class="document-icon">
+                                          <i class="fas fa-exclamation-circle text-warning"></i>
+                                        </div>
+                                        <div class="document-info">
+                                          <h4>{{ imageLoadError ? 'Không thể kết nối đến server' : 'Chưa có bản thiết kế' }}</h4>
+                                          <p class="text-muted">
+                                            {{ imageLoadError ? 'Vui lòng kiểm tra kết nối và thử lại' : 'Bản thiết kế chưa được tải lên' }}
+                                          </p>
+                                          <button v-if="imageLoadError" class="btn btn-outline-primary btn-sm mt-2" @click="retryLoadImage">
+                                            <i class="fas fa-sync-alt me-1"></i>
+                                            Thử lại
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
                                 </div>
                             </div>
@@ -1241,6 +1458,40 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
       <div class="task-details-list">
         <div v-for="task in selectedEmployeeTasks" :key="task.taskId" class="task-detail-item">
           <span class="task-name">{{ task.taskName }}</span>
+        </div>
+      </div>
+    </ModalDialog>
+
+    <!-- Modal xem ảnh phóng to -->
+    <ModalDialog
+      v-if="imageUrl && !imageLoadError"
+      :show="showImageModal"
+      @update:show="showImageModal = $event"
+      title="Xem Chi Tiết Bản Thiết Kế"
+      size="xl"
+    >
+      <div class="image-zoom-container">
+        <div class="image-wrapper">
+          <div v-if="imageLoading" class="image-loading">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+          <img
+            v-show="!imageLoading"
+            :src="imageUrl"
+            :alt="construction?.constructionName || 'Bản thiết kế'"
+            class="img-zoom"
+            @error="handleImageError"
+            @load="handleImageLoad"
+            loading="lazy"
+          />
+        </div>
+        <div class="image-info mt-3">
+          <div class="text-muted small">
+            <i class="fas fa-calendar me-1"></i>
+            Ngày tạo: {{ formatDate(construction?.startDate) }}
+          </div>
         </div>
       </div>
     </ModalDialog>
@@ -2594,5 +2845,145 @@ const handleAttendanceStatusChange = async (employeeId, newStatus) => {
 
 .employee-status-indicator i {
   font-size: 0.75rem;
+}
+
+.design-preview {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  background: #fff;
+  cursor: pointer;
+}
+
+.zoom-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.image-wrapper {
+  position: relative;
+  overflow: hidden;
+}
+
+.design-image {
+  width: 100%;
+  height: auto;
+  transition: transform 0.3s ease;
+}
+
+.design-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.overlay-content {
+  text-align: center;
+}
+
+.zoom-controls {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.zoom-info {
+  font-size: 0.875rem;
+  color: #6c757d;
+}
+
+.zoom-exit-message {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.message-content {
+  font-size: 0.875rem;
+  color: #6c757d;
+}
+
+.image-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.img-zoom {
+  width: 100%;
+  height: auto;
+}
+
+.image-info {
+  margin-top: 1rem;
+  text-align: center;
+  color: #6c757d;
+}
+
+.no-design {
+  text-align: center;
+  padding: 1rem;
+  border: 1px dashed #dee2e6;
+  border-radius: 0.5rem;
+  background: #f8f9fa;
+}
+
+.no-design .document-icon {
+  font-size: 2rem;
+  color: #dc3545;
+  margin-bottom: 0.5rem;
+}
+
+.no-design h4 {
+  font-size: 1rem;
+  color: #6c757d;
+  margin-bottom: 0.25rem;
+}
+
+.no-design p {
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 1rem;
+}
+
+.btn-outline-primary {
+  border-color: #0d6efd;
+  color: #0d6efd;
+}
+
+.btn-outline-primary:hover {
+  background-color: #0b5ed7;
+  border-color: #0b5ed7;
+}
+
+.image-zoom-container {
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 </style>

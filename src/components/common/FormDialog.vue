@@ -21,10 +21,14 @@ const props = defineProps({
   formData: {
     type: Object,
     default: () => ({})
+  },
+  resubmitMode: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['update:show', 'submit', 'cancel'])
+const emit = defineEmits(['update:show', 'submit', 'resubmit', 'cancel'])
 
 const handleClose = () => {
   emit('update:show', false)
@@ -32,7 +36,11 @@ const handleClose = () => {
 }
 
 const handleSubmit = () => {
-  emit('submit', props.formData)
+  if (props.resubmitMode) {
+    emit('resubmit', props.formData)
+  } else {
+    emit('submit', props.formData)
+  }
 }
 </script>
 
@@ -53,7 +61,7 @@ const handleSubmit = () => {
           <i class="fas fa-times me-2"></i>Hủy
         </button>
           <button type="submit" class="btn btn-primary">
-            <i class="fas fa-save me-2"></i>{{ submitText }}
+            <i class="fas fa-save me-2"></i>{{ props.resubmitMode ? 'Gửi lại' : submitText }}
         </button>
       </div>
     </div>

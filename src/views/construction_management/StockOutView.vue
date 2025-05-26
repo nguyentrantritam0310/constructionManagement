@@ -53,6 +53,9 @@ const employeeID = computed(() => currentUser.value?.id)
 const createOrderError = ref('')
 
 const filteredExportOrders = ref([])
+const keyword = ref('')
+const dateFrom = ref('')
+const dateTo = ref('')
 
 const statusOptions = [
   { value: 'all', label: 'Tất cả' },
@@ -74,11 +77,9 @@ const paginatedExportOrders = computed(() => {
 })
 
 const resetFilters = () => {
-  searchQuery.value = ''
-  dateRange.value = {
-    start: null,
-    end: null
-  }
+  keyword.value = ''
+  dateFrom.value = ''
+  dateTo.value = ''
 }
 
 onMounted(async () => {
@@ -89,7 +90,36 @@ onMounted(async () => {
     fetchUsers(),
     fetchMaterials()
   ])
+  filterExportOrders()
 })
+
+watch([keyword, dateFrom, dateTo, exportOrders], filterExportOrders)
+
+function filterExportOrders() {
+  let result = [...exportOrders.value]
+  const kw = keyword.value.trim().toLowerCase()
+  if (kw) {
+    result = result.filter(item => {
+      return (
+        String(item.id).toLowerCase().includes(kw) ||
+        (item.constructionName && item.constructionName.toLowerCase().includes(kw)) ||
+        (item.constructionItemName && item.constructionItemName.toLowerCase().includes(kw)) ||
+        (item.materialName && Array.isArray(item.materialName) && item.materialName.some(name => name.toLowerCase().includes(kw)))
+      )
+    })
+  }
+  if (dateFrom.value) {
+    const from = new Date(dateFrom.value)
+    result = result.filter(item => new Date(item.exportDate) >= from)
+  }
+  if (dateTo.value) {
+    const to = new Date(dateTo.value)
+    to.setHours(23,59,59,999)
+    result = result.filter(item => new Date(item.exportDate) <= to)
+  }
+  filteredExportOrders.value = result
+  currentPage.value = 1
+}
 
 // Options cho select công trình
 const constructionOptions = computed(() =>
@@ -335,20 +365,37 @@ const formatDate = (date, isActualCompletion = false) => {
 
     <!-- Filter Section -->
     <div class="filter-section mb-4">
-      <AdvancedFilter
-        :items="exportOrders"
-        :searchFields="['id', 'materialName', 'constructionName']"
-        :customFilters="[
-          {
-            field: 'quantity',
-            type: 'number',
-            label: 'Số lượng',
-            operator: '>'
-          }
-        ]"
-        dateField="exportDate"
-        v-model:filteredItems="filteredExportOrders"
-      />
+      <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Tìm kiếm</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <input type="text" class="form-control" v-model="keyword" placeholder="Từ khóa: mã phiếu, công trình, hạng mục, vật tư...">
+            <button class="btn btn-outline-secondary" type="button" @click="keyword = ''" v-if="keyword">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Từ ngày</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+            <input type="date" class="form-control" v-model="dateFrom">
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Đến ngày</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+            <input type="date" class="form-control" v-model="dateTo">
+          </div>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button class="btn btn-secondary w-100" type="button" @click="resetFilters">
+            <i class="fas fa-undo"></i> Đặt lại
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Loading State -->

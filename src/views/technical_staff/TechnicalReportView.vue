@@ -183,6 +183,21 @@ const handleUpdateSubmit = async (formData) => {
   }
 }
 
+const handleResubmitSubmit = async (formData) => {
+  try {
+    const reportId = selectedReport.value.id
+    await updateReport(reportId, formData)
+    await updateReportStatus(reportId, 0, 'Báo cáo đã được gửi lại')
+    showUpdateForm.value = false
+    selectedReport.value = null
+    reportFormData.value = {}
+    showMessage('Gửi lại báo cáo thành công', 'success')
+    await fetchReportsByKiThuat()
+  } catch (err) {
+    showMessage(err.message || 'Có lỗi xảy ra khi gửi lại báo cáo', 'error')
+  }
+}
+
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString('vi-VN')
 }
@@ -234,7 +249,7 @@ const handleApprove = async (report) => {
 
 const handleResubmit = async (report) => {
   try {
-    await updateReportStatus(report.id, 'Pending', 'Báo cáo đã được gửi lại')
+    await updateReportStatus(report.id, 0, 'Báo cáo đã được gửi lại')
     showMessage('Đã gửi lại báo cáo thành công', 'success')
     await fetchReportsByKiThuat()
   } catch (err) {
@@ -265,6 +280,13 @@ const levelOptions = [
   { value: 'Cao', label: 'Cao' },
   { value: 'Nghiêm trọng', label: 'Nghiêm trọng' }
 ]
+
+const isResubmitMode = computed(() => {
+  if (selectedReport.value && selectedReport.value.statusLogs && selectedReport.value.statusLogs.length > 0) {
+    return selectedReport.value.statusLogs[0].status === 2 // 2 là Rejected
+  }
+  return false
+})
 </script>
 
 <template>
@@ -411,7 +433,9 @@ const levelOptions = [
       title="Cập Nhật Báo Cáo"
       submitText="Cập nhật"
       :formData="reportFormData"
+      :resubmitMode="isResubmitMode"
       @submit="handleUpdateSubmit"
+      @resubmit="handleResubmitSubmit"
     >
       <ReportForm
         mode="update"

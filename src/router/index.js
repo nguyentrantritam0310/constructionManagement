@@ -56,8 +56,8 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/construction-management-leader/:id',
-      name: 'construction-management-leader',
+      path: '/task-status/:id',
+      name: 'task-status-detail',
       component: () => import('../views/construction_management/ConstructionDetailForLeaderView.vue'),
       props: true,
       meta: { requiresAuth: true }

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import FormField from '../common/FormField.vue'
 
 const props = defineProps({
@@ -19,7 +19,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['submit', 'cancel'])
+const emit = defineEmits(['submit', 'resubmit', 'cancel'])
 
 const formData = ref({
   constructionCode: '',
@@ -59,6 +59,15 @@ const statusOptions = [
   { value: 'Closed', label: 'Đã đóng' }
 ]
 
+const isRejected = computed(() => {
+  if (props.report && props.report.statusLogs && props.report.statusLogs.length > 0) {
+    // Lấy trạng thái mới nhất
+    const latestStatus = props.report.statusLogs[0].status
+    return latestStatus === 2 // 2 là Rejected
+  }
+  return false
+})
+
 const validateForm = () => {
   if (!formData.value.constructionCode || !formData.value.issueType ||
     !formData.value.description || !formData.value.severity) {
@@ -72,7 +81,11 @@ const handleSubmit = () => {
     alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
     return
   }
-  emit('submit', formData.value)
+  if (isRejected.value) {
+    emit('resubmit', formData.value)
+  } else {
+    emit('submit', formData.value)
+  }
 }
 
 const getReportTypeLabel = () => {
@@ -179,12 +192,7 @@ const getSeverityColor = (severity) => {
     </div>
 
     <div class="form-footer mt-4 d-flex justify-content-end gap-2">
-      <button class="btn btn-secondary" @click="emit('cancel')">
-        <i class="fas fa-times me-2"></i>Hủy
-      </button>
-      <button class="btn btn-primary" @click="handleSubmit">
-        <i class="fas fa-save me-2"></i>Lưu báo cáo
-      </button>
+      <!-- Xóa các nút ở đây, chỉ để lại trường nhập liệu -->
     </div>
   </div>
 </template>

@@ -11,8 +11,7 @@
     </div>
     <div class="loading-text">
       <span class="kawaii-emoji">🌈</span>
-      Để mèo đi lấy dữ liệu cho bạn nhé
-      <span class="kawaii-emoji">✨</span>
+      Để mèo đi lấy dữ liệu cho bạn nhé 🐾
     </div>
   </div>
 </template>
@@ -21,6 +20,13 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import * as THREE from 'three'
 import { createNoise2D } from 'simplex-noise'
+
+const props = defineProps({
+  noticeText: {
+    type: String,
+    default: ''
+  }
+})
 
 const canvas = ref(null)
 const noise2D = createNoise2D()

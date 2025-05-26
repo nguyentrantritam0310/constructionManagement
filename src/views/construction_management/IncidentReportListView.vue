@@ -159,12 +159,6 @@ const formatDate = (date) => {
 const handleUpdateSubmit = async (formData) => {
   try {
     const reportId = selectedReport.value.id
-    console.log('🔄 Updating report:', reportId)
-    console.log('📦 Form data contents:')
-    for (let [key, value] of formData.entries()) {
-      console.log(`${key}: ${value instanceof File ? `File(${value.name})` : value}`)
-    }
-
     await updateReport(reportId, formData)
     showUpdateForm.value = false
     selectedReport.value = null
@@ -172,7 +166,6 @@ const handleUpdateSubmit = async (formData) => {
     showMessage('Cập nhật báo cáo thành công', 'success')
     await fetchReportsByThiCong()
   } catch (err) {
-    console.error('Error updating report:', err)
     showMessage(err.message || 'Có lỗi xảy ra khi cập nhật báo cáo', 'error')
   }
 }
@@ -219,14 +212,18 @@ const handleApprove = async (report) => {
   }
 }
 
-const handleResubmit = async (report) => {
+const handleResubmitSubmit = async (formData) => {
   try {
-    await updateReportStatus(report.id, 'Pending', 'Báo cáo đã được gửi lại')
-    showMessage('Đã gửi lại báo cáo thành công', 'success')
+    const reportId = selectedReport.value.id
+    await updateReport(reportId, formData)
+    await updateReportStatus(reportId, 0, 'Báo cáo đã được gửi lại')
+    showUpdateForm.value = false
+    selectedReport.value = null
+    reportFormData.value = {}
+    showMessage('Gửi lại báo cáo thành công', 'success')
     await fetchReportsByThiCong()
   } catch (err) {
-    console.error('Error resubmitting report:', err)
-    showMessage('Không thể gửi lại báo cáo', 'error')
+    showMessage(err.message || 'Có lỗi xảy ra khi gửi lại báo cáo', 'error')
   }
 }
 
@@ -252,6 +249,13 @@ const levelOptions = [
   { value: 'Cao', label: 'Cao' },
   { value: 'Nghiêm trọng', label: 'Nghiêm trọng' }
 ]
+
+const isResubmitMode = computed(() => {
+  if (selectedReport.value && selectedReport.value.statusLogs && selectedReport.value.statusLogs.length > 0) {
+    return selectedReport.value.statusLogs[0].status === 2 // 2 là Rejected
+  }
+  return false
+})
 </script>
 
 <template>
@@ -413,7 +417,9 @@ const levelOptions = [
       title="Cập Nhật Báo Cáo"
       submitText="Cập nhật"
       :formData="reportFormData"
+      :resubmitMode="isResubmitMode"
       @submit="handleUpdateSubmit"
+      @resubmit="handleResubmitSubmit"
     >
       <ReportForm
         mode="update"
@@ -430,7 +436,7 @@ const levelOptions = [
       :can-edit="true"
       @reject="handleReject"
       @approve="handleApprove"
-      @resubmit="handleResubmit"
+      @resubmit="handleResubmitSubmit"
       @edit="handleEdit"
     />
   </div>

@@ -292,6 +292,11 @@ const affectedConstructions = computed(() => {
   )
 })
 
+const getForecastCacheKey = (location) => {
+  const today = new Date().toISOString().slice(0, 10)
+  return `weather_forecast_${location.name}_${today}`
+}
+
 const fetchForecast = async () => {
   loading.value = true
   error.value = ''

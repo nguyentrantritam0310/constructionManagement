@@ -31,12 +31,14 @@ const menuItems = computed(() => {
       ]
     case 'director':
       return [
+      { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
         { icon: 'fas fa-check-circle', text: 'Phê duyệt đề xuất', route: '/proposal-approval' },
         { icon: 'fas fa-clipboard-list', text: 'Xem dự báo thời tiết', route: '/weather-forecast' }
       ]
     case 'manager':
       return [
-        { icon: 'fas fa-tasks', text: 'Cập nhật trạng thái nhiệm vụ thi công', route: '/task-status' },
+      { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
+        { icon: 'fas fa-tasks', text: 'Quản lý công trình', route: '/task-status' },
         { icon: 'fas fa-exclamation-triangle', text: 'Báo cáo sự cố thi công', route: '/incident-report' },
         { icon: 'fas fa-boxes', text: 'Quản lý vật tư', route: '/material-management' },
         { icon: 'fas fa-warehouse', text: 'Nhập kho', route: '/warehouse-entry' },
@@ -71,11 +73,7 @@ const menuItems = computed(() => {
       <nav class="nav-menu">
         <ul class="nav flex-column">
           <li v-for="item in menuItems" :key="item.route" class="nav-item">
-            <router-link
-              :to="item.route"
-              class="nav-link"
-              active-class="active"
-            >
+            <router-link :to="item.route" class="nav-link" active-class="active">
               <i :class="item.icon"></i>
               <span class="ms-2">{{ item.text }}</span>
             </router-link>
@@ -83,11 +81,11 @@ const menuItems = computed(() => {
 
         </ul>
         <div class="sidebar-footer">
-        <button @click="logout" class="logout-btn">
-          <i class="fas fa-sign-out-alt"></i>
-          Đăng xuất
-        </button>
-      </div>
+          <button @click="logout" class="logout-btn">
+            <i class="fas fa-sign-out-alt"></i>
+            Đăng xuất
+          </button>
+        </div>
       </nav>
     </aside>
 

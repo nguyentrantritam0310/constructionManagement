@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import FormField from '../common/FormField.vue'
 
 const props = defineProps({
@@ -19,7 +19,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'submit', 'resubmit', 'cancel'])
 
 const formData = ref({
   constructionCode: '',
@@ -56,6 +56,28 @@ const severityLevels = [
   { value: 'high', label: 'Cao' },
   { value: 'critical', label: 'Nghiêm trọng' }
 ]
+
+const isRejected = computed(() => {
+  if (props.report && props.report.statusLogs && props.report.statusLogs.length > 0) {
+    // Lấy trạng thái mới nhất
+    const latestStatus = props.report.statusLogs[0].status
+    return latestStatus === 2 // 2 là Rejected
+  }
+  return false
+})
+
+const handleSubmit = () => {
+  if (!formData.value.constructionCode || !formData.value.issueType ||
+    !formData.value.description || !formData.value.severity) {
+    alert('Vui lòng nhập đầy đủ thông tin bắt buộc')
+    return
+  }
+  if (isRejected.value) {
+    emit('resubmit', formData.value)
+  } else {
+    emit('submit', formData.value)
+  }
+}
 </script>
 
 <template>
