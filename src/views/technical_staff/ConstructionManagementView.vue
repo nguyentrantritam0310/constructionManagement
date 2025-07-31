@@ -179,7 +179,7 @@ const handleUpdateSubmit = async () => {
 </template>
 
 <style scoped>
-.construction-management{
+.construction-management {
   padding: 1rem;
 }
 </style>
