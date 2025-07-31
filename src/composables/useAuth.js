@@ -43,7 +43,7 @@ if (token.value) {
 }
 
 // Cấu hình axios
-axios.defaults.baseURL = import.meta.env.VITE_API_URL + '/api/'
+axios.defaults.baseURL = import.meta.env.VITE_API_URL + '/api'
 axios.interceptors.request.use(config => {
   if (token.value) {
     config.headers.Authorization = `Bearer ${token.value}`
