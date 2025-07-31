@@ -70,35 +70,35 @@ const {
 } = useAttendance()
 
 const breadcrumbItems = computed(() => [
-    { text: 'Trang chủ', to: '/' },
+  { text: 'Trang chủ', to: '/' },
   { text: 'Quản lý dự án', to: '/task-status' },
-    { text: construction.value?.constructionName || 'Chi tiết công trình' }
+  { text: construction.value?.constructionName || 'Chi tiết công trình' }
 ])
 
 onMounted(async () => {
-    try {
-        loading.value = true
+  try {
+    loading.value = true
     await Promise.all([
       fetchConstructionDetail(constructionId),
       fetchPlans(),
       fetchEmployees(),
       fetchAttendance()
     ])
-        construction.value = selectedConstruction.value
-    } catch (err) {
+    construction.value = selectedConstruction.value
+  } catch (err) {
     console.error('Error fetching data:', err)
     error.value = 'Không thể tải thông tin'
-    } finally {
-        loading.value = false
-    }
+  } finally {
+    loading.value = false
+  }
 })
 
 const constructionItemColumns = [
   { key: 'id', label: 'Mã hạng mục' },
   { key: 'constructionItemName', label: 'Tên hạng mục' },
-    { key: 'startDate', label: 'Ngày bắt đầu' },
+  { key: 'startDate', label: 'Ngày bắt đầu' },
   { key: 'expectedCompletionDate', label: 'Ngày kết thúc' },
-    { key: 'totalVolume', label: 'Tổng khối lượng' },
+  { key: 'totalVolume', label: 'Tổng khối lượng' },
   { key: 'unitName', label: 'Đơn vị' },
   { key: 'constructionItemStatusName', label: 'Trạng thái' }
 ]
@@ -107,13 +107,13 @@ const planColumns = [
   { key: 'id', label: 'Mã kế hoạch' },
   { key: 'constructionItemName', label: 'Hạng mục' },
   { key: 'employeeName', label: 'Người phụ trách' },
-    { key: 'startDate', label: 'Ngày bắt đầu' },
+  { key: 'startDate', label: 'Ngày bắt đầu' },
   { key: 'expectedCompletionDate', label: 'Ngày kết thúc' },
   { key: 'statusName', label: 'Trạng thái' }
 ]
 
 const taskColumns = [
-    { key: 'id', label: 'Mã nhiệm vụ' },
+  { key: 'id', label: 'Mã nhiệm vụ' },
   { key: 'workload', label: 'Khối lượng hoạch định' },
   { key: 'actualWorkload', label: 'Khối lượng thực tế' },
   { key: 'currentVolume', label: 'Khối lượng còn lại' },
@@ -121,37 +121,37 @@ const taskColumns = [
 ]
 
 const handleItemClick = (item) => {
-    router.push(`/construction-plan-management?itemId=${item.id}`)
+  router.push(`/construction-plan-management?itemId=${item.id}`)
 }
 
 const handleUpdateItem = (item, event) => {
-    event.stopPropagation()
-    console.log('Update construction item:', item)
-    // Xử lý cập nhật hạng mục
+  event.stopPropagation()
+  console.log('Update construction item:', item)
+  // Xử lý cập nhật hạng mục
 }
 
 const handleStatusChange = (item, event) => {
-    event.stopPropagation()
-    selectedItem.value = item
-    showStatusDialog.value = true
+  event.stopPropagation()
+  selectedItem.value = item
+  showStatusDialog.value = true
 }
 
 const handleStatusSubmit = (newStatus) => {
-    if (selectedItem.value) {
-        // Cập nhật trạng thái của hạng mục
-        const itemIndex = construction.value.constructionItems.findIndex(
-            item => item.id === selectedItem.value.id
-        )
-        if (itemIndex !== -1) {
-            construction.value.constructionItems[itemIndex].status = newStatus
-        }
+  if (selectedItem.value) {
+    // Cập nhật trạng thái của hạng mục
+    const itemIndex = construction.value.constructionItems.findIndex(
+      item => item.id === selectedItem.value.id
+    )
+    if (itemIndex !== -1) {
+      construction.value.constructionItems[itemIndex].status = newStatus
     }
-    showStatusDialog.value = false
-    selectedItem.value = null
+  }
+  showStatusDialog.value = false
+  selectedItem.value = null
 }
 
 const handlePlanClick = async (plan) => {
-    selectedPlan.value = plan
+  selectedPlan.value = plan
   try {
     await fetchTasks(plan.id)
     selectedTasks.value = tasks.value
@@ -206,9 +206,9 @@ const assignedWorkers = computed(() => {
 })
 
 const handleAssignWorkers = async (task) => {
-    selectedTask.value = task
+  selectedTask.value = task
   selectedWorkers.value = []
-    showAssignmentModal.value = true
+  showAssignmentModal.value = true
 }
 
 const assignWorkers = async (event) => {
@@ -277,14 +277,14 @@ const remainingDays = computed(() => {
 })
 
 const handleDownloadDesign = async () => {
-    try {
-        console.log('Downloading design file:', construction.value.designFile)
-        // Implement file download logic here
-        showMessage('Tải xuống tài liệu thiết kế thành công', success)
-    } catch (err) {
-        console.error('Error downloading design file:', err)
-        showMessage('Không thể tải xuống tài liệu thiết kế', error)
-    }
+  try {
+    console.log('Downloading design file:', construction.value.designFile)
+    // Implement file download logic here
+    showMessage('Tải xuống tài liệu thiết kế thành công', success)
+  } catch (err) {
+    console.error('Error downloading design file:', err)
+    showMessage('Không thể tải xuống tài liệu thiết kế', error)
+  }
 }
 
 // Thêm biến cho chấm công
@@ -301,17 +301,17 @@ const attendanceColumns = [
   { key: 'employeeID', label: 'Mã công nhân' },
   { key: 'employeeName', label: 'Họ và tên' },
   { key: 'email', label: 'Email' },
-    { key: 'status', label: 'Trạng thái' }
+  { key: 'status', label: 'Trạng thái' }
 ]
 
 const paginatedItems = computed(() => {
-    const start = (currentPage.value - 1) * itemsPerPage
-    const end = start + itemsPerPage
-    return construction.value?.constructionItems.slice(start, end) || []
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return construction.value?.constructionItems.slice(start, end) || []
 })
 
 const handlePageChange = (page) => {
-    currentPage.value = page
+  currentPage.value = page
 }
 
 const paginatedPlans = computed(() => {
@@ -650,7 +650,7 @@ const dragStart = ref({ x: 0, y: 0 })
 const getImageUrl = (path) => {
   if (!path) return null
   if (path.startsWith('http')) return path
-  const baseUrl = api.defaults.baseURL || 'http://localhost:5244'
+  const baseUrl = api.defaults.baseURL || import.meta.env.VITE_API_URL
   const cleanBaseUrl = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl
   return `${cleanBaseUrl}/${path}`
 }
@@ -776,291 +776,288 @@ const downloadDesign = async () => {
 </script>
 
 <template>
-    <div class="container-fluid py-4">
+  <div class="container-fluid py-4">
     <template v-if="construction">
       <div class="project-detail">
-            <!-- Header Section -->
-            <div class="header-section mb-4">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <h1 class="project-title mb-2">{{ construction.constructionName }}</h1>
-                        <div class="project-meta">
-                            <span class="meta-item">
-                                <i class="fas fa-map-marker-alt"></i>
-                                {{ construction.location }}
-                            </span>
-                            <span class="meta-item">
-                                <i class="fas fa-calendar"></i>
-                                {{ formatDate(construction.startDate) }} - {{ formatDate(construction.expectedCompletionDate) }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="d-flex flex-column align-items-end">
-                        <StatusBadge :status="construction.statusName" class="mb-2" />
-                        <button class="btn btn-outline-primary btn-sm">
-                            <i class="fas fa-file-download me-1"></i>
-                            Tải bản thiết kế
-                        </button>
-                    </div>
-                </div>
+        <!-- Header Section -->
+        <div class="header-section mb-4">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h1 class="project-title mb-2">{{ construction.constructionName }}</h1>
+              <div class="project-meta">
+                <span class="meta-item">
+                  <i class="fas fa-map-marker-alt"></i>
+                  {{ construction.location }}
+                </span>
+                <span class="meta-item">
+                  <i class="fas fa-calendar"></i>
+                  {{ formatDate(construction.startDate) }} - {{ formatDate(construction.expectedCompletionDate) }}
+                </span>
+              </div>
             </div>
-
-            <!-- Quick Stats -->
-            <div class="row g-4 mb-4">
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-building"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Loại công trình</h3>
-                            <p>{{ construction.constructionTypeName || '(chưa cập nhật)' }}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-ruler-combined"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Tổng diện tích</h3>
-                            <p>{{ construction.totalArea || '(chưa cập nhật)' }}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-tasks"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Số hạng mục</h3>
-                            <p>{{ getNumItems }} hạng mục</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>Thời gian còn lại</h3>
-                            <p>{{ remainingDays }}</p>
-                        </div>
-                    </div>
-                </div>
+            <div class="d-flex flex-column align-items-end">
+              <StatusBadge :status="construction.statusName" class="mb-2" />
+              <button class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-file-download me-1"></i>
+                Tải bản thiết kế
+              </button>
             </div>
+          </div>
+        </div>
 
-            <!-- Main Content Tabs -->
-            <div class="content-tabs">
-                <ul class="nav nav-tabs nav-tabs-custom">
-                    <li class="nav-item">
+        <!-- Quick Stats -->
+        <div class="row g-4 mb-4">
+          <div class="col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <i class="fas fa-building"></i>
+              </div>
+              <div class="stat-content">
+                <h3>Loại công trình</h3>
+                <p>{{ construction.constructionTypeName || '(chưa cập nhật)' }}</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <i class="fas fa-ruler-combined"></i>
+              </div>
+              <div class="stat-content">
+                <h3>Tổng diện tích</h3>
+                <p>{{ construction.totalArea || '(chưa cập nhật)' }}</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <i class="fas fa-tasks"></i>
+              </div>
+              <div class="stat-content">
+                <h3>Số hạng mục</h3>
+                <p>{{ getNumItems }} hạng mục</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <i class="fas fa-clock"></i>
+              </div>
+              <div class="stat-content">
+                <h3>Thời gian còn lại</h3>
+                <p>{{ remainingDays }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Content Tabs -->
+        <div class="content-tabs">
+          <ul class="nav nav-tabs nav-tabs-custom">
+            <li class="nav-item">
               <a class="nav-link" :class="{ active: activeTab === 'info' }" @click.prevent="activeTab = 'info'"
                 href="#">
-                            <i class="fas fa-info-circle me-2"></i>
-                            Thông tin chung
-                        </a>
-                    </li>
-                    <li class="nav-item">
+                <i class="fas fa-info-circle me-2"></i>
+                Thông tin chung
+              </a>
+            </li>
+            <li class="nav-item">
               <a class="nav-link" :class="{ active: activeTab === 'items' }" @click.prevent="activeTab = 'items'"
                 href="#">
-                            <i class="fas fa-list me-2"></i>
-                            Hạng mục thi công
-                        </a>
-                    </li>
-                    <li class="nav-item">
+                <i class="fas fa-list me-2"></i>
+                Hạng mục thi công
+              </a>
+            </li>
+            <li class="nav-item">
               <a class="nav-link" :class="{ active: activeTab === 'plans' }" @click.prevent="activeTab = 'plans'"
                 href="#">
-                            <i class="fa-solid fa-clipboard me-2"></i>
-                            Kế hoạch thi công
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" :class="{ active: activeTab === 'attendance' }"
-                            @click.prevent="activeTab = 'attendance'" href="#">
-                            <i class="fa-solid fa-calendar-check me-2"></i>
-                            Chấm công
-                        </a>
-                    </li>
-                </ul>
+                <i class="fa-solid fa-clipboard me-2"></i>
+                Kế hoạch thi công
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" :class="{ active: activeTab === 'attendance' }"
+                @click.prevent="activeTab = 'attendance'" href="#">
+                <i class="fa-solid fa-calendar-check me-2"></i>
+                Chấm công
+              </a>
+            </li>
+          </ul>
 
-                <!-- Tab Content -->
-                <div class="tab-content p-4 bg-white rounded-bottom shadow-sm">
+          <!-- Tab Content -->
+          <div class="tab-content p-4 bg-white rounded-bottom shadow-sm">
             <template v-if="activeTab === 'info'">
               <div class="fade-in">
-                        <div class="row g-4">
-                            <div class="col-md-8">
-                                <div class="info-section">
-                                    <h2 class="section-title">
-                                        <i class="fas fa-info-circle me-2"></i>
-                                        Chi tiết công trình
-                                    </h2>
-                                    <div class="info-grid">
-                                        <div class="info-item">
-                                            <label>Loại công trình</label>
-                                            <p>{{ construction.constructionTypeName || '(chưa cập nhật)' }}</p>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Tổng diện tích</label>
-                                            <p>{{ construction.totalArea || '(chưa cập nhật)' }}</p>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Ngày khởi công</label>
-                                            <p>{{ formatDate(construction.startDate) }}</p>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Ngày dự kiến hoàn thành</label>
-                                            <p>{{ formatDate(construction.expectedCompletionDate) }}</p>
-                                        </div>
-                                        <div class="info-item full-width">
-                                            <label>Địa điểm xây dựng</label>
-                                            <p>{{ construction.location || '(chưa cập nhật)' }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="document-section">
-                                    <h2 class="section-title">
-                                        <i class="fas fa-file-alt me-2"></i>
-                                        Tài liệu
-                                    </h2>
-                                    <div class="document-card">
-                                      <div v-if="imageLoading" class="design-preview">
-                                        <div class="image-loading">
-                                          <div class="spinner-border text-primary" role="status">
-                                            <span class="visually-hidden">Loading...</span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <template v-else-if="imageUrl && !imageLoadError">
-                                        <div class="design-preview" :class="{ 'zoomed': isZoomed }" @click="handleZoom">
-                                          <div class="zoom-container">
-                                            <div class="image-wrapper">
-                                              <img
-                                                :src="imageUrl"
-                                                :alt="construction?.constructionName || 'Bản thiết kế'"
-                                                class="design-image"
-                                                :style="isZoomed ? { transform: `scale(${zoomScale})`, cursor: isDragging ? 'grabbing' : 'grab' } : {}"
-                                                @wheel="handleWheel"
-                                                @mousedown="handleMouseDown"
-                                                @error="handleImageError"
-                                                @load="handleImageLoad"
-                                                loading="lazy"
-                                              />
-                                            </div>
-                                          </div>
-                                          <div class="design-overlay" v-if="!isZoomed">
-                                            <div class="overlay-content">
-                                              <button class="btn btn-light btn-sm me-2" @click.stop="downloadDesign" :disabled="imageLoadError">
-                                                <i class="fas fa-download me-1"></i>
-                                                Tải xuống
-                                              </button>
-                                              <span class="text-light">
-                                                <i class="fas fa-search-plus me-1"></i>
-                                                Click để phóng to
-                                              </span>
-                                            </div>
-                                          </div>
-                                          <div v-if="isZoomed" class="zoom-controls">
-                                            <button class="btn btn-light btn-sm" @click.stop="handleZoom">
-                                              <i class="fas fa-times"></i>
-                                            </button>
-                                            <div class="zoom-info">
-                                              <i class="fas fa-search-plus me-1"></i>
-                                              {{ Math.round(zoomScale * 100) }}%
-                                            </div>
-                                          </div>
-                                          <div v-if="isZoomed" class="zoom-exit-message">
-                                            <div class="message-content">
-                                              <i class="fas fa-mouse-pointer me-2"></i>
-                                              Click bất kỳ đâu để thoát
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </template>
-                                      <div v-else class="no-design">
-                                        <div class="document-icon">
-                                          <i class="fas fa-exclamation-circle text-warning"></i>
-                                        </div>
-                                        <div class="document-info">
-                                          <h4>{{ imageLoadError ? 'Không thể kết nối đến server' : 'Chưa có bản thiết kế' }}</h4>
-                                          <p class="text-muted">
-                                            {{ imageLoadError ? 'Vui lòng kiểm tra kết nối và thử lại' : 'Bản thiết kế chưa được tải lên' }}
-                                          </p>
-                                          <button v-if="imageLoadError" class="btn btn-outline-primary btn-sm mt-2" @click="retryLoadImage">
-                                            <i class="fas fa-sync-alt me-1"></i>
-                                            Thử lại
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                </div>
-                            </div>
+                <div class="row g-4">
+                  <div class="col-md-8">
+                    <div class="info-section">
+                      <h2 class="section-title">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Chi tiết công trình
+                      </h2>
+                      <div class="info-grid">
+                        <div class="info-item">
+                          <label>Loại công trình</label>
+                          <p>{{ construction.constructionTypeName || '(chưa cập nhật)' }}</p>
                         </div>
+                        <div class="info-item">
+                          <label>Tổng diện tích</label>
+                          <p>{{ construction.totalArea || '(chưa cập nhật)' }}</p>
+                        </div>
+                        <div class="info-item">
+                          <label>Ngày khởi công</label>
+                          <p>{{ formatDate(construction.startDate) }}</p>
+                        </div>
+                        <div class="info-item">
+                          <label>Ngày dự kiến hoàn thành</label>
+                          <p>{{ formatDate(construction.expectedCompletionDate) }}</p>
+                        </div>
+                        <div class="info-item full-width">
+                          <label>Địa điểm xây dựng</label>
+                          <p>{{ construction.location || '(chưa cập nhật)' }}</p>
+                        </div>
+                      </div>
                     </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="document-section">
+                      <h2 class="section-title">
+                        <i class="fas fa-file-alt me-2"></i>
+                        Tài liệu
+                      </h2>
+                      <div class="document-card">
+                        <div v-if="imageLoading" class="design-preview">
+                          <div class="image-loading">
+                            <div class="spinner-border text-primary" role="status">
+                              <span class="visually-hidden">Loading...</span>
+                            </div>
+                          </div>
+                        </div>
+                        <template v-else-if="imageUrl && !imageLoadError">
+                          <div class="design-preview" :class="{ 'zoomed': isZoomed }" @click="handleZoom">
+                            <div class="zoom-container">
+                              <div class="image-wrapper">
+                                <img :src="imageUrl" :alt="construction?.constructionName || 'Bản thiết kế'"
+                                  class="design-image"
+                                  :style="isZoomed ? { transform: `scale(${zoomScale})`, cursor: isDragging ? 'grabbing' : 'grab' } : {}"
+                                  @wheel="handleWheel" @mousedown="handleMouseDown" @error="handleImageError"
+                                  @load="handleImageLoad" loading="lazy" />
+                              </div>
+                            </div>
+                            <div class="design-overlay" v-if="!isZoomed">
+                              <div class="overlay-content">
+                                <button class="btn btn-light btn-sm me-2" @click.stop="downloadDesign"
+                                  :disabled="imageLoadError">
+                                  <i class="fas fa-download me-1"></i>
+                                  Tải xuống
+                                </button>
+                                <span class="text-light">
+                                  <i class="fas fa-search-plus me-1"></i>
+                                  Click để phóng to
+                                </span>
+                              </div>
+                            </div>
+                            <div v-if="isZoomed" class="zoom-controls">
+                              <button class="btn btn-light btn-sm" @click.stop="handleZoom">
+                                <i class="fas fa-times"></i>
+                              </button>
+                              <div class="zoom-info">
+                                <i class="fas fa-search-plus me-1"></i>
+                                {{ Math.round(zoomScale * 100) }}%
+                              </div>
+                            </div>
+                            <div v-if="isZoomed" class="zoom-exit-message">
+                              <div class="message-content">
+                                <i class="fas fa-mouse-pointer me-2"></i>
+                                Click bất kỳ đâu để thoát
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                        <div v-else class="no-design">
+                          <div class="document-icon">
+                            <i class="fas fa-exclamation-circle text-warning"></i>
+                          </div>
+                          <div class="document-info">
+                            <h4>{{ imageLoadError ? 'Không thể kết nối đến server' : 'Chưa có bản thiết kế' }}</h4>
+                            <p class="text-muted">
+                              {{ imageLoadError ? 'Vui lòng kiểm tra kết nối và thử lại' :
+                                'Bản thiết kế chưa được tải lên' }}
+                            </p>
+                            <button v-if="imageLoadError" class="btn btn-outline-primary btn-sm mt-2"
+                              @click="retryLoadImage">
+                              <i class="fas fa-sync-alt me-1"></i>
+                              Thử lại
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </template>
 
             <template v-else-if="activeTab === 'items'">
               <div class="fade-in">
-                        <div class="table-toolbar mb-3">
-                            <h2 class="section-title">
-                                <i class="fas fa-list me-2"></i>
-                                Danh sách hạng mục
-                            </h2>
-                        </div>
+                <div class="table-toolbar mb-3">
+                  <h2 class="section-title">
+                    <i class="fas fa-list me-2"></i>
+                    Danh sách hạng mục
+                  </h2>
+                </div>
                 <DataTable :columns="constructionItemColumns" :data="paginatedItems" @row-click="handleItemClick"
                   class="custom-table">
                   <template #id="{ item }">
                     <div class="fw-medium text-primary">HM-{{ item.id }}</div>
-                            </template>
+                  </template>
 
-                            <template #startDate="{ item }">
-                                <div class="date-info">
-                                    <i class="fas fa-calendar text-muted me-1"></i>
-                                    {{ formatDate(item.startDate) }}
-                                </div>
-                            </template>
+                  <template #startDate="{ item }">
+                    <div class="date-info">
+                      <i class="fas fa-calendar text-muted me-1"></i>
+                      {{ formatDate(item.startDate) }}
+                    </div>
+                  </template>
 
                   <template #expectedCompletionDate="{ item }">
-                                <div class="date-info">
-                                    <i class="fas fa-calendar-check text-muted me-1"></i>
+                    <div class="date-info">
+                      <i class="fas fa-calendar-check text-muted me-1"></i>
                       {{ formatDate(item.expectedCompletionDate) }}
-                                </div>
-                            </template>
+                    </div>
+                  </template>
 
                   <template #constructionItemName="{ item }">
-                                <div class="volume-info">
+                    <div class="volume-info">
                       <span class="fw-medium">{{ item.constructionItemName }}</span>
-                                </div>
-                            </template>
+                    </div>
+                  </template>
 
                   <template #constructionItemStatusName="{ item }">
                     <StatusBadge :status="item.constructionItemStatusName" />
-                            </template>
-                        </DataTable>
+                  </template>
+                </DataTable>
 
-                        <!-- Phân trang -->
-                        <div class="d-flex justify-content-between align-items-center mt-4">
-                            <div class="text-muted">
+                <!-- Phân trang -->
+                <div class="d-flex justify-content-between align-items-center mt-4">
+                  <div class="text-muted">
                     Hiển thị {{ paginatedItems.length }} trên {{ construction?.constructionItems.length || 0 }} hạng mục
-                            </div>
+                  </div>
                   <Pagination :total-items="construction?.constructionItems.length || 0" :items-per-page="itemsPerPage"
                     :current-page="currentPage" @update:currentPage="handlePageChange" />
-                        </div>
-                    </div>
+                </div>
+              </div>
             </template>
 
             <template v-else-if="activeTab === 'plans'">
               <div class="fade-in">
-                        <div class="table-toolbar mb-3">
-                            <h2 class="section-title">
-                                <i class="fas fa-list me-2"></i>
-                                Danh sách kế hoạch
-                            </h2>
-                        </div>
+                <div class="table-toolbar mb-3">
+                  <h2 class="section-title">
+                    <i class="fas fa-list me-2"></i>
+                    Danh sách kế hoạch
+                  </h2>
+                </div>
 
                 <div v-if="plansLoading" class="text-center py-4">
                   <div class="spinner-border text-primary" role="status">
@@ -1077,7 +1074,7 @@ const downloadDesign = async () => {
                     class="custom-table">
                     <template #id="{ item }">
                       <div class="fw-medium text-primary">KH-{{ item.id }}</div>
-                                </template>
+                    </template>
 
                     <template #employeeName="{ item }">
                       <div class="d-flex align-items-center">
@@ -1091,14 +1088,14 @@ const downloadDesign = async () => {
                           }"></i>
                         </div>
                         <span class="fw-bold ms-2">{{ item.employeeName }}</span>
-                    </div>
+                      </div>
                     </template>
 
                     <template #startDate="{ item }">
                       <div class="date-info">
                         <i class="fas fa-calendar text-muted me-1"></i>
                         {{ formatDate(item.startDate) }}
-                        </div>
+                      </div>
                     </template>
 
                     <template #expectedCompletionDate="{ item }">
@@ -1110,8 +1107,8 @@ const downloadDesign = async () => {
 
                     <template #statusName="{ item }">
                       <StatusBadge :status="item.statusName" />
-                            </template>
-                        </DataTable>
+                    </template>
+                  </DataTable>
 
                   <div class="d-flex justify-content-between align-items-center mt-4">
                     <div class="text-muted">
@@ -1141,11 +1138,7 @@ const downloadDesign = async () => {
                           <span class="input-group-text bg-white border-end-0">
                             <i class="fas fa-calendar text-primary"></i>
                           </span>
-                          <input
-                            type="date"
-                            class="form-control border-start-0 ps-0"
-                            v-model="selectedDate"
-                          >
+                          <input type="date" class="form-control border-start-0 ps-0" v-model="selectedDate">
                         </div>
                       </div>
                     </div>
@@ -1170,17 +1163,13 @@ const downloadDesign = async () => {
                   </div>
 
                   <template v-else>
-                    <DataTable
-                      :columns="[
-                        { key: 'employeeID', label: 'Mã công nhân' },
-                        { key: 'employeeName', label: 'Họ và tên' },
-                        { key: 'email', label: 'Email' },
-                        { key: 'tasks', label: 'Nhiệm vụ' },
-                        { key: 'status', label: 'Trạng thái' }
-                      ]"
-                      :data="paginatedGroupedAttendance"
-                      class="custom-table attendance-table"
-                    >
+                    <DataTable :columns="[
+                      { key: 'employeeID', label: 'Mã công nhân' },
+                      { key: 'employeeName', label: 'Họ và tên' },
+                      { key: 'email', label: 'Email' },
+                      { key: 'tasks', label: 'Nhiệm vụ' },
+                      { key: 'status', label: 'Trạng thái' }
+                    ]" :data="paginatedGroupedAttendance" class="custom-table attendance-table">
                       <template #employeeID="{ item }">
                         <div class="d-flex align-items-center">
                           <span class="text-primary fw-bold">CN-{{ item.employeeID }}</span>
@@ -1215,31 +1204,25 @@ const downloadDesign = async () => {
                             <div v-for="(task, index) in item.tasks.slice(0, 2)" :key="task.taskId" class="task-item">
                               <span class="task-name fw-bold">{{ task.taskName }}</span>
                             </div>
-                            <button
-                              v-if="item.tasks.length > 2"
-                              class="btn-view-more"
-                              @click="showTaskDetails(item.tasks, item.employeeName)"
-                            >
+                            <button v-if="item.tasks.length > 2" class="btn-view-more"
+                              @click="showTaskDetails(item.tasks, item.employeeName)">
                               +{{ item.tasks.length - 2 }}
-                        </button>
-                    </div>
-                </div>
+                            </button>
+                          </div>
+                        </div>
                       </template>
 
                       <template #status="{ item }">
                         <div class="status-wrapper">
 
-                          <FormField
-                            type="select"
-                            :model-value="temporaryStatusChanges.get(item.employeeID) || item.status"
-                            :options="[
+                          <FormField type="select"
+                            :model-value="temporaryStatusChanges.get(item.employeeID) || item.status" :options="[
                               { value: 'Có mặt', label: 'Có mặt' },
                               { value: 'Vắng mặt', label: 'Vắng mặt' }
                             ]"
                             @update:model-value="(newStatus) => updateEmployeeAttendanceStatus(item.employeeID, newStatus)"
-                            class="status-select"
-                          />
-            </div>
+                            class="status-select" />
+                        </div>
                       </template>
                     </DataTable>
 
@@ -1247,13 +1230,9 @@ const downloadDesign = async () => {
                       <div class="text-muted">
                         <i class="fas fa-users me-1"></i>
                         Hiển thị {{ paginatedGroupedAttendance.length }} trên {{ groupedAttendance.length }} công nhân
-        </div>
-                      <Pagination
-                        :total-items="groupedAttendance.length"
-                        :items-per-page="attendancePerPage"
-                        :current-page="currentAttendancePage"
-                        @update:currentPage="handleAttendancePageChange"
-                      />
+                      </div>
+                      <Pagination :total-items="groupedAttendance.length" :items-per-page="attendancePerPage"
+                        :current-page="currentAttendancePage" @update:currentPage="handleAttendancePageChange" />
                     </div>
                   </template>
                 </div>
@@ -1266,19 +1245,19 @@ const downloadDesign = async () => {
 
     <template v-else>
       <div class="loading-container">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
         </div>
+      </div>
     </template>
 
     <!-- Other modals -->
     <template v-if="selectedItem">
       <ModalDialog :show="showStatusDialog" @update:show="showStatusDialog = $event" title="Đổi Trạng Thái Hạng Mục"
         size="md">
-            <ChangeStatusForm :current-status="selectedItem.status" type="construction" @submit="handleStatusSubmit"
-                @cancel="showStatusDialog = false" />
-        </ModalDialog>
+        <ChangeStatusForm :current-status="selectedItem.status" type="construction" @submit="handleStatusSubmit"
+          @cancel="showStatusDialog = false" />
+      </ModalDialog>
     </template>
 
     <!-- Update Assignment Modal -->
@@ -1288,7 +1267,7 @@ const downloadDesign = async () => {
         <div v-if="selectedTask.statusName !== 'Chờ khởi công'" class="alert alert-warning mb-3">
           <i class="fas fa-exclamation-triangle me-2"></i>
           Chỉ có thể phân công công nhân cho nhiệm vụ chờ khởi công
-                </div>
+        </div>
         <form @submit.prevent="assignWorkers">
           <div class="row g-4">
             <!-- Right Column: Add New Workers -->
@@ -1309,8 +1288,8 @@ const downloadDesign = async () => {
                       <input type="text" class="form-control border-start-0 ps-0"
                         placeholder="Tìm kiếm theo tên hoặc email..." v-model="workerSearchQuery"
                         :disabled="selectedTask.statusName !== 'Chờ khởi công'">
-                </div>
-                </div>
+                    </div>
+                  </div>
 
                   <div v-if="employeesLoading" class="text-center py-4">
                     <div class="spinner-border text-primary" role="status">
@@ -1324,12 +1303,10 @@ const downloadDesign = async () => {
 
                   <div v-else class="worker-list">
                     <div v-for="worker in filteredWorkers.filter(w => !assignedWorkers.some(aw => aw.id === w.id))"
-                      :key="worker.id" class="worker-card"
-                      :class="{
+                      :key="worker.id" class="worker-card" :class="{
                         'selected': selectedWorkers.includes(worker),
                         'disabled': selectedTask.statusName !== 'Chờ khởi công'
-                      }"
-                      @click="selectedTask.statusName === 'Chờ khởi công' && toggleWorkerSelection(worker)">
+                      }" @click="selectedTask.statusName === 'Chờ khởi công' && toggleWorkerSelection(worker)">
                       <div class="worker-info">
                         <div class="worker-name">{{ worker.employeeName }}</div>
                         <div class="worker-email">
@@ -1378,8 +1355,7 @@ const downloadDesign = async () => {
                         </div>
                         <button type="button" class="btn btn-icon btn-danger"
                           @click="selectedTask.statusName === 'Chờ khởi công' && confirmDeleteWorker(worker)"
-                          :disabled="selectedTask.statusName !== 'Chờ khởi công'"
-                          title="Xóa phân công">
+                          :disabled="selectedTask.statusName !== 'Chờ khởi công'" title="Xóa phân công">
                           <i class="fas fa-times"></i>
                         </button>
                       </div>
@@ -1396,9 +1372,9 @@ const downloadDesign = async () => {
               <i class="fas fa-save me-1"></i>
               Phân công
             </button>
-                </div>
-            </form>
-        </ModalDialog>
+          </div>
+        </form>
+      </ModalDialog>
     </template>
 
     <!-- Plan Details Modal -->
@@ -1449,12 +1425,8 @@ const downloadDesign = async () => {
     </template>
 
     <!-- Add Task Details Modal -->
-    <ModalDialog
-      :show="showTaskDetailsModal"
-      @update:show="showTaskDetailsModal = $event"
-      :title="`Danh sách nhiệm vụ - ${selectedEmployeeName}`"
-      size="md"
-    >
+    <ModalDialog :show="showTaskDetailsModal" @update:show="showTaskDetailsModal = $event"
+      :title="`Danh sách nhiệm vụ - ${selectedEmployeeName}`" size="md">
       <div class="task-details-list">
         <div v-for="task in selectedEmployeeTasks" :key="task.taskId" class="task-detail-item">
           <span class="task-name">{{ task.taskName }}</span>
@@ -1463,13 +1435,8 @@ const downloadDesign = async () => {
     </ModalDialog>
 
     <!-- Modal xem ảnh phóng to -->
-    <ModalDialog
-      v-if="imageUrl && !imageLoadError"
-      :show="showImageModal"
-      @update:show="showImageModal = $event"
-      title="Xem Chi Tiết Bản Thiết Kế"
-      size="xl"
-    >
+    <ModalDialog v-if="imageUrl && !imageLoadError" :show="showImageModal" @update:show="showImageModal = $event"
+      title="Xem Chi Tiết Bản Thiết Kế" size="xl">
       <div class="image-zoom-container">
         <div class="image-wrapper">
           <div v-if="imageLoading" class="image-loading">
@@ -1477,15 +1444,8 @@ const downloadDesign = async () => {
               <span class="visually-hidden">Loading...</span>
             </div>
           </div>
-          <img
-            v-show="!imageLoading"
-            :src="imageUrl"
-            :alt="construction?.constructionName || 'Bản thiết kế'"
-            class="img-zoom"
-            @error="handleImageError"
-            @load="handleImageLoad"
-            loading="lazy"
-          />
+          <img v-show="!imageLoading" :src="imageUrl" :alt="construction?.constructionName || 'Bản thiết kế'"
+            class="img-zoom" @error="handleImageError" @load="handleImageLoad" loading="lazy" />
         </div>
         <div class="image-info mt-3">
           <div class="text-muted small">
@@ -1495,236 +1455,236 @@ const downloadDesign = async () => {
         </div>
       </div>
     </ModalDialog>
-    </div>
+  </div>
 </template>
 
 <style scoped>
 .project-detail {
-    animation: fadeIn 0.3s ease-out;
+  animation: fadeIn 0.3s ease-out;
 }
 
 .header-section {
-    background: linear-gradient(to right, #ffffff, #f8f9fa);
-    padding: 2rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(to right, #ffffff, #f8f9fa);
+  padding: 2rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .project-title {
-    font-size: 2rem;
-    color: #2c3e50;
-    font-weight: 600;
+  font-size: 2rem;
+  color: #2c3e50;
+  font-weight: 600;
 }
 
 .project-meta {
-    display: flex;
-    gap: 1.5rem;
-    color: #6c757d;
+  display: flex;
+  gap: 1.5rem;
+  color: #6c757d;
 }
 
 .meta-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .stat-card {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    transition: transform 0.2s ease;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: transform 0.2s ease;
 }
 
 .stat-card:hover {
-    transform: translateY(-2px);
+  transform: translateY(-2px);
 }
 
 .stat-icon {
-    width: 48px;
-    height: 48px;
-    background: #f8f9fa;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    color: #007bff;
+  width: 48px;
+  height: 48px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: #007bff;
 }
 
 .stat-content h3 {
-    font-size: 0.875rem;
-    color: #6c757d;
-    margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.25rem;
 }
 
 .stat-content p {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #2c3e50;
-    margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
 }
 
 .nav-tabs-custom {
-    border: none;
-    margin-top: 2rem;
+  border: none;
+  margin-top: 2rem;
 }
 
 .nav-tabs-custom .nav-link {
-    border: none;
-    padding: 1rem 1.5rem;
-    color: #6c757d;
-    font-weight: 500;
-    transition: all 0.2s ease;
+  border: none;
+  padding: 1rem 1.5rem;
+  color: #6c757d;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .nav-tabs-custom .nav-link:hover {
-    color: #007bff;
-    background: rgba(0, 123, 255, 0.05);
+  color: #007bff;
+  background: rgba(0, 123, 255, 0.05);
 }
 
 .nav-tabs-custom .nav-link.active {
-    color: #007bff;
-    background: white;
-    border-top: 3px solid #007bff;
+  color: #007bff;
+  background: white;
+  border-top: 3px solid #007bff;
 }
 
 .section-title {
-    font-size: 1.25rem;
-    color: #2c3e50;
-    margin-bottom: 1.5rem;
-    font-weight: 600;
+  font-size: 1.25rem;
+  color: #2c3e50;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
 }
 
 .info-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
 }
 
 .info-item {
-    padding: 1rem;
-    background: #f8f9fa;
-    border-radius: 0.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 0.5rem;
 }
 
 .info-item.full-width {
-    grid-column: 1 / -1;
+  grid-column: 1 / -1;
 }
 
 .info-item label {
-    font-size: 0.875rem;
-    color: #6c757d;
-    margin-bottom: 0.5rem;
-    display: block;
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.5rem;
+  display: block;
 }
 
 .info-item p {
-    margin: 0;
-    color: #2c3e50;
-    font-weight: 500;
+  margin: 0;
+  color: #2c3e50;
+  font-weight: 500;
 }
 
 .document-card {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1.5rem;
-    background: #f8f9fa;
-    border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 0.5rem;
 }
 
 .document-icon {
-    font-size: 2rem;
-    color: #dc3545;
+  font-size: 2rem;
+  color: #dc3545;
 }
 
 .document-info h4 {
-    font-size: 1rem;
-    margin-bottom: 0.25rem;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
 }
 
 .document-info p {
-    font-size: 0.875rem;
-    color: #6c757d;
-    margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.5rem;
 }
 
 .custom-table {
-    margin-bottom: 2rem;
+  margin-bottom: 2rem;
 }
 
 .custom-table :deep(th) {
-    background: #f8f9fa;
-    font-weight: 600;
-    padding: 1rem;
-    white-space: nowrap;
+  background: #f8f9fa;
+  font-weight: 600;
+  padding: 1rem;
+  white-space: nowrap;
 }
 
 .custom-table :deep(td) {
-    padding: 1rem;
-    vertical-align: middle;
+  padding: 1rem;
+  vertical-align: middle;
 }
 
 .custom-table :deep(tr) {
-    cursor: pointer;
-    transition: all 0.2s ease;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .custom-table :deep(tr:hover) {
-    background-color: rgba(0, 123, 255, 0.05);
+  background-color: rgba(0, 123, 255, 0.05);
 }
 
 .date-info {
-    font-size: 0.875rem;
-    color: #495057;
+  font-size: 0.875rem;
+  color: #495057;
 }
 
 .volume-info {
-    font-size: 0.875rem;
+  font-size: 0.875rem;
 }
 
 .action-btn {
-    padding: 0.25rem;
-    transition: all 0.2s ease;
+  padding: 0.25rem;
+  transition: all 0.2s ease;
 }
 
 .action-btn:hover {
-    transform: scale(1.1);
+  transform: scale(1.1);
 }
 
 .gap-2 {
-    gap: 0.5rem;
+  gap: 0.5rem;
 }
 
 .loading-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 400px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
 }
 
 .fade-in {
-    animation: fadeIn 0.3s ease-out;
+  animation: fadeIn 0.3s ease-out;
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
+  from {
+    opacity: 0;
+  }
 
-    to {
-        opacity: 1;
-    }
+  to {
+    opacity: 1;
+  }
 }
 
 .multiselect {
-    border: 1px solid #ced4da;
-    border-radius: 0.375rem;
-    padding: 0.375rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
 }
 
 .info-group {

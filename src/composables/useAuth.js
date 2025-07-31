@@ -11,7 +11,7 @@ const getUserFromToken = (token) => {
   try {
     const base64Url = token.split('.')[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
       return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
     }).join(''));
 
@@ -20,10 +20,10 @@ const getUserFromToken = (token) => {
 
     // Try different role claim keys
     const role = data['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
-                data['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'] ||
-                data['role'] ||
-                data['Role'] ||
-                'User';
+      data['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'] ||
+      data['role'] ||
+      data['Role'] ||
+      'User';
 
     return {
       id: data['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'],
@@ -43,7 +43,7 @@ if (token.value) {
 }
 
 // Cấu hình axios
-axios.defaults.baseURL = 'http://localhost:5244/api'
+axios.defaults.baseURL = import.meta.env.VITE_API_URL + '/api/'
 axios.interceptors.request.use(config => {
   if (token.value) {
     config.headers.Authorization = `Bearer ${token.value}`
@@ -52,32 +52,65 @@ axios.interceptors.request.use(config => {
 })
 
 // Xử lý refresh token
+// axios.interceptors.response.use(
+//   response => response,
+//   async error => {
+//     const originalRequest = error.config
+//     if (error.response.status === 401 && !originalRequest._retry) {
+//       originalRequest._retry = true
+//       try {
+//         const response = await axios.post('/auth/refresh-token', {
+//           token: token.value,
+//           refreshToken: refreshToken.value
+//         })
+//         const { token: newToken, refreshToken: newRefreshToken } = response.data
+//         token.value = newToken
+//         refreshToken.value = newRefreshToken
+//         localStorage.setItem('token', newToken)
+//         localStorage.setItem('refreshToken', newRefreshToken)
+//         originalRequest.headers.Authorization = `Bearer ${newToken}`
+//         return axios(originalRequest)
+//       } catch (error) {
+//         logout()
+//         return Promise.reject(error)
+//       }
+//     }
+//     return Promise.reject(error)
+//   }
+// )
+
 axios.interceptors.response.use(
   response => response,
   async error => {
-    const originalRequest = error.config
+    // Kiểm tra tồn tại error.response trước khi truy cập status
+    if (!error.response) {
+      console.error('Network error:', error);
+      return Promise.reject(error);
+    }
+
+    const originalRequest = error.config;
     if (error.response.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true
+      originalRequest._retry = true;
       try {
         const response = await axios.post('/auth/refresh-token', {
           token: token.value,
           refreshToken: refreshToken.value
-        })
-        const { token: newToken, refreshToken: newRefreshToken } = response.data
-        token.value = newToken
-        refreshToken.value = newRefreshToken
-        localStorage.setItem('token', newToken)
-        localStorage.setItem('refreshToken', newRefreshToken)
-        originalRequest.headers.Authorization = `Bearer ${newToken}`
-        return axios(originalRequest)
-      } catch (error) {
-        logout()
-        return Promise.reject(error)
+        });
+        const { token: newToken, refreshToken: newRefreshToken } = response.data;
+        token.value = newToken;
+        refreshToken.value = newRefreshToken;
+        localStorage.setItem('token', newToken);
+        localStorage.setItem('refreshToken', newRefreshToken);
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return axios(originalRequest);
+      } catch (refreshError) {
+        logout();
+        return Promise.reject(refreshError);
       }
     }
-    return Promise.reject(error)
+    return Promise.reject(error);
   }
-)
+);
 
 export function useAuth() {
   const router = useRouter()

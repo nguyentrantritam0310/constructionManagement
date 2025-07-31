@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_URL = 'http://localhost:5244/api'
+const API_URL = 'http://160.250.132.226/api'
 
 export const taskService = {
   // Lấy danh sách task theo plan ID
@@ -62,7 +62,7 @@ export const taskService = {
   updateActualWorkload: async (id, actualWorkload) => {
     try {
       const response = await axios.patch(
-        `http://localhost:5244/api/ConstructionTask/${id}/actual`,
+        import.meta.env.VITE_API_URL + `/api/ConstructionTask/${id}/actual`,
         { actualWorkload }
       )
       return response.data

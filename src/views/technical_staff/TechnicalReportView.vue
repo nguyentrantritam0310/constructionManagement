@@ -302,12 +302,7 @@ const isResubmitMode = computed(() => {
     <div class="filter-section mb-4">
       <div class="row g-3">
         <div class="col-md-3">
-          <input
-            type="text"
-            class="form-control"
-            v-model="searchQuery"
-            placeholder="Tìm kiếm..."
-          >
+          <input type="text" class="form-control" v-model="searchQuery" placeholder="Tìm kiếm...">
         </div>
         <div class="col-md-2">
           <select class="form-control" v-model="statusFilter">
@@ -328,20 +323,10 @@ const isResubmitMode = computed(() => {
           </select>
         </div>
         <div class="col-md-2">
-          <input
-            type="date"
-            class="form-control"
-            v-model="dateRange.start"
-            placeholder="Từ ngày"
-          >
+          <input type="date" class="form-control" v-model="dateRange.start" placeholder="Từ ngày">
         </div>
         <div class="col-md-2">
-          <input
-            type="date"
-            class="form-control"
-            v-model="dateRange.end"
-            placeholder="Đến ngày"
-          >
+          <input type="date" class="form-control" v-model="dateRange.end" placeholder="Đến ngày">
         </div>
         <div class="col-md-1">
           <button class="btn btn-secondary w-100" @click="resetFilters">
@@ -392,16 +377,8 @@ const isResubmitMode = computed(() => {
       </template>
     </DataTable>
 
-    <ReportDetailDialog
-      v-if="detailReport"
-      v-model:show="showDetailModal"
-      :report="detailReport"
-      :can-edit="true"
-      @reject="handleReject"
-      @approve="handleApprove"
-      @resubmit="handleResubmit"
-      @edit="handleEdit"
-    />
+    <ReportDetailDialog v-if="detailReport" v-model:show="showDetailModal" :report="detailReport" :can-edit="true"
+      @reject="handleReject" @approve="handleApprove" @resubmit="handleResubmit" @edit="handleEdit" />
 
     <!-- Phân trang -->
     <div class="d-flex justify-content-between align-items-center mt-4">
@@ -413,36 +390,15 @@ const isResubmitMode = computed(() => {
     </div>
 
     <!-- Form tạo báo cáo mới -->
-    <FormDialog
-      v-model:show="showCreateForm"
-      title="Tạo Báo Cáo Mới"
-      submitText="Tạo báo cáo"
-      :formData="reportFormData"
-      @submit="handleSubmit"
-    >
-      <ReportForm
-        mode="create"
-        reportType="technical"
-        v-model="reportFormData"
-      />
+    <FormDialog v-model:show="showCreateForm" title="Tạo Báo Cáo Mới" submitText="Tạo báo cáo"
+      :formData="reportFormData" @submit="handleSubmit">
+      <ReportForm mode="create" reportType="technical" v-model="reportFormData" />
     </FormDialog>
 
     <!-- Form cập nhật báo cáo -->
-    <FormDialog
-      v-model:show="showUpdateForm"
-      title="Cập Nhật Báo Cáo"
-      submitText="Cập nhật"
-      :formData="reportFormData"
-      :resubmitMode="isResubmitMode"
-      @submit="handleUpdateSubmit"
-      @resubmit="handleResubmitSubmit"
-    >
-      <ReportForm
-        mode="update"
-        reportType="technical"
-        :report="selectedReport"
-        v-model="reportFormData"
-      />
+    <FormDialog v-model:show="showUpdateForm" title="Cập Nhật Báo Cáo" submitText="Cập nhật" :formData="reportFormData"
+      :resubmitMode="isResubmitMode" @submit="handleUpdateSubmit" @resubmit="handleResubmitSubmit">
+      <ReportForm mode="update" reportType="technical" :report="selectedReport" v-model="reportFormData" />
     </FormDialog>
   </div>
 </template>

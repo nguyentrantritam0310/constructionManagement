@@ -151,7 +151,7 @@ const handleUpdateSubmit = async () => {
 <template>
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2>Quản Lý Công Trình</h2>
+      <h2>Quản Lý Công Trình test</h2>
       <button class="btn btn-primary" @click="openCreateForm">
         <i class="fas fa-plus me-2"></i>Thêm Công Trình
       </button>
@@ -167,12 +167,8 @@ const handleUpdateSubmit = async () => {
 
     <!-- Update Dialog -->
     <ModalDialog v-model:show="showUpdateDialog" title="Cập Nhật Công Trình" size="lg">
-      <ConstructionForm
-        v-if="selectedConstruction"
-        mode="update"
-        :construction="selectedConstruction"
-        @close="handleUpdateSubmit"
-      />
+      <ConstructionForm v-if="selectedConstruction" mode="update" :construction="selectedConstruction"
+        @close="handleUpdateSubmit" />
     </ModalDialog>
 
     <!-- Status Change Dialog -->
@@ -183,7 +179,7 @@ const handleUpdateSubmit = async () => {
 </template>
 
 <style scoped>
-.construction-management {
+.construction-management{
   padding: 1rem;
 }
 </style>

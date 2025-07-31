@@ -118,7 +118,7 @@ const handleItemSubmit = async (item) => {
   } catch (error) {
     console.error('Error submitting item:', error)
     showMessage(error.response?.data?.message || 'Không thể thực hiện thao tác', 'error')
-    }
+  }
 }
 
 const handleStatusSubmit = async (data) => {
@@ -131,8 +131,8 @@ const handleStatusSubmit = async (data) => {
     console.error('Error updating status:', error)
     showMessage('Không thể cập nhật trạng thái', 'error')
   } finally {
-  showStatusDialog.value = false
-  selectedItem.value = null
+    showStatusDialog.value = false
+    selectedItem.value = null
   }
 }
 
@@ -174,7 +174,7 @@ const formatDate = (date) => {
 }
 
 const API_BASE_URL = computed(() => {
-  const baseUrl = api.defaults.baseURL || 'http://localhost:5244'
+  const baseUrl = api.defaults.baseURL || import.meta.env.VITE_API_URL
   // Remove /api from the end if it exists
   return baseUrl.endsWith('/api')
     ? baseUrl.slice(0, -4)
@@ -201,7 +201,7 @@ const getImageUrl = (path) => {
   }
 
   // Nếu path là đường dẫn tương đối
-  const baseUrl = api.defaults.baseURL || 'http://localhost:5244'
+  const baseUrl = api.defaults.baseURL || import.meta.env.VITE_API_URL
   const cleanBaseUrl = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl
   const fullUrl = `${cleanBaseUrl}/${path}`
   console.log('API Base URL:', cleanBaseUrl)
@@ -575,49 +575,34 @@ onUnmounted(() => {
                       <div class="image-loading">
                         <div class="spinner-border text-primary" role="status">
                           <span class="visually-hidden">Loading...</span>
-                    </div>
+                        </div>
                       </div>
                     </div>
                     <template v-else-if="imageUrl && !imageLoadError">
-                      <div
-                        class="design-preview"
-                        :class="{ 'zoomed': isZoomed }"
-                        @click="handleZoom"
-                      >
+                      <div class="design-preview" :class="{ 'zoomed': isZoomed }" @click="handleZoom">
                         <div class="zoom-container">
                           <div class="image-wrapper">
-                            <img
-                              :src="imageUrl"
-                              :alt="selectedConstruction?.constructionName || 'Bản thiết kế'"
-                              class="design-image"
-                              :style="isZoomed ? {
+                            <img :src="imageUrl" :alt="selectedConstruction?.constructionName || 'Bản thiết kế'"
+                              class="design-image" :style="isZoomed ? {
                                 transform: `scale(${zoomScale})`,
                                 cursor: isDragging ? 'grabbing' : 'grab'
-                              } : {}"
-                              @wheel="handleWheel"
-                              @mousedown="handleMouseDown"
-                              @error="handleImageError"
-                              @load="handleImageLoad"
-                              loading="lazy"
-                            />
+                              } : {}" @wheel="handleWheel" @mousedown="handleMouseDown" @error="handleImageError"
+                              @load="handleImageLoad" loading="lazy" />
                           </div>
                         </div>
                         <div class="design-overlay" v-if="!isZoomed">
                           <div class="overlay-content">
-                            <button
-                              class="btn btn-light btn-sm me-2"
-                              @click.stop="downloadDesign"
-                              :disabled="imageLoadError"
-                            >
-                        <i class="fas fa-download me-1"></i>
-                        Tải xuống
-                      </button>
+                            <button class="btn btn-light btn-sm me-2" @click.stop="downloadDesign"
+                              :disabled="imageLoadError">
+                              <i class="fas fa-download me-1"></i>
+                              Tải xuống
+                            </button>
                             <span class="text-light">
                               <i class="fas fa-search-plus me-1"></i>
                               Click để phóng to
                             </span>
-                    </div>
-                  </div>
+                          </div>
+                        </div>
                         <div v-if="isZoomed" class="zoom-controls">
                           <button class="btn btn-light btn-sm" @click.stop="handleZoom">
                             <i class="fas fa-times"></i>
@@ -642,13 +627,11 @@ onUnmounted(() => {
                       <div class="document-info">
                         <h4>{{ imageLoadError ? 'Không thể kết nối đến server' : 'Chưa có bản thiết kế' }}</h4>
                         <p class="text-muted">
-                          {{ imageLoadError ? 'Vui lòng kiểm tra kết nối và thử lại' : 'Bản thiết kế chưa được tải lên' }}
+                          {{ imageLoadError ? 'Vui lòng kiểm tra kết nối và thử lại' : 'Bản thiết kế chưa được tải lên'
+                          }}
                         </p>
-                        <button
-                          v-if="imageLoadError"
-                          class="btn btn-outline-primary btn-sm mt-2"
-                          @click="retryLoadImage"
-                        >
+                        <button v-if="imageLoadError" class="btn btn-outline-primary btn-sm mt-2"
+                          @click="retryLoadImage">
                           <i class="fas fa-sync-alt me-1"></i>
                           Thử lại
                         </button>
@@ -672,8 +655,8 @@ onUnmounted(() => {
                 Thêm Hạng Mục
               </button>
             </div>
-            <DataTable :columns="constructionItemColumns" :data="paginatedItems"
-              @row-click="handleItemClick" class="custom-table">
+            <DataTable :columns="constructionItemColumns" :data="paginatedItems" @row-click="handleItemClick"
+              class="custom-table">
               <template #id="{ item }">
                 <div class="fw-medium text-primary">HM-{{ item.id }}</div>
               </template>
@@ -713,14 +696,11 @@ onUnmounted(() => {
             <!-- Add pagination -->
             <div class="d-flex justify-content-between align-items-center mt-4">
               <div class="text-muted">
-                Hiển thị {{ paginatedItems.length }} trên {{ selectedConstruction?.constructionItems?.length || 0 }} hạng mục
+                Hiển thị {{ paginatedItems.length }} trên {{ selectedConstruction?.constructionItems?.length || 0 }}
+                hạng mục
               </div>
-              <Pagination
-                :total-items="selectedConstruction?.constructionItems?.length || 0"
-                :items-per-page="itemsPerPage"
-                :current-page="currentPage"
-                @update:currentPage="handlePageChange"
-              />
+              <Pagination :total-items="selectedConstruction?.constructionItems?.length || 0"
+                :items-per-page="itemsPerPage" :current-page="currentPage" @update:currentPage="handlePageChange" />
             </div>
           </div>
         </div>
@@ -733,26 +713,15 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <ModalDialog v-model:show="showItemForm"
-        :title="formMode === 'create' ? 'Thêm Hạng Mục' : 'Cập Nhật Hạng Mục'"
-        size="lg">
-        <ConstructionItemForm
-            :mode="formMode"
-            :item="selectedItem"
-            @submit="handleItemSubmit"
-            @cancel="handleItemFormClose"
-        />
+    <ModalDialog v-model:show="showItemForm" :title="formMode === 'create' ? 'Thêm Hạng Mục' : 'Cập Nhật Hạng Mục'"
+      size="lg">
+      <ConstructionItemForm :mode="formMode" :item="selectedItem" @submit="handleItemSubmit"
+        @cancel="handleItemFormClose" />
     </ModalDialog>
 
-    <StatusChangeDialog
-      v-if="showStatusDialog && selectedItem"
-      :show="showStatusDialog"
-      :item="selectedItem"
-      type="item"
-      title="Thay Đổi Trạng Thái Hạng Mục"
-      @update:show="showStatusDialog = $event"
-      @submit="handleStatusSubmit"
-    />
+    <StatusChangeDialog v-if="showStatusDialog && selectedItem" :show="showStatusDialog" :item="selectedItem"
+      type="item" title="Thay Đổi Trạng Thái Hạng Mục" @update:show="showStatusDialog = $event"
+      @submit="handleStatusSubmit" />
 
     <!-- Add task details section -->
     <div v-if="selectedItem" class="task-details mt-4">
@@ -801,9 +770,7 @@ onUnmounted(() => {
                 <div class="progress" style="height: 10px;">
                   <div class="progress-bar" role="progressbar"
                     :style="{ width: (selectedItem.completionPercentage || 0) + '%' }"
-                    :aria-valuenow="selectedItem.completionPercentage || 0"
-                    aria-valuemin="0"
-                    aria-valuemax="100">
+                    :aria-valuenow="selectedItem.completionPercentage || 0" aria-valuemin="0" aria-valuemax="100">
                   </div>
                 </div>
               </div>
@@ -814,13 +781,8 @@ onUnmounted(() => {
     </div>
 
     <!-- Update Image Zoom Modal -->
-    <ModalDialog
-      v-if="imageUrl && !imageLoadError"
-      :show="showImageModal"
-      @update:show="showImageModal = $event"
-      title="Xem Chi Tiết Bản Thiết Kế"
-      size="xl"
-    >
+    <ModalDialog v-if="imageUrl && !imageLoadError" :show="showImageModal" @update:show="showImageModal = $event"
+      title="Xem Chi Tiết Bản Thiết Kế" size="xl">
       <div class="image-zoom-container">
         <div class="image-wrapper">
           <div v-if="imageLoading" class="image-loading">
@@ -828,15 +790,8 @@ onUnmounted(() => {
               <span class="visually-hidden">Loading...</span>
             </div>
           </div>
-          <img
-            v-show="!imageLoading"
-            :src="imageUrl"
-            :alt="selectedConstruction?.constructionName || 'Bản thiết kế'"
-            class="img-zoom"
-            @error="handleImageError"
-            @load="handleImageLoad"
-            loading="lazy"
-          />
+          <img v-show="!imageLoading" :src="imageUrl" :alt="selectedConstruction?.constructionName || 'Bản thiết kế'"
+            class="img-zoom" @error="handleImageError" @load="handleImageLoad" loading="lazy" />
         </div>
         <div class="image-info mt-3">
           <div class="text-muted small">
@@ -1402,6 +1357,7 @@ onUnmounted(() => {
     opacity: 0;
     transform: translate(-50%, 1rem);
   }
+
   to {
     opacity: 1;
     transform: translate(-50%, 0);
@@ -1409,12 +1365,19 @@ onUnmounted(() => {
 }
 
 @keyframes bounce {
-  0%, 20%, 50%, 80%, 100% {
+
+  0%,
+  20%,
+  50%,
+  80%,
+  100% {
     transform: translateY(0);
   }
+
   40% {
     transform: translateY(-3px);
   }
+
   60% {
     transform: translateY(-2px);
   }

@@ -108,7 +108,7 @@ const handleImageClick = (attachment) => {
 }
 
 const apiBaseUrl = computed(() => {
-  const baseUrl = api.defaults.baseURL || 'http://localhost:5244'
+  const baseUrl = api.defaults.baseURL || import.meta.env.VITE_API_URL
   // Remove /api from the end if it exists
   return baseUrl.endsWith('/api')
     ? baseUrl.slice(0, -4)
@@ -199,12 +199,7 @@ const canEdit = computed(() => {
 </script>
 
 <template>
-  <ModalDialog
-    :show="show"
-    @update:show="(value) => emit('update:show', value)"
-    title="Chi Tiết Báo Cáo"
-    size="lg"
-  >
+  <ModalDialog :show="show" @update:show="(value) => emit('update:show', value)" title="Chi Tiết Báo Cáo" size="lg">
     <div class="report-detail-modal">
       <!-- Header: Ngày tạo + Công trình + badge + trạng thái -->
       <div class="header mb-4 pb-3">
@@ -248,10 +243,11 @@ const canEdit = computed(() => {
 
       <!-- Status Note Section -->
       <div v-if="getLatestStatusLog && (getLatestStatusLog.status === 1 || getLatestStatusLog.status === 2)"
-           class="row mb-3">
+        class="row mb-3">
         <div class="col-12">
           <div class="text-muted small mb-1">
-            <i class="fas" :class="getLatestStatusLog.status === 1 ? 'fa-check-circle text-success' : 'fa-times-circle text-danger'"></i>
+            <i class="fas"
+              :class="getLatestStatusLog.status === 1 ? 'fa-check-circle text-success' : 'fa-times-circle text-danger'"></i>
             {{ getStatusNoteLabel }}
           </div>
           <div class="bg-light rounded p-3 status-note">
@@ -273,13 +269,8 @@ const canEdit = computed(() => {
         <div class="row g-3">
           <div v-for="attachment in formattedAttachments" :key="attachment.id" class="col-12 col-md-4">
             <div class="img-sample position-relative">
-              <img
-                :src="attachment.fullUrl"
-                :alt="'Ảnh ' + attachment.id"
-                class="img-fluid shadow-sm"
-                @error="handleImageError"
-                @click="handleImageClick(attachment)"
-              />
+              <img :src="attachment.fullUrl" :alt="'Ảnh ' + attachment.id" class="img-fluid shadow-sm"
+                @error="handleImageError" @click="handleImageClick(attachment)" />
               <div class="img-upload-date text-muted small text-center mt-2">
                 <i class="fas fa-clock me-1"></i>
                 {{ formatDate(attachment.uploadDate) }}
@@ -301,9 +292,8 @@ const canEdit = computed(() => {
             </div>
           </div>
           <div class="status-timeline">
-            <div v-for="(log, index) in paginatedStatusLogs" :key="log.id"
-                 class="status-timeline-item"
-                 :class="{ 'is-latest': index === 0 && currentStatusPage === 1 }">
+            <div v-for="(log, index) in paginatedStatusLogs" :key="log.id" class="status-timeline-item"
+              :class="{ 'is-latest': index === 0 && currentStatusPage === 1 }">
               <div class="status-timeline-icon">
                 <i class="fas" :class="getStatusIcon(log.status)"></i>
               </div>
@@ -325,12 +315,8 @@ const canEdit = computed(() => {
           </div>
           <!-- Pagination -->
           <div v-if="totalStatusPages > 1" class="d-flex justify-content-center mt-3">
-            <Pagination
-              :total-items="report.statusLogs.length"
-              :items-per-page="statusLogsPerPage"
-              :current-page="currentStatusPage"
-              @update:currentPage="handleStatusPageChange"
-            />
+            <Pagination :total-items="report.statusLogs.length" :items-per-page="statusLogsPerPage"
+              :current-page="currentStatusPage" @update:currentPage="handleStatusPageChange" />
           </div>
         </div>
       </div>
@@ -341,22 +327,15 @@ const canEdit = computed(() => {
         <div v-if="showStatusNoteInput" class="status-note-input">
           <div class="form-group">
             <label class="form-label">Ghi chú:</label>
-            <textarea
-              v-model="statusNote"
-              class="form-control"
-              rows="3"
-              :placeholder="pendingAction === 'approve' ? 'Nhập ghi chú khi duyệt...' : 'Nhập ghi chú khi từ chối...'"
-            ></textarea>
+            <textarea v-model="statusNote" class="form-control" rows="3"
+              :placeholder="pendingAction === 'approve' ? 'Nhập ghi chú khi duyệt...' : 'Nhập ghi chú khi từ chối...'"></textarea>
           </div>
           <div class="d-flex justify-content-end gap-2 mt-2">
             <button class="btn btn-secondary" @click="cancelStatusAction">
               Hủy
             </button>
-            <button
-              class="btn"
-              :class="pendingAction === 'approve' ? 'btn-primary' : 'btn-danger'"
-              @click="confirmStatusAction"
-            >
+            <button class="btn" :class="pendingAction === 'approve' ? 'btn-primary' : 'btn-danger'"
+              @click="confirmStatusAction">
               {{ pendingAction === 'approve' ? 'Xác nhận duyệt' : 'Xác nhận từ chối' }}
             </button>
           </div>
@@ -366,17 +345,12 @@ const canEdit = computed(() => {
         <div v-else class="d-flex justify-content-end gap-2">
           <template v-if="props.canEdit">
             <!-- Resubmit button - only show for rejected reports -->
-            <button v-if="canResubmit"
-                    class="btn btn-warning"
-                    @click="handleResubmit"
-                    title="Gửi lại báo cáo để xem xét">
+            <button v-if="canResubmit" class="btn btn-warning" @click="handleResubmit"
+              title="Gửi lại báo cáo để xem xét">
               <i class="fas fa-redo me-1"></i> Gửi lại báo cáo
             </button>
             <!-- Edit button - show for pending or rejected reports -->
-            <button v-if="canEdit"
-                    class="btn btn-primary"
-                    @click="handleEdit"
-                    title="Chỉnh sửa nội dung báo cáo">
+            <button v-if="canEdit" class="btn btn-primary" @click="handleEdit" title="Chỉnh sửa nội dung báo cáo">
               <i class="fas fa-edit me-1"></i> Chỉnh sửa
             </button>
           </template>
@@ -394,20 +368,10 @@ const canEdit = computed(() => {
   </ModalDialog>
 
   <!-- Modal Zoom Ảnh -->
-  <ModalDialog
-    v-if="selectedImage"
-    :show="showImageModal"
-    @update:show="showImageModal = $event"
-    title="Xem Chi Tiết Ảnh"
-    size="xl"
-  >
+  <ModalDialog v-if="selectedImage" :show="showImageModal" @update:show="showImageModal = $event"
+    title="Xem Chi Tiết Ảnh" size="xl">
     <div class="image-zoom-container">
-      <img
-        :src="selectedImage.fullUrl"
-        :alt="'Ảnh ' + selectedImage.id"
-        class="img-zoom"
-        @error="handleImageError"
-      />
+      <img :src="selectedImage.fullUrl" :alt="'Ảnh ' + selectedImage.id" class="img-zoom" @error="handleImageError" />
       <div class="image-info mt-3">
         <div class="text-muted small">
           <i class="fas fa-clock me-1"></i>
@@ -596,7 +560,7 @@ const canEdit = computed(() => {
   background: #f8f9fa;
   border-radius: 0.5rem;
   padding: 1rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .status-timeline-header {
@@ -650,7 +614,7 @@ const canEdit = computed(() => {
 }
 
 /* Add styles for pagination container */
-.status-timeline + .d-flex {
+.status-timeline+.d-flex {
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid #e3f0fa;
@@ -668,6 +632,6 @@ const canEdit = computed(() => {
   border-color: #ffc720;
   color: #000;
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 </style>

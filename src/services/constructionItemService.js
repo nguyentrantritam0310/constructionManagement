@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_URL = 'http://localhost:5244/api'
+const API_URL = import.meta.env.VITE_API_URL + '/api'
 const CONSTRUCTION_ITEM_URL = `${API_URL}/ConstructionItem`
 
 export const constructionItemService = {
