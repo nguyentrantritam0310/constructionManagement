@@ -37,6 +37,18 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/attendance-summary',
+      name: 'AttendanceSummary',
+      component: () => import('../views/human_resources/AttendanceSummaryView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/personnel-contract',
+      name: 'LaborContracts',
+      component: () => import('../views/human_resources/LaborContractView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/construction-management',
       name: 'construction-management',
       component: ConstructionManagementView,
@@ -120,6 +132,11 @@ const router = createRouter({
       path: '/weather-forecast',
       name: 'WeatherForecast',
       component: () => import('../views/director/WeatherForecastView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/human-resources',
+      component: () => import('../views/human_resources/HumanResourcesView.vue'),
       meta: { requiresAuth: true }
     }
   ]
