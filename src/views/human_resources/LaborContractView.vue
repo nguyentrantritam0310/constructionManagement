@@ -1,29 +1,7 @@
 <template>
   <div class="container-fluid py-4">
     <h2 class="mb-4">Quản lý hợp đồng lao động</h2>
-    <ul class="nav nav-tabs mb-3 contract-tabs">
-      <li class="nav-item">
-        <button class="nav-link d-flex align-items-center" :class="{ active: activeTab === 'allContracts' }" @click="activeTab = 'allContracts'">
-          <i class="fas fa-file-contract me-2"></i>
-          Hợp đồng lao động
-          <span class="badge bg-primary ms-2">{{ contracts.length }}</span>
-        </button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link d-flex align-items-center" :class="{ active: activeTab === 'notCreated' }" @click="activeTab = 'notCreated'">
-          <i class="fas fa-user-plus me-2"></i>
-          Chưa lên hợp đồng
-          <span class="badge bg-warning text-dark ms-2">{{ notCreatedContracts.length }}</span>
-        </button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link d-flex align-items-center" :class="{ active: activeTab === 'expired' }" @click="activeTab = 'expired'">
-          <i class="fas fa-calendar-times me-2"></i>
-          Hợp đồng hết hạn
-          <span class="badge bg-danger ms-2">{{ expiredContracts.length }}</span>
-        </button>
-      </li>
-    </ul>
+    <TabBar :tabs="tabs" :activeTab="activeTab" @update:activeTab="activeTab = $event" />
     <div class="card shadow-sm">
       <div class="card-body p-0">
         <DataTable :columns="columnsByTab" :data="paginatedContracts">
@@ -45,12 +23,18 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import TabBar from '../../components/common/TabBar.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 
 const activeTab = ref('allContracts')
 
-// Dữ liệu mẫu cho các tab
+const tabs = [
+  { key: 'allContracts', label: 'Hợp đồng lao động', icon: 'fas fa-file-contract' },
+  { key: 'notCreated', label: 'Chưa lên hợp đồng', icon: 'fas fa-user-plus' },
+  { key: 'expired', label: 'Hợp đồng hết hạn', icon: 'fas fa-calendar-times' }
+]
+
 const contracts = ref([
   {
     id: 1,

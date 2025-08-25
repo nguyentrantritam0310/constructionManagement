@@ -1,7 +1,9 @@
 <script setup>
 import { ref, computed } from 'vue'
+import TabBar from '../../components/common/TabBar.vue'
 
 const activeTab = ref('summary')
+const showMoreTabs = ref(false) // Control visibility of the "More" dropdown
 
 const tabs = [
   { key: 'summary', label: 'Bảng tổng hợp công', icon: 'fas fa-table' },
@@ -12,6 +14,16 @@ const tabs = [
   { key: 'feedbackHistory', label: 'Lịch sử phản ánh', icon: 'fas fa-comment-dots' },
   { key: 'dataErrors', label: 'Các lỗi dữ liệu', icon: 'fas fa-exclamation-triangle' }
 ]
+
+// Limit the number of visible tabs
+const visibleTabsCount = 4
+const visibleTabs = computed(() => tabs.slice(0, visibleTabsCount))
+const hiddenTabs = computed(() => tabs.slice(visibleTabsCount))
+
+const selectTab = (tabKey) => {
+  activeTab.value = tabKey
+  showMoreTabs.value = false // Close the "More" dropdown when a tab is selected
+}
 
 // Danh sách nhân viên và dữ liệu công cho từng ngày trong tháng
 const employees = [
@@ -36,12 +48,21 @@ const employees = [
     position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
   },
   {
+    id: 'NV0253',
+    name: 'Nguyễn Duy Phúc',
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+  },
+  {
+    id: 'NV0253',
+    name: 'Nguyễn Duy Phúc',
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+  },
+  {
     id: 'NV0280',
     name: 'Nguyễn Thiện Đức',
     position: 'Chuyên viên Quản lý thiết kế Kết cấu & Hạ tầng'
   }
 ]
-
 
 // Tạo danh sách ngày trong tháng hiện tại
 const now = new Date()
@@ -101,29 +122,16 @@ const statusColor = {
 
 <template>
   <div class="container-fluid py-4">
-    
-    <!-- Thay thế phần tabs -->
-    <div class="attendance-tabs-bar mb-3">
-      <div
-        v-for="tab in tabs"
-        :key="tab.key"
-        class="tab-bar-item"
-        :class="{ active: activeTab === tab.key }"
-        @click="activeTab = tab.key"
-      >
-        <i :class="tab.icon" class="tab-bar-icon"></i>
-        <span class="tab-bar-label">{{ tab.label }}</span>
-      </div>
-    </div>
+    <TabBar :tabs="tabs" :activeTab="activeTab" @update:activeTab="activeTab = $event" />
     <div class="card shadow-sm">
       <div class="card-body">
         <div v-if="activeTab === 'summary'">
+          <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center legend-row">
+            <span class="legend-item" style="background:#28a745"></span> Đi làm
+            <span class="legend-item" style="background:#ff6b6b"></span> Nghỉ phép
+            <span class="legend-item" style="background:#6c63ff"></span> Làm việc từ xa
+          </div>
           <div class="attendance-summary-table">
-                        <div class="mt-3 d-flex flex-wrap gap-3 align-items-center legend-row">
-              <span class="legend-item" style="background:#28a745"></span> Đi làm
-              <span class="legend-item" style="background:#ff6b6b"></span> Nghỉ phép
-              <span class="legend-item" style="background:#6c63ff"></span> Làm việc từ xa
-            </div>
             <table class="table table-bordered align-middle modern-table">
               <thead>
                 <tr>
@@ -152,7 +160,6 @@ const statusColor = {
                 </tr>
               </tbody>
             </table>
-
           </div>
         </div>
         <div v-else>
@@ -169,15 +176,12 @@ const statusColor = {
   gap: 8px;
   border-radius: 8px;
   background: #f5f7fa;
-  padding: 4px 8px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.03);
+  padding: 8px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.03);
   margin-bottom: 1rem;
-  flex-wrap: nowrap; /* Không xuống dòng */
-  overflow-x: auto;   /* Nếu tab quá nhiều sẽ scroll ngang */
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  position: relative;
 }
+
 .tab-bar-item {
   display: flex;
   align-items: center;
@@ -191,37 +195,94 @@ const statusColor = {
   transition: background 0.18s, color 0.18s;
   background: transparent;
 }
+
 .tab-bar-item .tab-bar-icon {
   font-size: 1.15rem;
   color: #0d6efd;
 }
+
 .tab-bar-item.active {
   background: #e9ecef;
   color: #0d6efd;
   box-shadow: 0 2px 8px rgba(13,110,253,0.07);
 }
+
 .tab-bar-item:hover {
   background: #f0f6ff;
   color: #0d6efd;
 }
-.tab-bar-label {
-  white-space: nowrap;
+
+.more-tab {
+  position: relative;
 }
+
+.more-tabs-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  padding: 8px;
+  min-width: 200px;
+}
+
+.dropdown-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #222;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+
+.dropdown-tab-item .dropdown-tab-icon {
+  font-size: 1.1rem;
+  color: #0d6efd;
+}
+
+.dropdown-tab-item.active {
+  background: #e9ecef;
+  color: #0d6efd;
+}
+
+.dropdown-tab-item:hover {
+  background: #f0f6ff;
+  color: #0d6efd;
+}
+
 .card {
   border-radius: 0.75rem;
   border: none;
 }
+
 .card-body {
   padding: 1.5rem;
 }
+
+.attendance-summary-table {
+  max-height: calc(100vh - 100px); /* Ensure the table fits within the viewport */
+  overflow-y: auto; /* Enable vertical scrolling for the table content */
+  padding: 16px; /* Add padding around the table */
+  margin: 16px; /* Add margin around the table container */
+  border-radius: 16px; /* Rounded corners for the table container */
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); /* Subtle shadow for the table container */
+  background: #fff; /* White background for the table container */
+  border: 1px solid #e9ecef; /* Add a border to the table container */
+}
+
 .attendance-summary-table .modern-table {
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-  background: #fff;
   border-collapse: separate;
   border-spacing: 0;
+  width: 100%; /* Ensure the table takes up the full width of the container */
 }
+
 .attendance-summary-table th {
   background: #f5f7fa;
   font-weight: 600;
@@ -230,9 +291,10 @@ const statusColor = {
   border-bottom: 2px solid #e9ecef;
   vertical-align: middle;
   position: sticky;
-  top: 0;
+  top: 0; /* Keep table headers visible while scrolling */
   z-index: 2;
 }
+
 .attendance-summary-table td {
   vertical-align: middle;
   text-align: center;
@@ -240,6 +302,7 @@ const statusColor = {
   background: #fff;
   padding: 0;
 }
+
 .attendance-summary-table .schedule-cell-modern {
   display: flex;
   align-items: center;
@@ -251,42 +314,50 @@ const statusColor = {
   border-radius: 8px;
   margin: 4px;
   transition: box-shadow 0.2s, transform 0.2s;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   cursor: pointer;
   border: 1.5px solid #e9ecef;
 }
+
+.attendance-summary-table .schedule-cell-modern:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: scale(1.04);
+  border-color: #0d6efd;
+}
+
 .attendance-summary-table .cell-work {
   background: #43d17a;
   color: #fff;
 }
+
 .attendance-summary-table .cell-leave {
   background: #ff6b6b;
   color: #fff;
 }
+
 .attendance-summary-table .cell-remote {
   background: #6c63ff;
   color: #fff;
 }
+
 .attendance-summary-table .cell-other,
 .attendance-summary-table .cell-empty {
   background: #e0e0e0;
   color: #888;
 }
-.attendance-summary-table .schedule-cell-modern:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.10);
-  transform: scale(1.04);
-  border-color: #0d6efd;
-}
+
 .attendance-summary-table .cell-time {
   font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: 1px;
 }
+
 .legend-row {
   font-size: 1rem;
   gap: 18px;
   margin-top: 8px;
 }
+
 .legend-item {
   display: inline-block;
   width: 22px;
@@ -296,6 +367,7 @@ const statusColor = {
   vertical-align: middle;
   border: 1px solid #e0e0e0;
 }
+
 @media (max-width: 900px) {
   .attendance-tabs-bar {
     flex-direction: column;
