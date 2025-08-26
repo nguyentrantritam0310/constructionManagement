@@ -1,11 +1,7 @@
 <template>
   <div class="layout">
     <!-- Dimmed Background -->
-    <div
-      v-if="isSubsystemSelectorOpen"
-      class="dimmed-background"
-      @click="closeSubsystemSelector"
-    ></div>
+    <div v-if="isSubsystemSelectorOpen" class="dimmed-background" @click="closeSubsystemSelector"></div>
 
     <!-- Header -->
     <header class="navbar navbar-expand-lg navbar-dark fixed-top header">
@@ -53,34 +49,17 @@
     </aside>
 
     <!-- Subsystem Selector -->
-    <div
-      v-if="isSubsystemSelectorOpen"
-      class="subsystem-selector"
-      :class="{ 'subsystem-selector-open': isSubsystemSelectorOpen, 'subsystem-selector-close': !isSubsystemSelectorOpen }"
-    >
+    <div v-if="isSubsystemSelectorOpen" class="subsystem-selector"
+      :class="{ 'subsystem-selector-open': isSubsystemSelectorOpen, 'subsystem-selector-close': !isSubsystemSelectorOpen }">
       <div class="subsystem-selector-header">
-        <input
-          type="text"
-          class="search-input"
-          placeholder="Tìm kiếm phân hệ hoặc module..."
-          v-model="searchQuery"
-        />
+        <input type="text" class="search-input" placeholder="Tìm kiếm phân hệ hoặc module..." v-model="searchQuery" />
       </div>
       <div class="subsystem-grid">
-        <div
-          v-for="subsystem in filteredSubsystems"
-          :key="subsystem.key"
-          class="subsystem-row"
-        >
+        <div v-for="subsystem in filteredSubsystems" :key="subsystem.key" class="subsystem-row">
           <h6 class="subsystem-header">{{ subsystem.name }}</h6>
           <div class="module-grid">
-            <div
-              v-for="module in subsystem.modules"
-              :key="module.name"
-              @click="selectModule(module)"
-              class="module-card"
-              :class="{ active: module.name === selectedModule?.name }"
-            >
+            <div v-for="module in subsystem.modules" :key="module.name" @click="selectModule(module)"
+              class="module-card" :class="{ active: module.name === selectedModule?.name }">
               <i :class="module.icon"></i>
               <span class="module-text">{{ module.name }}</span>
             </div>
@@ -117,27 +96,56 @@ const searchQuery = ref('')
 const constructionMenuItems = computed(() => {
   switch (currentUser.value?.role) {
     case 'technician':
-      return [
-        { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
-        { icon: 'fas fa-project-diagram', text: 'Quản lý Công trình', route: '/construction-management' },
-        { icon: 'fas fa-tasks', text: 'Quản lý kế hoạch thi công', route: '/construction-plan-management' },
-        { icon: 'fas fa-boxes', text: 'Lập kế hoạch vật tư', route: '/material-planning' },
-        { icon: 'fas fa-file-alt', text: 'Báo cáo kỹ thuật', route: '/technical-reports' }
+      return [{
+        name: 'Dự án',
+        icon: 'fas fa-building',
+        children: [
+          { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
+          { icon: 'fas fa-project-diagram', text: 'Quản lý Công trình', route: '/construction-management' },
+          { icon: 'fas fa-tasks', text: 'Quản lý kế hoạch thi công', route: '/construction-plan-management' },
+          { icon: 'fas fa-file-alt', text: 'Báo cáo kỹ thuật', route: '/technical-reports' }]
+      },
+      {
+        name: 'Vật tư',
+        icon: 'fas fa-cubes',
+        children: [
+          { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
+          { icon: 'fas fa-boxes', text: 'Lập kế hoạch vật tư', route: '/material-planning' }
+        ]
+      }
+
       ]
     case 'director':
-      return [
-        { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
-        { icon: 'fas fa-check-circle', text: 'Phê duyệt đề xuất', route: '/proposal-approval' },
-        { icon: 'fas fa-clipboard-list', text: 'Xem dự báo thời tiết', route: '/weather-forecast' }
+      return [{
+        name: 'Dự án',
+        icon: 'fas fa-building',
+        children: [
+          { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
+          { icon: 'fas fa-check-circle', text: 'Phê duyệt đề xuất', route: '/proposal-approval' },
+          { icon: 'fas fa-clipboard-list', text: 'Xem dự báo thời tiết', route: '/weather-forecast' }
+        ]
+      }
       ]
     case 'manager':
       return [
-        { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
-        { icon: 'fas fa-tasks', text: 'Quản lý công trình', route: '/task-status' },
-        { icon: 'fas fa-exclamation-triangle', text: 'Báo cáo sự cố thi công', route: '/incident-report' },
-        { icon: 'fas fa-boxes', text: 'Quản lý vật tư', route: '/material-management' },
-        { icon: 'fas fa-warehouse', text: 'Nhập kho', route: '/warehouse-entry' },
-        { icon: 'fas fa-truck-loading', text: 'Xuất kho', route: '/stock-out' }
+        {
+          name: 'Dự án',
+          icon: 'fas fa-building',
+          children: [
+            { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
+            { icon: 'fas fa-tasks', text: 'Quản lý công trình', route: '/task-status' },
+            { icon: 'fas fa-exclamation-triangle', text: 'Báo cáo sự cố thi công', route: '/incident-report' }
+          ]
+        },
+        {
+          name: 'Vật tư',
+          icon: 'fas fa-cubes',
+          children: [
+            { icon: 'fas fa-boxes', text: 'Quản lý vật tư', route: '/material-management' },
+            { icon: 'fas fa-warehouse', text: 'Nhập kho', route: '/warehouse-entry' },
+            { icon: 'fas fa-truck-loading', text: 'Xuất kho', route: '/stock-out' }
+          ]
+        }
       ]
     default:
       return []
@@ -175,6 +183,8 @@ const personnelMenuItems = [
   }
 ]
 
+
+
 // Subsystems
 const subsystems = computed(() => [
   {
@@ -187,13 +197,7 @@ const subsystems = computed(() => [
     name: 'Phân hệ Công trình',
     icon: 'fas fa-building',
     key: 'construction',
-    modules: [
-      {
-        name: 'Công trình',
-        icon: 'fas fa-project-diagram',
-        children: constructionMenuItems.value
-      }
-    ]
+    modules: constructionMenuItems.value
   }
 ])
 
@@ -565,7 +569,8 @@ onMounted(() => {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  background: linear-gradient(135deg, #2c3e50, #34495e); /* Adjusted to match the theme */
+  background: linear-gradient(135deg, #2c3e50, #34495e);
+  /* Adjusted to match the theme */
   color: #ffffff;
   font-weight: bold;
   border-radius: 8px;
@@ -579,7 +584,8 @@ onMounted(() => {
 }
 
 .subsystem-selector-btn:hover {
-  background: linear-gradient(135deg, #34495e, #3b4a5a); /* Slightly darker on hover */
+  background: linear-gradient(135deg, #34495e, #3b4a5a);
+  /* Slightly darker on hover */
   box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
 }
 
@@ -590,10 +596,13 @@ onMounted(() => {
 
 .subsystem-selector {
   position: fixed;
-  top: 64px; /* Align with the header */
+  top: 64px;
+  /* Align with the header */
   left: 0;
-  width: 400px; /* Extended width */
-  height: calc(100vh - 64px); /* Match the sidebar height */
+  width: 400px;
+  /* Extended width */
+  height: calc(100vh - 64px);
+  /* Match the sidebar height */
   background: #34495e;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
   transition: transform 0.3s ease;
@@ -603,7 +612,8 @@ onMounted(() => {
   flex-direction: column;
   opacity: 0;
   transform: translateX(-100%);
-  transition: opacity 0.3s ease, transform 0.3s ease; /* Slower animations */
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  /* Slower animations */
 }
 
 .subsystem-selector-open {
@@ -667,7 +677,8 @@ onMounted(() => {
 
 .module-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr); /* Three modules per row */
+  grid-template-columns: repeat(3, 1fr);
+  /* Three modules per row */
   gap: 1rem;
 }
 
@@ -681,7 +692,8 @@ onMounted(() => {
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.3s ease;
-  height: 100px; /* Ensure consistent height */
+  height: 100px;
+  /* Ensure consistent height */
 }
 
 .module-card:hover {
