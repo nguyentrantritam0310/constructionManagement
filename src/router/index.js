@@ -138,7 +138,33 @@ const router = createRouter({
       path: '/human-resources',
       component: () => import('../views/human_resources/HumanResourcesView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/shift-setup',
+      component: () => import('../views/human_resources/ShiftSetupView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/shift-assignment',
+      component: () => import('../views/human_resources/ShiftAssignmentView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/annual-leave',
+      component: () => import('../views/human_resources/AnnualLeaveView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/salary-adjustment',
+      component: () => import('../views/human_resources/AdjustmentListView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/salary-table',
+      component: () => import('../views/human_resources/SalaryTableView.vue'),
+      meta: { requiresAuth: true }
     }
+
   ]
 })
 

@@ -170,7 +170,6 @@ const personnelMenuItems = [
       { icon: 'fas fa-cog', text: 'Thiết lập ca', route: '/shift-setup' },
       { icon: 'fas fa-user-clock', text: 'Phân ca nhân viên', route: '/shift-assignment' },
       { icon: 'fas fa-calendar-plus', text: 'Quản lý phép năm', route: '/annual-leave' },
-      { icon: 'fas fa-calendar-times', text: 'Quản lý ngày nghỉ', route: '/holiday-management' }
     ]
   },
   {
