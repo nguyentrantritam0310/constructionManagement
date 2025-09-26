@@ -14,6 +14,9 @@ import UpdateReportForm from '../../components/incident-report/UpdateReportForm.
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
 import UpdateButton from '../../components/common/UpdateButton.vue'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import * as XLSX from 'xlsx'
 
 const { showMessage } = useGlobalMessage()
 
@@ -24,6 +27,8 @@ const selectedReport = ref(null)
 const showDetailDialog = ref(false)
 const detailReport = ref(null)
 const reportFormData = ref({})
+const showImportModal = ref(false)
+const file = ref(null)
 
 const searchQuery = ref('')
 const statusFilter = ref('')
@@ -99,6 +104,7 @@ const {
   reports,
   formData,
   fetchReportsByThiCong,
+  createMultipleReports,
   createReport,
   updateReport,
   updateReportStatus
@@ -168,6 +174,121 @@ const handleUpdateSubmit = async (formData) => {
   } catch (err) {
     showMessage(err.message || 'Có lỗi xảy ra khi cập nhật báo cáo', 'error')
   }
+}
+
+const exportToExcel = async () => {
+  if (filteredReports.value.length === 0) {
+    showMessage('Không có dữ liệu để xuất.', 'info')
+    return
+  }
+
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('IncidentReports')
+
+  worksheet.columns = [
+    { header: 'Mã báo cáo', key: 'id', width: 15 },
+    { header: 'Công trình', key: 'constructionName', width: 30 },
+    { header: 'Mô tả', key: 'content', width: 50 },
+    { header: 'Mức độ', key: 'level', width: 15 },
+    { header: 'Trạng thái', key: 'status', width: 20 },
+    { header: 'Ngày tạo', key: 'reportDate', width: 20 }
+  ]
+
+  filteredReports.value.forEach(report => {
+    worksheet.addRow({
+      ...report,
+      status: getStatusLabel(report.statusLogs[0].status),
+      reportDate: formatDate(report.reportDate)
+    })
+  })
+
+  worksheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+  })
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Bao_cao_su_co.xlsx')
+}
+
+const downloadExcelTemplate = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const dataSheet = workbook.addWorksheet('Dữ liệu nhập')
+
+  dataSheet.columns = [
+    { header: 'ID Công trình', key: 'constructionID', width: 20 },
+    { header: 'Mô tả', key: 'content', width: 50 },
+    { header: 'Mức độ', key: 'level', width: 20 }
+  ]
+  dataSheet.getRow(1).eachCell(cell => { cell.font = { bold: true } })
+
+  const instructionSheet = workbook.addWorksheet('Hướng dẫn')
+  instructionSheet.columns = [
+    { header: 'Tên cột', key: 'column', width: 30 },
+    { header: 'Mô tả', key: 'description', width: 60 },
+    { header: 'Bắt buộc', key: 'required', width: 15 },
+    { header: 'Ví dụ', key: 'example', width: 30 }
+  ]
+  instructionSheet.getRow(1).eachCell(cell => { cell.font = { bold: true } })
+  instructionSheet.addRows([
+    { column: 'ID Công trình', description: 'ID của công trình liên quan.', required: 'Có', example: '12' },
+    { column: 'Mô tả', description: 'Mô tả chi tiết về sự cố thi công.', required: 'Có', example: 'Sập giàn giáo tại khu vực A' },
+    { column: 'Mức độ', description: 'Mức độ nghiêm trọng của sự cố. Chấp nhận các giá trị: Thấp, Trung bình, Cao, Nghiêm trọng.', required: 'Có', example: 'Nghiêm trọng' }
+  ])
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Mau_Nhap_Bao_Cao_Su_Co.xlsx')
+}
+
+const handleFileUpload = (event) => {
+  const target = event.target
+  if (target && target.files) {
+    file.value = target.files[0]
+  }
+}
+
+const processImport = () => {
+  if (!file.value) {
+    showMessage('Vui lòng chọn một file Excel.', 'warning');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      if (jsonData.length === 0) {
+        showMessage('File Excel không có dữ liệu.', 'error');
+        return;
+      }
+
+      const reportsToCreate = jsonData.map(row => ({
+        constructionID: Number(row['ID Công trình']),
+        content: row['Mô tả'],
+        level: row['Mức độ'],
+        reportType: 'Sự cố thi công', // Hardcoded for this view
+      })).filter(r => r.constructionID && r.content && r.level);
+
+      if (reportsToCreate.length === 0) {
+        showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error');
+        return;
+      }
+
+      await createMultipleReports(reportsToCreate);
+      await fetchReportsByThiCong();
+      file.value = null;
+      showImportModal.value = false;
+    } catch (error) {
+      console.error('Lỗi khi xử lý file Excel:', error);
+      showMessage('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.', 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file.value);
 }
 
 const getStatusLabel = (status) => {
@@ -262,9 +383,17 @@ const isResubmitMode = computed(() => {
   <div class="management-report">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h2>Báo Cáo Sự Cố Thi Công</h2>
-      <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
-        Tạo báo cáo mới
-      </ActionButton>
+      <div class="d-flex gap-2">
+        <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
+          Tạo báo cáo mới
+        </ActionButton>
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
+          Xuất Excel
+        </ActionButton>
+        <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
+          Nhập Excel
+        </ActionButton>
+      </div>
     </div>
 
     <!-- Filter Section -->
@@ -428,6 +557,40 @@ const isResubmitMode = computed(() => {
         v-model="reportFormData"
       />
     </FormDialog>
+
+    <!-- Import Excel Modal -->
+    <ModalDialog v-model:show="showImportModal" title="Nhập báo cáo sự cố từ Excel" size="lg">
+      <div class="p-4">
+        <p>
+          Vui lòng chọn tệp Excel (.xlsx) để nhập báo cáo sự cố thi công. Đảm bảo rằng tệp tuân theo định dạng mẫu.
+        </p>
+        <div class="mb-3">
+          <input type="file" class="form-control" accept=".xlsx" @change="handleFileUpload" />
+        </div>
+        <div class="d-flex justify-content-between">
+          <button class="btn btn-outline-secondary" @click="downloadExcelTemplate">
+            <i class="fas fa-download me-2"></i>Tải mẫu Excel
+          </button>
+          <div>
+            <button class="btn btn-secondary me-2" @click="showImportModal = false">Hủy</button>
+            <button class="btn btn-primary" :disabled="!file" @click="processImport">Nhập</button>
+          </div>
+        </div>
+      </div>
+    </ModalDialog>
+
+    <!-- Detail Dialog -->
+
+    <ReportDetailDialog
+      v-if="detailReport"
+      v-model:show="showDetailDialog"
+      :report="detailReport"
+      :can-edit="true"
+      @reject="handleReject"
+      @approve="handleApprove"
+      @resubmit="handleResubmitSubmit"
+      @edit="handleEdit"
+    />
 
     <ReportDetailDialog
       v-if="detailReport"

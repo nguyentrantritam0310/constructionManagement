@@ -156,122 +156,146 @@ const employees = [
   {
     id: 'NV0001',
     name: 'Vũ Thị Hợp',
-    position: 'Tổng giám đốc'
+    position: 'Tổng giám đốc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 1, totalPaidLeave: 1, totalPresent: 20, totalCompensatoryOt: 4, totalPaidOt: 8, businessTrip: 2, totalWorkDays: 21, lateCount: 2, earlyLeaveCount: 1, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0002',
     name: 'Trần Nha Trang',
-    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh'
+    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 2, totalPaidOt: 5, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0224',
     name: 'Nguyễn Thạc Hùng',
-    position: 'Giám đốc Ban Đầu tư'
+    position: 'Giám đốc Ban Đầu tư',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 2, totalPaidLeave: 0, totalPresent: 20, totalCompensatoryOt: 0, totalPaidOt: 10, businessTrip: 3, totalWorkDays: 20, lateCount: 5, earlyLeaveCount: 2, unexplainedAbsence: 1 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
     {
     id: 'NV0001',
     name: 'Vũ Thị Hợp',
-    position: 'Tổng giám đốc'
+    position: 'Tổng giám đốc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 1, totalPaidLeave: 1, totalPresent: 20, totalCompensatoryOt: 4, totalPaidOt: 8, businessTrip: 2, totalWorkDays: 21, lateCount: 2, earlyLeaveCount: 1, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0002',
     name: 'Trần Nha Trang',
-    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh'
+    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 2, totalPaidOt: 5, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0224',
     name: 'Nguyễn Thạc Hùng',
-    position: 'Giám đốc Ban Đầu tư'
+    position: 'Giám đốc Ban Đầu tư',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 2, totalPaidLeave: 0, totalPresent: 20, totalCompensatoryOt: 0, totalPaidOt: 10, businessTrip: 3, totalWorkDays: 20, lateCount: 5, earlyLeaveCount: 2, unexplainedAbsence: 1 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
    {
     id: 'NV0001',
     name: 'Vũ Thị Hợp',
-    position: 'Tổng giám đốc'
+    position: 'Tổng giám đốc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 1, totalPaidLeave: 1, totalPresent: 20, totalCompensatoryOt: 4, totalPaidOt: 8, businessTrip: 2, totalWorkDays: 21, lateCount: 2, earlyLeaveCount: 1, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0002',
     name: 'Trần Nha Trang',
-    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh'
+    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 2, totalPaidOt: 5, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0224',
     name: 'Nguyễn Thạc Hùng',
-    position: 'Giám đốc Ban Đầu tư'
+    position: 'Giám đốc Ban Đầu tư',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 2, totalPaidLeave: 0, totalPresent: 20, totalCompensatoryOt: 0, totalPaidOt: 10, businessTrip: 3, totalWorkDays: 20, lateCount: 5, earlyLeaveCount: 2, unexplainedAbsence: 1 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
     {
     id: 'NV0001',
     name: 'Vũ Thị Hợp',
-    position: 'Tổng giám đốc'
+    position: 'Tổng giám đốc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 1, totalPaidLeave: 1, totalPresent: 20, totalCompensatoryOt: 4, totalPaidOt: 8, businessTrip: 2, totalWorkDays: 21, lateCount: 2, earlyLeaveCount: 1, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0002',
     name: 'Trần Nha Trang',
-    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh'
+    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 2, totalPaidOt: 5, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0224',
     name: 'Nguyễn Thạc Hùng',
-    position: 'Giám đốc Ban Đầu tư'
+    position: 'Giám đốc Ban Đầu tư',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 2, totalPaidLeave: 0, totalPresent: 20, totalCompensatoryOt: 0, totalPaidOt: 10, businessTrip: 3, totalWorkDays: 20, lateCount: 5, earlyLeaveCount: 2, unexplainedAbsence: 1 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0253',
     name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc'
+    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   },
   {
     id: 'NV0280',
     name: 'Nguyễn Thiện Đức',
-    position: 'Chuyên viên Quản lý thiết kế Kết cấu & Hạ tầng'
+    position: 'Chuyên viên Quản lý thiết kế Kết cấu & Hạ tầng',
+    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 0, totalPaidOt: 0, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
   }
 ]
 
@@ -342,26 +366,6 @@ function onRestoreDelete(item) {
 function onRestoreDeleteWork(item) {
   alert('Phục hồi công: ' + item.shiftName)
 }
-
-// Cấu hình cột cho DataTable tổng hợp công
-const summaryColumns = [
-  { key: 'totalStandardWork', label: 'Tổng công chuẩn' },
-  { key: 'totalUnpaidLeave', label: 'Tổng nghỉ không lương' },
-  { key: 'totalPaidLeave', label: 'Tổng nghỉ có lương' },
-  { key: 'totalPresent', label: 'Tổng đi làm' },
-  { key: 'totalCompensatoryOt', label: 'Tăng ca nghỉ bù' },
-  { key: 'totalPaidOt', label: 'Tăng ca tính lương' },
-  { key: 'businessTrip', label: 'Công tác' },
-  { key: 'totalWorkDays', label: 'Tổng ngày công' },
-  { key: 'lateCount', label: 'Số lần đi trễ' },
-  { key: 'earlyLeaveCount', label: 'Số lần về sớm' },
-  { key: 'unexplainedAbsence', label: 'Vắng không lý do' }
-];
-
-const summaryData = computed(() => {
-  if (!selectedEmployee.value || !selectedEmployee.value.summary) return [];
-  return [{ ...selectedEmployee.value.summary }];
-});
 
 // Cấu hình cột cho bảng công tổng ngoài màn hình chính
 const mainSummaryColumns = [
@@ -764,8 +768,70 @@ const paginatedFeedbackData = computed(() => {
                       <div class="emp-pos text-muted">Chức vụ: {{ selectedEmployee?.position }}</div>
                     </div>
                   </div>
-                  <div class="modal-summary-table mt-3">
-                    <DataTable :columns="summaryColumns" :data="summaryData" />
+                  <div v-if="selectedEmployee && selectedEmployee.summary" class="summary-dashboard mt-4">
+                    <div class="row g-3">
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stat-card-summary primary">
+                                <div class="stat-icon-summary"><i class="fas fa-calendar-check"></i></div>
+                                <div class="stat-info-summary">
+                                    <div class="stat-value">{{ selectedEmployee.summary.totalWorkDays }}</div>
+                                    <div class="stat-label">Tổng ngày công</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stat-card-summary success">
+                                <div class="stat-icon-summary"><i class="fas fa-user-check"></i></div>
+                                <div class="stat-info-summary">
+                                    <div class="stat-value">{{ selectedEmployee.summary.totalPresent }}</div>
+                                    <div class="stat-label">Tổng đi làm</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stat-card-summary info">
+                                <div class="stat-icon-summary"><i class="fas fa-plane-departure"></i></div>
+                                <div class="stat-info-summary">
+                                    <div class="stat-value">{{ selectedEmployee.summary.businessTrip }}</div>
+                                    <div class="stat-label">Công tác</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stat-card-summary secondary">
+                                <div class="stat-icon-summary"><i class="fas fa-calendar-day"></i></div>
+                                <div class="stat-info-summary">
+                                    <div class="stat-value">{{ selectedEmployee.summary.totalPaidLeave }}</div>
+                                    <div class="stat-label">Nghỉ có lương</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <hr class="my-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="stat-card-summary warning">
+                                <div class="stat-icon-summary"><i class="fas fa-clock"></i></div>
+                                <div class="stat-info-summary">
+                                    <div class="stat-value">{{ selectedEmployee.summary.totalCompensatoryOt }} giờ</div>
+                                    <div class="stat-label">Tăng ca nghỉ bù</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="stat-card-summary success-alt">
+                                <div class="stat-icon-summary"><i class="fas fa-money-bill-wave"></i></div>
+                                <div class="stat-info-summary">
+                                    <div class="stat-value">{{ selectedEmployee.summary.totalPaidOt }} giờ</div>
+                                    <div class="stat-label">Tăng ca tính lương</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                  </div>
+                  <div v-else class="text-center p-5 text-muted">
+                      <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                      <p>Không có dữ liệu tổng hợp cho nhân viên này.</p>
                   </div>
                 </ModalDialog>
 
@@ -1461,5 +1527,72 @@ const paginatedFeedbackData = computed(() => {
   padding: 6px 10px;
   display: inline-block;
   max-width: 320px;
+}
+
+.summary-dashboard {
+  background-color: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 12px;
+}
+
+.stat-card-summary {
+  display: flex;
+  align-items: center;
+  background-color: #fff;
+  padding: 1.25rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  border-left: 5px solid;
+}
+
+.stat-card-summary:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.stat-card-summary.primary { border-color: #0d6efd; }
+.stat-card-summary.success { border-color: #198754; }
+.stat-card-summary.info { border-color: #0dcaf0; }
+.stat-card-summary.secondary { border-color: #6c757d; }
+.stat-card-summary.warning { border-color: #ffc107; }
+.stat-card-summary.success-alt { border-color: #20c997; }
+.stat-card-summary.danger { border-color: #dc3545; }
+.stat-card-summary.danger-alt { border-color: #fd7e14; }
+.stat-card-summary.dark { border-color: #212529; }
+
+.stat-icon-summary {
+  font-size: 1.75rem;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  margin-right: 1rem;
+  color: #fff;
+}
+
+.stat-card-summary.primary .stat-icon-summary { background-color: #0d6efd; }
+.stat-card-summary.success .stat-icon-summary { background-color: #198754; }
+.stat-card-summary.info .stat-icon-summary { background-color: #0dcaf0; }
+.stat-card-summary.secondary .stat-icon-summary { background-color: #6c757d; }
+.stat-card-summary.warning .stat-icon-summary { background-color: #ffc107; color: #000; }
+.stat-card-summary.success-alt .stat-icon-summary { background-color: #20c997; }
+.stat-card-summary.danger .stat-icon-summary { background-color: #dc3545; }
+.stat-card-summary.danger-alt .stat-icon-summary { background-color: #fd7e14; }
+.stat-card-summary.dark .stat-icon-summary { background-color: #212529; }
+
+.stat-info-summary .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #212529;
+  line-height: 1.2;
+}
+
+.stat-info-summary .stat-label {
+  font-size: 0.9rem;
+  color: #6c757d;
+  font-weight: 500;
 }
 </style>

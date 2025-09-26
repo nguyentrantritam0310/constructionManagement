@@ -14,6 +14,10 @@ import { useManagementReport } from '../../composables/useManagementReport'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
 import TechnicalReportForm from '../../components/technical-report/TechnicalReportForm.vue'
+import UpdateButton from '@/components/common/UpdateButton.vue'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import * as XLSX from 'xlsx'
 
 const { showMessage } = useGlobalMessage()
 
@@ -21,6 +25,8 @@ const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
 const selectedReport = ref(null)
 const reportFormData = ref({})
+const showImportModal = ref(false)
+const file = ref(null)
 
 const searchQuery = ref('')
 const statusFilter = ref('')
@@ -74,16 +80,14 @@ const filteredReports = computed(() => {
 
   return result
 })
-
+// Filter section visibility
+const showFilter = ref(false)
 const resetFilters = () => {
   searchQuery.value = ''
   statusFilter.value = ''
   levelFilter.value = ''
   problemTypeFilter.value = ''
-  dateRange.value = {
-    start: null,
-    end: null
-  }
+  dateRange.value = { start: '', end: '' }
 }
 
 const currentPage = ref(1)
@@ -104,6 +108,7 @@ const {
   error,
   reports,
   formData,
+  createMultipleReports,
   fetchReportsByKiThuat,
   createReport,
   updateReport,
@@ -181,6 +186,121 @@ const handleUpdateSubmit = async (formData) => {
     console.error('Error updating report:', err)
     showMessage(err.message || 'Có lỗi xảy ra khi cập nhật báo cáo', 'error')
   }
+}
+
+const exportToExcel = async () => {
+  if (filteredReports.value.length === 0) {
+    showMessage('Không có dữ liệu để xuất.', 'info')
+    return
+  }
+
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('TechnicalReports')
+
+  worksheet.columns = [
+    { header: 'Mã báo cáo', key: 'id', width: 15 },
+    { header: 'Công trình', key: 'constructionName', width: 30 },
+    { header: 'Mô tả', key: 'content', width: 50 },
+    { header: 'Mức độ', key: 'level', width: 15 },
+    { header: 'Trạng thái', key: 'status', width: 20 },
+    { header: 'Ngày tạo', key: 'reportDate', width: 20 }
+  ]
+
+  filteredReports.value.forEach(report => {
+    worksheet.addRow({
+      ...report,
+      status: getStatusLabel(report.statusLogs[0].status),
+      reportDate: formatDate(report.reportDate)
+    })
+  })
+
+  worksheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+  })
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Bao_cao_ky_thuat.xlsx')
+}
+
+const downloadExcelTemplate = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const dataSheet = workbook.addWorksheet('Dữ liệu nhập')
+
+  dataSheet.columns = [
+    { header: 'ID Công trình', key: 'constructionID', width: 20 },
+    { header: 'Mô tả', key: 'content', width: 50 },
+    { header: 'Mức độ', key: 'level', width: 20 }
+  ]
+  dataSheet.getRow(1).eachCell(cell => { cell.font = { bold: true } })
+
+  const instructionSheet = workbook.addWorksheet('Hướng dẫn')
+  instructionSheet.columns = [
+    { header: 'Tên cột', key: 'column', width: 30 },
+    { header: 'Mô tả', key: 'description', width: 60 },
+    { header: 'Bắt buộc', key: 'required', width: 15 },
+    { header: 'Ví dụ', key: 'example', width: 30 }
+  ]
+  instructionSheet.getRow(1).eachCell(cell => { cell.font = { bold: true } })
+  instructionSheet.addRows([
+    { column: 'ID Công trình', description: 'ID của công trình liên quan.', required: 'Có', example: '12' },
+    { column: 'Mô tả', description: 'Mô tả chi tiết về vấn đề kỹ thuật.', required: 'Có', example: 'Phát hiện vết nứt trên dầm chính' },
+    { column: 'Mức độ', description: 'Mức độ nghiêm trọng của vấn đề. Chấp nhận các giá trị: Thấp, Trung bình, Cao, Nghiêm trọng.', required: 'Có', example: 'Cao' }
+  ])
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Mau_Nhap_Bao_Cao_Ky_Thuat.xlsx')
+}
+
+const handleFileUpload = (event) => {
+  const target = event.target
+  if (target && target.files) {
+    file.value = target.files[0]
+  }
+}
+
+const processImport = () => {
+  if (!file.value) {
+    showMessage('Vui lòng chọn một file Excel.', 'warning');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      if (jsonData.length === 0) {
+        showMessage('File Excel không có dữ liệu.', 'error');
+        return;
+      }
+
+      const reportsToCreate = jsonData.map(row => ({
+        constructionID: Number(row['ID Công trình']),
+        content: row['Mô tả'],
+        level: row['Mức độ'],
+        reportType: 'Sự cố kĩ thuật', // Hardcoded for this view
+      })).filter(r => r.constructionID && r.content && r.level);
+
+      if (reportsToCreate.length === 0) {
+        showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error');
+        return;
+      }
+
+      await createMultipleReports(reportsToCreate);
+      await fetchReportsByKiThuat();
+      file.value = null;
+      showImportModal.value = false;
+    } catch (error) {
+      console.error('Lỗi khi xử lý file Excel:', error);
+      showMessage('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.', 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file.value);
 }
 
 const handleResubmitSubmit = async (formData) => {
@@ -287,54 +407,72 @@ const isResubmitMode = computed(() => {
   }
   return false
 })
+
+
+
+
 </script>
 
 <template>
-  <div class="technical-report">
+  <div class="technical-report container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2>Báo Cáo Vấn Đề Kỹ Thuật</h2>
-      <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
-        Tạo báo cáo mới
+      <h1>Báo Cáo Vấn Đề Kỹ Thuật</h1>
+      <div class="d-flex gap-2">
+        <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateForm = true">
+         Thêm
       </ActionButton>
-    </div>
-
-    <!-- Filter Section -->
-    <div class="filter-section mb-4">
-      <div class="row g-3">
-        <div class="col-md-3">
-          <input type="text" class="form-control" v-model="searchQuery" placeholder="Tìm kiếm...">
-        </div>
-        <div class="col-md-2">
-          <select class="form-control" v-model="statusFilter">
-            <option value="">Tất cả trạng thái</option>
-            <option value="Pending">Chờ duyệt</option>
-            <option value="Approved">Đã duyệt</option>
-            <option value="Rejected">Từ chối</option>
-            <option value="Completed">Hoàn thành</option>
-          </select>
-        </div>
-        <div class="col-md-2">
-          <select class="form-control" v-model="levelFilter">
-            <option value="">Tất cả mức độ</option>
-            <option value="Thấp">Thấp</option>
-            <option value="Trung bình">Trung bình</option>
-            <option value="Cao">Cao</option>
-            <option value="Nghiêm trọng">Nghiêm trọng</option>
-          </select>
-        </div>
-        <div class="col-md-2">
-          <input type="date" class="form-control" v-model="dateRange.start" placeholder="Từ ngày">
-        </div>
-        <div class="col-md-2">
-          <input type="date" class="form-control" v-model="dateRange.end" placeholder="Đến ngày">
-        </div>
-        <div class="col-md-1">
-          <button class="btn btn-secondary w-100" @click="resetFilters">
-            <i class="fas fa-undo me-2"></i>
-          </button>
-        </div>
+      <!-- Icon bộ lọc -->
+      <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+        Lọc
+      </ActionButton>
+      <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
+        Xuất Excel
+      </ActionButton>
+      <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
+        Nhập Excel
+      </ActionButton>
       </div>
     </div>
+    <!-- Filter Section -->
+    <!-- Phần filter ẩn/hiện có transition -->
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <input type="text" class="form-control" v-model="searchQuery" placeholder="Tìm kiếm...">
+          </div>
+          <div class="col-md-2">
+            <select class="form-control" v-model="statusFilter">
+              <option value="">Tất cả trạng thái</option>
+              <option value="Pending">Chờ duyệt</option>
+              <option value="Approved">Đã duyệt</option>
+              <option value="Rejected">Từ chối</option>
+              <option value="Completed">Hoàn thành</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <select class="form-control" v-model="levelFilter">
+              <option value="">Tất cả mức độ</option>
+              <option value="Thấp">Thấp</option>
+              <option value="Trung bình">Trung bình</option>
+              <option value="Cao">Cao</option>
+              <option value="Nghiêm trọng">Nghiêm trọng</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <input type="date" class="form-control" v-model="dateRange.start" placeholder="Từ ngày">
+          </div>
+          <div class="col-md-2">
+            <input type="date" class="form-control" v-model="dateRange.end" placeholder="Đến ngày">
+          </div>
+          <div class="col-md-1">
+            <button class="btn btn-secondary w-100" @click="resetFilters">
+              <i class="fas fa-undo me-2"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">
@@ -372,8 +510,7 @@ const isResubmitMode = computed(() => {
       </template>
 
       <template #actions="{ item }">
-        <ActionButton type="primary" icon="fas fa-edit" tooltip="Cập nhật trạng thái"
-          @click="handleUpdateStatus(item)" />
+        <UpdateButton @click="handleUpdateStatus(item)" />
       </template>
     </DataTable>
 
@@ -400,6 +537,24 @@ const isResubmitMode = computed(() => {
       :resubmitMode="isResubmitMode" @submit="handleUpdateSubmit" @resubmit="handleResubmitSubmit">
       <ReportForm mode="update" reportType="technical" :report="selectedReport" v-model="reportFormData" />
     </FormDialog>
+
+    <!-- Import Excel Modal -->
+    <ModalDialog v-model:show="showImportModal" title="Nhập báo cáo kỹ thuật từ Excel" size="lg">
+      <div class="p-4">
+        <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
+        <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
+          Tải file mẫu
+        </ActionButton>
+        <div class="mt-4">
+          <input type="file" accept=".xlsx, .xls" @change="handleFileUpload" />
+        </div>
+        <div class="mt-4">
+          <button class="btn btn-primary" :disabled="!file" @click="processImport">
+            Xử lý nhập
+          </button>
+        </div>
+      </div>
+    </ModalDialog>
   </div>
 </template>
 
@@ -429,13 +584,13 @@ const isResubmitMode = computed(() => {
   box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
 }
 
-.btn {
+/* .btn {
   height: 42px;
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   border-radius: 0.5rem;
   transition: all 0.2s;
-}
+} */
 
 .btn-secondary {
   background-color: #f8f9fa;
@@ -451,6 +606,21 @@ const isResubmitMode = computed(() => {
 
 .report-table {
   margin-bottom: 2rem;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @keyframes fadeIn {

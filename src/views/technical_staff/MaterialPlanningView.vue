@@ -544,6 +544,21 @@ const handleMaterialPageChange = (page) => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 @media (max-width: 768px) {
   .guide-alert {
     margin-top: 1rem;

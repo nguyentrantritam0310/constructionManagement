@@ -1,7 +1,13 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import { useWorkShift } from '../../composables/useWorkShift'
+
+const {
+  workshifts,
+  fetchWorkShifts,
+} = useWorkShift()
 
 const activeTab = ref('shift')
 const tabs = [
@@ -10,7 +16,9 @@ const tabs = [
   { key: 'history', label: 'Lịch sử phân ca' },
   { key: 'unassigned', label: 'Nhân viên chưa phân ca' }
 ]
-
+onMounted(async () => {
+  await fetchWorkShifts()
+})
 // Tab Ca làm việc
 const shiftCurrentPage = ref(1)
 const shiftItemsPerPage = ref(5)
@@ -21,19 +29,29 @@ const shiftColumns = [
   { key: 'in', label: 'Giờ vào' },
   { key: 'out', label: 'Giờ ra' },
   { key: 'employeeCount', label: 'Số lượng NV' },
-  { key: 'actions', label: 'Thao tác', class: 'text-center' }
 ]
-const shiftData = Array.from({ length: 10 }, (_, i) => ({
-  stt: i + 1,
-  code: `CA${String(i + 1).padStart(3, '0')}`,
-  name: `Ca ${i + 1}`,
-  in: '08:00',
-  out: '17:00',
-  employeeCount: Math.floor(Math.random() * 20) + 5
-}))
+const shiftData = computed(() => {
+  return workshifts.value.map((shift, index) => {
+    // Lấy mảng giờ vào và giờ ra
+    const startTimes = shift.shiftDetails.map(d => d.startTime)
+    const endTimes = shift.shiftDetails.map(d => d.endTime)
+
+    // Tìm giờ vào sớm nhất (min) và giờ ra trễ nhất (max)
+    const earliestStart = startTimes.reduce((a, b) => a < b ? a : b)
+    const latestEnd = endTimes.reduce((a, b) => a > b ? a : b)
+
+    return {
+      stt: index + 1,
+      code: shift.id,
+      name: shift.shiftName,
+      in: earliestStart, // giờ vào sớm nhất
+      out: latestEnd    // giờ ra trễ nhất
+    }
+  })
+})  
 const paginatedShiftData = computed(() => {
   const start = (shiftCurrentPage.value - 1) * shiftItemsPerPage.value
-  return shiftData.slice(start, start + shiftItemsPerPage.value)
+  return shiftData.value.slice(start, start + shiftItemsPerPage.value)
 })
 
 // Tab Lịch sử phân ca

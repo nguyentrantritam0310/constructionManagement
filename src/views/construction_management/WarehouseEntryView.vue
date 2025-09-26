@@ -348,13 +348,6 @@ const resetFilters = () => {
   gap: 0.5rem;
 }
 
-.btn {
-  height: 42px;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  border-radius: 0.5rem;
-  transition: all 0.2s;
-}
 
 .btn-secondary {
   background-color: #f8f9fa;
@@ -366,6 +359,21 @@ const resetFilters = () => {
   background-color: #e9ecef;
   border-color: #dee2e6;
   color: #495057;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @media (max-width: 992px) {

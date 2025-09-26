@@ -201,6 +201,27 @@ export function useConstructionManagement() {
     }
   }
 
+  const createMultipleConstructions = async (constructionsToCreate) => {
+    try {
+      loading.value = true
+      error.value = null
+
+      const creationPromises = constructionsToCreate.map(construction => constructionService.create(construction));
+      await Promise.all(creationPromises);
+
+      // The view will be responsible for fetching data again
+      showMessage(`Đã thêm thành công ${constructionsToCreate.length} công trình.`, 'success');
+    } catch (err) {
+      console.error('Error in createMultipleConstructions:', err);
+      const errorMessage = err.response?.data?.title || 'Không thể tạo hàng loạt công trình.';
+      error.value = errorMessage;
+      showMessage(errorMessage, 'error');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   const updateConstruction = async (id, data) => {
     try {
       loading.value = true
@@ -379,6 +400,7 @@ export function useConstructionManagement() {
     handleConstructionCreated,
     addConstructionItem,
     createConstruction,
+    createMultipleConstructions,
     updateConstruction,
     updateConstructionStatus,
     deleteConstruction,

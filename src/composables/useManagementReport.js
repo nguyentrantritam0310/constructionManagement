@@ -122,6 +122,30 @@ export function useManagementReport() {
     }
   }
 
+  const createMultipleReports = async (reportsToCreate) => {
+    try {
+      loading.value = true
+      error.value = null
+
+      // This API call assumes the backend can handle a simple JSON post for creation
+      // without file uploads.
+      const creationPromises = reportsToCreate.map(report =>
+        api.post('/Report', report)
+      );
+      await Promise.all(creationPromises);
+
+      showMessage(`Đã thêm thành công ${reportsToCreate.length} báo cáo.`, 'success');
+    } catch (err) {
+      console.error('Error in createMultipleReports:', err);
+      const errorMessage = err.response?.data?.title || 'Không thể tạo hàng loạt báo cáo.';
+      error.value = errorMessage;
+      showMessage(errorMessage, 'error');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   const updateReport = async (reportId, reportData) => {
     try {
       loading.value = true
@@ -248,6 +272,7 @@ export function useManagementReport() {
     fetchReportsByThiCong,
     fetchReportsByKiThuat,
     createReport,
+    createMultipleReports,
     updateReport,
     updateReportStatus
   }

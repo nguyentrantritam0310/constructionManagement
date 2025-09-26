@@ -16,9 +16,12 @@
     "@fortawesome/free-brands-svg-icons": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
     "@fortawesome/vue-fontawesome": "^3.0.8",
+    "@vue-leaflet/vue-leaflet": "^0.10.1",
     "axios": "^1.9.0",
     "bootstrap": "^5.3.3",
     "date-fns": "^4.1.0",
+    "exceljs": "^4.4.0",
+    "file-saver": "^2.0.5",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.1",
     "leaflet": "^1.9.4",
@@ -27,7 +30,8 @@
     "vue": "^3.5.13",
     "vue-multiselect": "^3.2.0",
     "vue-router": "^4.5.0",
-    "vue-toastification": "^2.0.0-rc.5"
+    "vue-toastification": "^2.0.0-rc.5",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

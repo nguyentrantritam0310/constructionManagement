@@ -49,6 +49,27 @@ export function useConstructionPlan() {
     }
   }
 
+  const createMultiplePlans = async (plansToCreate) => {
+    try {
+      loading.value = true
+      error.value = null
+
+      const creationPromises = plansToCreate.map(plan => planService.create(plan));
+      await Promise.all(creationPromises);
+
+      // The view will be responsible for fetching data again
+      showMessage(`Đã thêm thành công ${plansToCreate.length} kế hoạch.`, 'success');
+    } catch (err) {
+      console.error('Error in createMultiplePlans:', err);
+      const errorMessage = err.response?.data?.title || 'Không thể tạo hàng loạt kế hoạch.';
+      error.value = errorMessage;
+      showMessage(errorMessage, 'error');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   const updatePlan = async (planId, planData) => {
     try {
       console.log('📤 Dữ liệu gửi đi:', planId, planData)
@@ -108,6 +129,7 @@ export function useConstructionPlan() {
     formData,
     fetchPlans,
     createPlan,
+    createMultiplePlans,
     updatePlan,
     updatePlanStatus,
     resetFormData

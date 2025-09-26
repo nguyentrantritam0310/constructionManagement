@@ -163,6 +163,16 @@ const router = createRouter({
       path: '/salary-table',
       component: () => import('../views/human_resources/SalaryTableView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/leave',
+      component: () => import('../views/human_resources/leave.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/Overtime',
+      component: () => import('../views/human_resources/Overtime.vue'),
+      meta: { requiresAuth: true }
     }
 
   ]

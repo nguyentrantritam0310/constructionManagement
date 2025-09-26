@@ -179,6 +179,14 @@ const personnelMenuItems = [
       { icon: 'fas fa-plus-minus', text: 'Khoản cộng trừ', route: '/salary-adjustment' },
       { icon: 'fas fa-file-invoice-dollar', text: 'Bảng lương', route: '/salary-table' }
     ]
+  },
+    {
+    name: 'Đơn từ',
+    icon: 'fas fa-file-alt',
+    children: [
+      { icon: 'fas fa-calendar-day', text: 'Nghỉ phép', route: '/leave' },
+      { icon: 'fas fa-clock', text: 'Tăng ca', route: '/Overtime' }
+    ]
   }
 ]
 

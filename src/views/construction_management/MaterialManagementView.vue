@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import MaterialForm from '../../components/material/MaterialForm.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
@@ -7,17 +8,24 @@ import ActionButton from '../../components/common/ActionButton.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { useMaterialManagement } from '../../composables/useMaterialManagement'
 import UpdateButton from '../../components/common/UpdateButton.vue'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import * as XLSX from 'xlsx'
 
 const {
   materials,
   fetchMaterials,
+  createMultipleMaterials,
   createMaterial,
   updateMaterial
 } = useMaterialManagement()
+const { showMessage } = useGlobalMessage()
 
 const showFormDialog = ref(false)
 const selectedMaterial = ref(null)
 const formMode = ref('create') // 'create' or 'update'
+const showImportModal = ref(false)
+const file = ref(null)
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -123,9 +131,126 @@ const handleUpdateSuccess = async () => {
   await fetchMaterials() // Refresh the data after successful update
 }
 
+const exportToExcel = async () => {
+  if (filteredMaterials.value.length === 0) {
+    alert('Không có dữ liệu để xuất.')
+    return
+  }
+
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Materials')
+
+  worksheet.columns = [
+    { header: 'Mã Vật Tư', key: 'id', width: 15 },
+    { header: 'Tên Vật Tư', key: 'materialName', width: 30 },
+    { header: 'Tên Loại Vật Tư', key: 'materialTypeName', width: 25 },
+    { header: 'Tồn Kho', key: 'stockQuantity', width: 15 },
+    { header: 'Đơn Giá', key: 'unitPrice', width: 20 },
+    { header: 'Đơn Vị Tính', key: 'unitOfMeasurement', width: 15 }
+  ]
+
+  filteredMaterials.value.forEach(material => {
+    worksheet.addRow(material)
+  })
+
+  worksheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+  })
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Danh_sach_vat_tu.xlsx')
+}
+
+const downloadExcelTemplate = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const dataSheet = workbook.addWorksheet('Dữ liệu nhập')
+
+  dataSheet.columns = [
+    { header: 'Tên Vật Tư', key: 'materialName', width: 30 },
+    { header: 'ID Loại Vật Tư', key: 'materialTypeID', width: 20 },
+    { header: 'Đơn Vị Tính', key: 'unitOfMeasurement', width: 20 },
+    { header: 'Đơn Giá', key: 'unitPrice', width: 20 },
+    { header: 'Số Lượng Tồn Kho', key: 'stockQuantity', width: 20 }
+  ]
+  dataSheet.getRow(1).eachCell(cell => { cell.font = { bold: true } })
+
+  const instructionSheet = workbook.addWorksheet('Hướng dẫn')
+  instructionSheet.columns = [
+    { header: 'Tên cột', key: 'column', width: 30 },
+    { header: 'Mô tả', key: 'description', width: 60 },
+    { header: 'Bắt buộc', key: 'required', width: 15 },
+    { header: 'Ví dụ', key: 'example', width: 30 }
+  ]
+  instructionSheet.getRow(1).eachCell(cell => { cell.font = { bold: true } })
+  instructionSheet.addRows([
+    { column: 'Tên Vật Tư', description: 'Tên của vật tư.', required: 'Có', example: 'Xi măng PC40' },
+    { column: 'ID Loại Vật Tư', description: 'ID của loại vật tư (tham khảo danh sách loại vật tư).', required: 'Có', example: '1' },
+    { column: 'Đơn Vị Tính', description: 'Đơn vị tính của vật tư.', required: 'Có', example: 'Bao' },
+    { column: 'Đơn Giá', description: 'Đơn giá của vật tư (chỉ nhập số).', required: 'Có', example: '85000' },
+    { column: 'Số Lượng Tồn Kho', description: 'Số lượng ban đầu trong kho (chỉ nhập số).', required: 'Có', example: '1000' }
+  ])
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Mau_Nhap_Vat_Tu.xlsx')
+}
+
+const handleFileUpload = (event) => {
+  const target = event.target
+  if (target && target.files) {
+    file.value = target.files[0]
+  }
+}
+
+const processImport = () => {
+  if (!file.value) {
+    showMessage('Vui lòng chọn một file Excel.', 'warning');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      if (jsonData.length === 0) {
+        showMessage('File Excel không có dữ liệu.', 'error');
+        return;
+      }
+
+      const materialsToCreate = jsonData.map(row => ({
+        materialName: row['Tên Vật Tư'],
+        materialTypeID: Number(row['ID Loại Vật Tư']),
+        unitOfMeasurement: row['Đơn Vị Tính'],
+        unitPrice: Number(row['Đơn Giá']),
+        stockQuantity: Number(row['Số Lượng Tồn Kho']),
+      })).filter(m => m.materialName && m.materialTypeID);
+
+      if (materialsToCreate.length === 0) {
+        showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error');
+        return;
+      }
+
+      await createMultipleMaterials(materialsToCreate);
+      await fetchMaterials();
+      file.value = null;
+      showImportModal.value = false;
+    } catch (error) {
+      console.error('Lỗi khi xử lý file Excel:', error);
+      showMessage('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.', 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file.value);
+}
+
 // Thêm computed properties cho min-max values
 const stockQuantityBounds = computed(() => {
   const quantities = materials.value.map(m => Number(m.stockQuantity))
+  if (quantities.length === 0) return { min: 0, max: 1000 }
   return {
     min: Math.min(...quantities),
     max: Math.max(...quantities)
@@ -134,6 +259,7 @@ const stockQuantityBounds = computed(() => {
 
 const unitPriceBounds = computed(() => {
   const prices = materials.value.map(m => Number(m.unitPrice))
+  if (prices.length === 0) return { min: 0, max: 1000000 }
   return {
     min: Math.min(...prices),
     max: Math.max(...prices)
@@ -145,9 +271,17 @@ const unitPriceBounds = computed(() => {
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h1 class="h3 mb-0">Quản Lý Vật Tư</h1>
-      <ActionButton icon="fas fa-plus" type="primary" tooltip="Thêm Vật Tư Mới" @click="openForm('create')">
-        <span class="ms-2">Thêm</span>
-      </ActionButton>
+      <div class="d-flex gap-2">
+        <ActionButton icon="fas fa-plus" type="primary" tooltip="Thêm Vật Tư Mới" @click="openForm('create')">
+          <span class="ms-2">Thêm</span>
+        </ActionButton>
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
+          Xuất Excel
+        </ActionButton>
+        <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
+          Nhập Excel
+        </ActionButton>
+      </div>
     </div>
 
     <!-- Filter Section -->
@@ -329,6 +463,24 @@ const unitPriceBounds = computed(() => {
         @cancel="closeForm"
         @update-success="handleUpdateSuccess"
       />
+    </ModalDialog>
+
+    <!-- Import Excel Modal -->
+    <ModalDialog v-model:show="showImportModal" title="Nhập vật tư từ Excel" size="lg">
+      <div class="p-4">
+        <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
+        <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
+          Tải file mẫu
+        </ActionButton>
+        <hr class="my-4">
+        <h5>Tải lên file đã điền</h5>
+        <div class="input-group">
+          <input type="file" class="form-control" @change="handleFileUpload" accept=".xlsx, .xls">
+          <button class="btn btn-primary" @click="processImport" :disabled="!file">
+            <i class="fas fa-upload me-2"></i> Xử lý
+          </button>
+        </div>
+      </div>
     </ModalDialog>
   </div>
 </template>

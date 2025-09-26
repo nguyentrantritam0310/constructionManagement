@@ -58,6 +58,27 @@ export function useMaterialManagement() {
     }
   }
 
+  const createMultipleMaterials = async (materialsToCreate) => {
+    try {
+      loading.value = true
+      error.value = null
+
+      const creationPromises = materialsToCreate.map(material => api.post('/Material', material));
+      await Promise.all(creationPromises);
+
+      // The view will be responsible for fetching data again
+      showMessage(`Đã thêm thành công ${materialsToCreate.length} vật tư.`, 'success');
+    } catch (err) {
+      console.error('Error in createMultipleMaterials:', err);
+      const errorMessage = err.response?.data?.title || 'Không thể tạo hàng loạt vật tư.';
+      error.value = errorMessage;
+      showMessage(errorMessage, 'error');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   const updateMaterial = async (materialId, materialData) => {
     try {
       loading.value = true
@@ -122,6 +143,7 @@ export function useMaterialManagement() {
     fetchMaterials,
     fetchMaterialById,
     createMaterial,
+    createMultipleMaterials,
     updateMaterial,
     updateMaterialStatus,
     updateMaterialStock
