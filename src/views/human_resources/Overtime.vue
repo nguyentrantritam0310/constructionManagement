@@ -1,38 +1,43 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import { useEmployeeRequest } from '../../composables/useEmployeeRequest'
 
+const {
+  employeeRequests,
+  fetchEmployeeRequests,
+} = useEmployeeRequest()
+onMounted(async () => {
+  await fetchEmployeeRequests()
+})
 const adjustmentColumns = [
-  { key: 'no', label: 'Số phiếu' },
-  { key: 'creator', label: 'Mã nhân viên' },
-  { key: 'decisionDate', label: 'Tên nhân viên' },
-  { key: 'value', label: 'loại nghỉ phép' },
-  { key: 'monthYear', label: 'Ngày bắt đầu' },
-  { key: 'type', label: 'Ngày kết thúc' },
-  { key: 'category', label: 'Ca làm việc ' },
+  { key: 'voucherCode', label: 'Số phiếu' },
+  { key: 'employeeID', label: 'Mã nhân viên' },
+  { key: 'userName', label: 'Tên nhân viên' },
+  { key: 'overtimeFormName', label: 'Hình thức tăng ca' },
+  { key: 'overtimeTypeName', label: 'Loại tăng ca' },
+  { key: 'coefficient', label: 'Hệ số' },
+  { key: 'startDateTime', label: 'Ngày bắt đầu' },
+  { key: 'endDateTime', label: 'Ngày kết thúc' },
   { key: 'reason', label: 'Lý do' },
-  { key: 'status', label: 'Trạng thái' },
+  { key: 'approveStatus', label: 'Trạng thái' },
  
 ]
 
-const adjustmentData = Array.from({ length: 15 }, (_, i) => ({
-  no: `PT${202500 + i}`,
-  creator: `Người lập ${i + 1}`,
-  decisionDate: `0${(i % 9) + 1}/0${(i % 12) + 1}/2025`,
-  value: `${(i + 1) * 1000000} VNĐ`,
-  monthYear: `${(i % 12) + 1}/2025`,
-  type: ['Khen thưởng', 'Kỷ luật', 'Tạm ứng', 'Truy thu', 'Thu nhập khác'][i % 5],
-  category: ['Chi tiết A', 'Chi tiết B', 'Chi tiết C'][i % 3],
-  reason: ['Hoàn thành xuất sắc', 'Vi phạm nội quy', 'Ứng lương', 'Truy thu sai sót', 'Thu nhập ngoài'][i % 5],
-  status: i % 3 === 0 ? 'Đã duyệt' : (i % 3 === 1 ? 'Chờ duyệt' : 'Từ chối')
-}))
+const adjustmentData = computed(() => {
+  return employeeRequests.value
+  .filter(request => request.overtimeTypeID != null) 
+  .map((request) => ({
+    ...request,
+  }))
+})
 
 const currentPage = ref(1)
 const itemsPerPage = ref(8)
 const paginatedAdjustmentData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
-  return adjustmentData.slice(start, start + itemsPerPage.value)
+  return adjustmentData.value.slice(start, start + itemsPerPage.value)
 })
 </script>
 
@@ -66,13 +71,13 @@ const paginatedAdjustmentData = computed(() => {
           </span>
         </template>
       </DataTable>
-      <Pagination
-        :totalItems="adjustmentData.length"
-        :itemsPerPage="itemsPerPage"
-        :currentPage="currentPage"
-        @update:currentPage="currentPage = $event"
-      />
     </div>
+    <Pagination
+      :totalItems="adjustmentData.length"
+      :itemsPerPage="itemsPerPage"
+      :currentPage="currentPage"
+      @update:currentPage="currentPage = $event"
+    />
   </div>
 </template>
 
