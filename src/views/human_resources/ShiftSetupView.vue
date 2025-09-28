@@ -437,11 +437,11 @@ const handleUpdateSubmit = async (formData) => {
             CA-{{ item.code < 10 ? '0' + item.code : item.code }} </span>
         </template>
         <template #actions="{ item }">
-          <div class="d-flex gap-2">
-            <!-- <UpdateButton @click.stop="handleUpdateClick(item)" /> -->
-            <!-- <DeleteButton @click.stop="handleDeleteClick(item, $event)" /> -->
-          </div>
-        </template>
+        <div class="d-flex justify-content-center gap-2">
+          <UpdateButton @click.stop="openUpdateForm(item.id)" />
+          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+        </div>
+      </template>
       </DataTable>
       <Pagination :totalItems="shiftData.length" :itemsPerPage="shiftItemsPerPage" :currentPage="shiftCurrentPage"
         @update:currentPage="shiftCurrentPage = $event" />

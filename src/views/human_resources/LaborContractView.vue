@@ -6,12 +6,11 @@
       <div class="card-body p-0">
         <DataTable :columns="columnsByTab" :data="paginatedContracts">
           <template #actions="{ item }">
-            <div class="d-flex justify-content-center gap-2">
-              <button class="btn btn-sm btn-outline-primary" title="Xem chi tiết">
-                <i class="fas fa-ellipsis-h"></i>
-              </button>
-            </div>
-          </template>
+        <div class="d-flex justify-content-center gap-2">
+          <UpdateButton @click.stop="openUpdateForm(item.id)" />
+          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+        </div>
+      </template>
         </DataTable>
       </div>
     </div>
@@ -26,6 +25,8 @@ import { ref, computed } from 'vue'
 import TabBar from '../../components/common/TabBar.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import UpdateButton from '@/components/common/UpdateButton.vue'
+import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 
 const activeTab = ref('allContracts')
 

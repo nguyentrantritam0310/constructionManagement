@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
+import UpdateButton from '@/components/common/UpdateButton.vue'
+import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 
 const activeTab = ref('employeeList')
 
@@ -103,13 +105,13 @@ const toggleExpand = (id) => {
     <div class="container-fluid py-4">
         <h2 class="mb-4">Quản lý nhân sự</h2>
     <DataTable :columns="columns" :data="paginatedEmployees">
-            <template #actions="{ item }">
-                <div class="d-flex justify-content-center gap-2">
-                    <button class="btn btn-sm btn-outline-primary" @click.stop="openFamilyModal(item)" title="Xem quan hệ gia đình">
-                        <i class="fas fa-users"></i>
-                    </button>
-                </div>
-            </template>
+        <template #actions="{ item }">
+        <div class="d-flex justify-content-center gap-2">
+          <UpdateButton @click.stop="openUpdateForm(item.id)" />
+          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+        </div>
+      </template>
+
         </DataTable>
         <div class="d-flex justify-content-end mt-3">
             <Pagination :total-items="employees.length" :items-per-page="itemsPerPage" :current-page="currentPage"

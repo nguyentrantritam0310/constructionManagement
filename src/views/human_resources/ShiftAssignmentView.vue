@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { useWorkShift } from '../../composables/useWorkShift'
+import UpdateButton from '@/components/common/UpdateButton.vue'
+import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 
 const {
   workshifts,
@@ -66,7 +68,7 @@ const historyColumns = [
   { key: 'shiftName', label: 'Tên ca' },
   { key: 'startDate', label: 'Ngày bắt đầu' },
   { key: 'endDate', label: 'Ngày kết thúc' },
-  { key: 'actions', label: 'Thao tác', class: 'text-center' }
+
 ]
 const historyData = Array.from({ length: 10 }, (_, i) => ({
   stt: i + 1,
@@ -246,13 +248,12 @@ const paginatedScheduleData = computed(() => {
     <div v-if="activeTab === 'shift'">
       <DataTable :columns="shiftColumns" :data="paginatedShiftData">
         <template #actions="{ item }">
-          <button class="table-action-btn" title="Phân ca nhân viên">
-            <i class="fas fa-user-plus"></i>
-          </button>
-          <button class="table-action-btn" title="Phân ca phòng ban">
-            <i class="fas fa-users"></i>
-          </button>
-        </template>
+        <div class="d-flex justify-content-center gap-2">
+          <UpdateButton @click.stop="openUpdateForm(item.id)" />
+          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+        </div>
+      </template>
+        
       </DataTable>
       <Pagination
         :totalItems="shiftData.length"
@@ -283,9 +284,17 @@ const paginatedScheduleData = computed(() => {
                 <span class="shift-time">{{ shift.in }} - {{ shift.out }}</span>
               </div>
             </template>
+            
             <button v-else class="btn btn-success btn-sm"><i class="fas fa-plus"></i></button>
           </div>
         </template>
+        <template #actions="{ item }">
+        <div class="d-flex justify-content-center gap-2">
+          <UpdateButton @click.stop="openUpdateForm(item.id)" />
+          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+        </div>
+      </template>
+        
       </DataTable>
       <Pagination
         :totalItems="scheduleData.length"
@@ -297,13 +306,12 @@ const paginatedScheduleData = computed(() => {
     <div v-else-if="activeTab === 'history'">
       <DataTable :columns="historyColumns" :data="paginatedHistoryData">
         <template #actions="{ item }">
-          <button class="table-action-btn" title="Sửa phân ca">
-            <i class="fas fa-edit"></i>
-          </button>
-          <button class="table-action-btn delete" title="Đóng ca">
-            <i class="fas fa-lock"></i>
-          </button>
-        </template>
+        <div class="d-flex justify-content-center gap-2">
+          <UpdateButton @click.stop="openUpdateForm(item.id)" />
+          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+        </div>
+      </template>
+        
       </DataTable>
       <Pagination
         :totalItems="historyData.length"

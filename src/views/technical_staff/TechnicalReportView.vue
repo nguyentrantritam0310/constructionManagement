@@ -18,6 +18,7 @@ import UpdateButton from '@/components/common/UpdateButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
+import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 
 const { showMessage } = useGlobalMessage()
 
@@ -511,7 +512,10 @@ const isResubmitMode = computed(() => {
 
       <template #actions="{ item }">
         <UpdateButton @click="handleUpdateStatus(item)" />
+        <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+
       </template>
+
     </DataTable>
 
     <ReportDetailDialog v-if="detailReport" v-model:show="showDetailModal" :report="detailReport" :can-edit="true"
