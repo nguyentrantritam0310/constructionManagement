@@ -15,7 +15,8 @@
       </div>
     </div>
     <div class="d-flex justify-content-end mt-3">
-      <Pagination :total-items="paginatedContracts.length" :items-per-page="itemsPerPage" :current-page="currentPage" @update:currentPage="handlePageChange" />
+      <Pagination :total-items="paginatedContracts.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        @update:currentPage="handlePageChange" />
     </div>
   </div>
 </template>
@@ -157,36 +158,42 @@ const handlePageChange = (page) => {
 </script>
 
 <style scoped>
+.contract-tabs .nav-link {
+  min-width: 180px;
+  font-weight: 500;
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+
+.contract-tabs .nav-link.active {
+  background: #e9ecef;
+  border-bottom: 2px solid #0d6efd;
+  color: #0d6efd;
+}
+
+.contract-tabs .badge {
+  font-size: 0.95em;
+  vertical-align: middle;
+}
+
+.card {
+  border-radius: 0.75rem;
+  border: none;
+}
+
+.card-body {
+  padding: 0;
+}
+
+@media (max-width: 768px) {
   .contract-tabs .nav-link {
-    min-width: 180px;
-    font-weight: 500;
-    font-size: 1rem;
-    transition: background 0.2s;
+    font-size: 0.95rem;
+    min-width: 120px;
+    padding: 0.5rem 0.5rem;
   }
-  .contract-tabs .nav-link.active {
-    background: #e9ecef;
-    border-bottom: 2px solid #0d6efd;
-    color: #0d6efd;
-  }
-  .contract-tabs .badge {
-    font-size: 0.95em;
-    vertical-align: middle;
-  }
+
   .card {
-    border-radius: 0.75rem;
-    border: none;
+    border-radius: 0.5rem;
   }
-  .card-body {
-    padding: 0;
-  }
-  @media (max-width: 768px) {
-    .contract-tabs .nav-link {
-      font-size: 0.95rem;
-      min-width: 120px;
-      padding: 0.5rem 0.5rem;
-    }
-    .card {
-      border-radius: 0.5rem;
-    }
-  }
+}
 </style>

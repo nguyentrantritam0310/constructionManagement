@@ -1,21 +1,17 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
-import UpdateButton from '@/components/common/UpdateButton.vue'
-import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 
 const activeTab = ref('employeeList')
 
-const employees = ref([
-    { id: 'NV0001', name: 'Nguyễn Văn A', birthday: '01/01/1985', joinDate: '01/01/2015', position: 'Giám đốc', department: 'Ban Giám đốc' },
-    { id: 'NV0002', name: 'Trần Nha Trang', birthday: '20/10/1990', joinDate: '02/01/2019', position: 'Phó Tổng Giám đốc phụ trách Kinh doanh', department: 'Tổ Trợ lý' },
-    { id: 'NV0003', name: 'Lê Thị B', birthday: '15/03/1988', joinDate: '10/05/2016', position: 'Kế toán trưởng', department: 'Phòng Kế toán' },
-    { id: 'NV0004', name: 'Phạm Văn C', birthday: '22/07/1992', joinDate: '12/09/2018', position: 'Trưởng phòng Nhân sự', department: 'Phòng Nhân sự' },
-    { id: 'NV0005', name: 'Hoàng Thị D', birthday: '30/11/1991', joinDate: '05/02/2020', position: 'Chuyên viên Nhân sự', department: 'Phòng Nhân sự' }
-])
-
+const employeesData = computed(() => {
+  return employees.value
+  .map((request) => ({
+    ...request,
+  }))
+})
 const familyRelations = ref([
     // NV0001
     { id: 1, employeeId: 'NV0001', relation: 'Vợ', relativeName: 'Trần Thị M', fromDate: '2010-01-01', toDate: '2030-01-01' },
@@ -41,15 +37,16 @@ const familyRelations = ref([
 
 const columns = [
     { key: 'id', label: 'Mã nhân viên' },
-    { key: 'name', label: 'Tên nhân viên' },
+    { key: 'employeeName', label: 'Tên nhân viên' },
     { key: 'birthday', label: 'Ngày sinh' },
+    { key: 'email', label: 'Email' },
+    { key: 'phone', label: 'Số điện thoại' },
     { key: 'joinDate', label: 'Ngày vào làm' },
-    { key: 'position', label: 'Chức danh' },
-    { key: 'department', label: 'Phòng ban' }
+    { key: 'roleName', label: 'Chức danh' }
 ]
 
 const currentPage = ref(1)
-const itemsPerPage = 20
+const itemsPerPage = 8
 
 const showFamilyModal = ref(false)
 const selectedEmployee = ref(null)
@@ -69,7 +66,7 @@ const closeFamilyModal = () => {
 const paginatedEmployees = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage
     const end = start + itemsPerPage
-    return employees.value.slice(start, end)
+    return employeesData.value.slice(start, end)
 })
 
 const handlePageChange = (page) => {
