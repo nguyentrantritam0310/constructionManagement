@@ -66,13 +66,13 @@ const paginatedAdjustmentData = computed(() => {
           </span>
         </template>
       </DataTable>
-      <Pagination
-        :totalItems="adjustmentData.length"
-        :itemsPerPage="itemsPerPage"
-        :currentPage="currentPage"
-        @update:currentPage="currentPage = $event"
-      />
     </div>
+    <Pagination
+      :totalItems="adjustmentData.length"
+      :itemsPerPage="itemsPerPage"
+      :currentPage="currentPage"
+      @update:currentPage="currentPage = $event"
+    />
   </div>
 </template>
 

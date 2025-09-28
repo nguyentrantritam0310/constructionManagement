@@ -28,7 +28,7 @@ const adjustmentColumns = [
 
 const adjustmentData = computed(() => {
   return employeeRequests.value
-  .filter(request => request.leaveTypeID != null) 
+  .filter(request => request.leaveTypeName != null) 
   .map((request) => ({
     ...request,
   }))

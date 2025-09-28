@@ -27,7 +27,7 @@ const adjustmentColumns = [
 
 const adjustmentData = computed(() => {
   return employeeRequests.value
-  .filter(request => request.overtimeTypeID != null) 
+  .filter(request => request.overtimeTypeName != null) 
   .map((request) => ({
     ...request,
   }))

@@ -22,10 +22,25 @@ export function useEmployee() {
     }
   }
 
+    const fetchAllEmployees = async () => {
+    try {
+      loading.value = true
+      error.value = null
+      employees.value = await employeeService.getAll()
+    } catch (err) {
+      console.error('Error in fetchEmployees:', err)
+      error.value = 'Không thể tải danh sách công nhân'
+      showMessage(error.value, 'error')
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     employees,
     loading,
     error,
-    fetchEmployees
+    fetchEmployees,
+    fetchAllEmployees
   }
 }
