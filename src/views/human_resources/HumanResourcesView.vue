@@ -3,40 +3,120 @@ import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
+import EmployeeForm from '../../components/common/employee/EmployeeForm.vue'
+import FamilyRelationForm from '../../components/common/family/FamilyRelationForm.vue'
+// ...existing code...
+const showEmployeeModal = ref(false)
+const selectedEmployeeForm = ref(null)
+const employeeFormMode = ref('create')
+// roles will be loaded from API
 
+const openAddEmployeeForm = () => {
+    selectedEmployeeForm.value = null
+    employeeFormMode.value = 'create'
+    showEmployeeModal.value = true
+}
+
+const openUpdateForm = (id) => {
+    const emp = employees.value.find(e => e.id === id)
+    console.log('Found employee for update:', emp)
+    selectedEmployeeForm.value = emp
+    employeeFormMode.value = 'update'
+    showEmployeeModal.value = true
+}
+
+const closeEmployeeModal = () => {
+    showEmployeeModal.value = false
+    selectedEmployeeForm.value = null
+}
+
+const handleEmployeeSubmit = async (data) => {
+    try {
+        const formattedData = formatEmployeeForSubmit(data)
+        
+        if (employeeFormMode.value === 'create') {
+            await createEmployee(formattedData)
+            showMessage('Tạo nhân viên thành công!', 'success')
+        } else {
+            await updateEmployee(formattedData)
+            showMessage('Cập nhật nhân viên thành công!', 'success')
+        }
+        
+        closeEmployeeModal()
+    } catch (err) {
+        console.error('Error submitting employee:', err)
+        showMessage(`Lỗi: ${err.message}`, 'error')
+    }
+}
+
+const handleDeleteEmployee = async (id) => {
+    if (confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) {
+        try {
+            await deleteEmployee(id)
+            showMessage('Xóa nhân viên thành công!', 'success')
+        } catch (err) {
+            console.error('Error deleting employee:', err)
+            showMessage(`Lỗi: ${err.message}`, 'error')
+        }
+    }
+}
+import { useEmployee } from '../../composables/useEmployee'
+import { useFamilyRelation } from '../../composables/useFamilyRelation'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import ActionButton from '@/components/common/ActionButton.vue'
+import UpdateButton from '@/components/common/UpdateButton.vue'
+import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
+import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
+
+const {
+    employees,
+    roles,
+    loading,
+    error,
+    fetchAllEmployees,
+    fetchAllRoles,
+    createEmployee,
+    updateEmployee,
+    deleteEmployee,
+    formatEmployeeForSubmit
+} = useEmployee()
+
+const {
+    familyRelations,
+    loading: familyLoading,
+    error: familyError,
+    fetchFamilyRelationsByEmployeeId,
+    createFamilyRelation,
+    updateFamilyRelation,
+    deleteFamilyRelation,
+    formatFamilyRelationForSubmit
+} = useFamilyRelation()
+
+const { showMessage } = useGlobalMessage()
+
+onMounted(async () => {
+    await Promise.all([
+        fetchAllEmployees(),
+        fetchAllRoles()
+    ])
+    console.log('Roles loaded:', roles.value)
+    console.log('Employees loaded:', employees.value)
+})
 const activeTab = ref('employeeList')
 
 const employeesData = computed(() => {
-  return employees.value
-  .map((request) => ({
-    ...request,
-  }))
+    return employees.value
+        .map((employee) => ({
+            ...employee,
+            birthday: new Date(employee.birthday)
+                .toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+            joinDate: new Date(employee.joinDate)
+                .toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        }))
 })
-const familyRelations = ref([
-    // NV0001
-    { id: 1, employeeId: 'NV0001', relation: 'Vợ', relativeName: 'Trần Thị M', fromDate: '2010-01-01', toDate: '2030-01-01' },
-    { id: 2, employeeId: 'NV0001', relation: 'Con', relativeName: 'Nguyễn Văn B', fromDate: '2012-05-10', toDate: '2030-01-01' },
-    { id: 3, employeeId: 'NV0001', relation: 'Con', relativeName: 'Nguyễn Thị C', fromDate: '2015-09-20', toDate: '2030-01-01' },
-    // NV0002
-    { id: 4, employeeId: 'NV0002', relation: 'Vợ', relativeName: 'Lê Thị D', fromDate: '2011-03-15', toDate: '2030-01-01' },
-    { id: 5, employeeId: 'NV0002', relation: 'Con', relativeName: 'Trần Văn E', fromDate: '2013-07-22', toDate: '2030-01-01' },
-    { id: 6, employeeId: 'NV0002', relation: 'Con', relativeName: 'Trần Thị F', fromDate: '2016-12-01', toDate: '2030-01-01' },
-    // NV0003
-    { id: 7, employeeId: 'NV0003', relation: 'Chồng', relativeName: 'Phạm Văn G', fromDate: '2014-04-10', toDate: '2030-01-01' },
-    { id: 8, employeeId: 'NV0003', relation: 'Con', relativeName: 'Lê Văn H', fromDate: '2017-08-25', toDate: '2030-01-01' },
-    { id: 9, employeeId: 'NV0003', relation: 'Con', relativeName: 'Lê Thị I', fromDate: '2019-11-30', toDate: '2030-01-01' },
-    // NV0004
-    { id: 10, employeeId: 'NV0004', relation: 'Vợ', relativeName: 'Hoàng Thị J', fromDate: '2012-02-14', toDate: '2030-01-01' },
-    { id: 11, employeeId: 'NV0004', relation: 'Con', relativeName: 'Phạm Văn K', fromDate: '2015-06-18', toDate: '2030-01-01' },
-    { id: 12, employeeId: 'NV0004', relation: 'Con', relativeName: 'Phạm Thị L', fromDate: '2018-10-05', toDate: '2030-01-01' },
-    // NV0005
-    { id: 13, employeeId: 'NV0005', relation: 'Chồng', relativeName: 'Ngô Văn M', fromDate: '2013-03-22', toDate: '2030-01-01' },
-    { id: 14, employeeId: 'NV0005', relation: 'Con', relativeName: 'Hoàng Văn N', fromDate: '2016-07-12', toDate: '2030-01-01' },
-    { id: 15, employeeId: 'NV0005', relation: 'Con', relativeName: 'Hoàng Thị O', fromDate: '2019-09-28', toDate: '2030-01-01' }
-])
 
 const columns = [
-    { key: 'id', label: 'Mã nhân viên' },
+    { key: 'employeeCode', label: 'Mã nhân viên' },
     { key: 'employeeName', label: 'Tên nhân viên' },
     { key: 'birthday', label: 'Ngày sinh' },
     { key: 'email', label: 'Email' },
@@ -52,15 +132,79 @@ const showFamilyModal = ref(false)
 const selectedEmployee = ref(null)
 const selectedRelations = ref([])
 
-const openFamilyModal = (employee) => {
+// Family relation form states
+const showFamilyFormModal = ref(false)
+const selectedFamilyRelation = ref(null)
+const familyFormMode = ref('create')
+
+const openFamilyModal = async (employee) => {
     selectedEmployee.value = employee
-    selectedRelations.value = familyRelations.value.filter(rel => rel.employeeId === employee.id)
     showFamilyModal.value = true
+    await fetchFamilyRelationsByEmployeeId(employee.id)
+    selectedRelations.value = familyRelations.value
 }
 const closeFamilyModal = () => {
     showFamilyModal.value = false
     selectedEmployee.value = null
     selectedRelations.value = []
+}
+
+// Family relation CRUD operations
+const handleAddFamilyRelation = () => {
+    selectedFamilyRelation.value = null
+    familyFormMode.value = 'create'
+    showFamilyFormModal.value = true
+}
+
+const handleEditFamilyRelation = (relation) => {
+    selectedFamilyRelation.value = relation
+    familyFormMode.value = 'update'
+    showFamilyFormModal.value = true
+}
+
+const closeFamilyFormModal = () => {
+    showFamilyFormModal.value = false
+    selectedFamilyRelation.value = null
+}
+
+const handleFamilyRelationSubmit = async (data) => {
+    try {
+        const formattedData = formatFamilyRelationForSubmit(data)
+        
+        if (familyFormMode.value === 'create') {
+            await createFamilyRelation(formattedData)
+            showMessage('Thêm quan hệ gia đình thành công!', 'success')
+        } else {
+            await updateFamilyRelation(formattedData)
+            showMessage('Cập nhật quan hệ gia đình thành công!', 'success')
+        }
+        
+        closeFamilyFormModal()
+        
+        // Refresh the family relations list
+        if (selectedEmployee.value) {
+            await fetchFamilyRelationsByEmployeeId(selectedEmployee.value.id)
+            selectedRelations.value = familyRelations.value
+        }
+    } catch (err) {
+        console.error('Error submitting family relation:', err)
+        showMessage(`Lỗi: ${err.message}`, 'error')
+    }
+}
+
+const handleDeleteFamilyRelation = async (relationId) => {
+    if (confirm('Bạn có chắc chắn muốn xóa quan hệ gia đình này?')) {
+        try {
+            await deleteFamilyRelation(relationId, selectedEmployee.value.id)
+            showMessage('Xóa quan hệ gia đình thành công!', 'success')
+            // Refresh the family relations list
+            await fetchFamilyRelationsByEmployeeId(selectedEmployee.value.id)
+            selectedRelations.value = familyRelations.value
+        } catch (err) {
+            console.error('Error deleting family relation:', err)
+            showMessage(`Lỗi: ${err.message}`, 'error')
+        }
+    }
 }
 
 const paginatedEmployees = computed(() => {
@@ -73,67 +217,109 @@ const handlePageChange = (page) => {
     currentPage.value = page
 }
 
-const groupedFamilyRelations = computed(() => {
-    const groups = {}
-    familyRelations.value.forEach(rel => {
-        if (!groups[rel.employeeId]) groups[rel.employeeId] = []
-        groups[rel.employeeId].push(rel)
-    })
-    return groups
-})
-
-const getEmployeeName = (employeeId) => {
-    const emp = employees.value.find(e => e.id === employeeId)
-    return emp ? emp.name : ''
-}
-
-const expandedRows = ref([])
-const employeesWithFamily = computed(() =>
-    employees.value.filter(emp => familyRelations.value.some(rel => rel.employeeId === emp.id))
-)
-const toggleExpand = (id) => {
-    const idx = expandedRows.value.indexOf(id)
-    if (idx > -1) expandedRows.value.splice(idx, 1)
-    else expandedRows.value.push(id)
-}
 </script>
 
 <template>
     <div class="container-fluid py-4">
         <h2 class="mb-4">Quản lý nhân sự</h2>
-    <DataTable :columns="columns" :data="paginatedEmployees">
-        <template #actions="{ item }">
-        <div class="d-flex justify-content-center gap-2">
-          <UpdateButton @click.stop="openUpdateForm(item.id)" />
-          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+        <ActionButton type="primary" icon="fas fa-plus me-2" @click="openAddEmployeeForm">
+            Thêm
+        </ActionButton>
+        
+        <!-- Loading State -->
+        <div v-if="loading" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
+            <p class="mt-2">Đang tải danh sách nhân viên...</p>
         </div>
-      </template>
-
-        </DataTable>
-        <div class="d-flex justify-content-end mt-3">
-            <Pagination :total-items="employees.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-                @update:currentPage="handlePageChange" />
-        </div>
-        <ModalDialog
-            :show="showFamilyModal"
-            title="Quan hệ gia đình - {{ selectedEmployee?.name || '' }}"
-            size="lg"
-            @update:show="closeFamilyModal"
-        >
-            <DataTable
-                :columns="[
-                    { key: 'relativeName', label: 'Tên người quan hệ' },
-                    { key: 'relation', label: 'Mối quan hệ' },
-                    { key: 'fromDate', label: 'Từ ngày' },
-                    { key: 'toDate', label: 'Đến ngày' }
-                ]"
-                :data="selectedRelations"
-            />
-            <div class="mt-3 text-end">
-                <button class="btn btn-success" @click="() => {}">
-                    <i class="fas fa-plus me-1"></i> Thêm quan hệ gia đình
+        
+        <!-- Error State -->
+        <div v-else-if="error" class="alert alert-danger">
+            <div class="d-flex align-items-center justify-content-between">
+                <div>
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    {{ error }}
+                </div>
+                <button 
+                    class="btn btn-outline-danger btn-sm" 
+                    @click="fetchAllEmployees"
+                    :disabled="loading"
+                >
+                    <i class="fas fa-redo me-1"></i>
+                    Thử lại
                 </button>
             </div>
+        </div>
+        
+        <!-- Data Table -->
+        <DataTable v-else :columns="columns" :data="paginatedEmployees">
+            <template #actions="{ item }">
+                <div class="d-flex justify-content-start gap-2">
+                    <ActionButton @click.stop="openUpdateForm(item.id)" type="success" icon="fas fa-pen-to-square"></ActionButton>
+                    <ActionButton @click.stop="handleDeleteEmployee(item.id)" type="danger" icon="fas fa-trash"></ActionButton>
+                    <ActionButton @click.stop="openFamilyModal(item)" icon="fas fa-people-group"></ActionButton>
+                </div>
+            </template>
+        </DataTable>
+        <!-- Pagination -->
+        <div v-if="!loading && !error && employeesData.length > 0" class="d-flex justify-content-end mt-3">
+            <Pagination :total-items="employeesData.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+                @update:currentPage="handlePageChange" />
+        </div>
+        <ModalDialog :title="employeeFormMode === 'create' ? 'Thêm hồ sơ nhân viên' : 'Cập nhật hồ sơ nhân viên'" :show="showEmployeeModal" size="lg" @update:show="closeEmployeeModal">
+            <EmployeeForm :mode="employeeFormMode" :employee="selectedEmployeeForm" :roles="roles" @submit="handleEmployeeSubmit"
+                @close="closeEmployeeModal" />
         </ModalDialog>
+        <ModalDialog :show="showFamilyModal" title="Quan hệ gia đình" size="lg"
+            @update:show="closeFamilyModal">
+            <div v-if="familyLoading" class="text-center py-3">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Đang tải...</span>
+                </div>
+            </div>
+            <div v-else-if="familyError" class="alert alert-danger">
+                {{ familyError }}
+            </div>
+            <div v-else>
+                <DataTable :columns="[
+                    { key: 'relativeName', label: 'Tên người quan hệ' },
+                    { key: 'relationShipName', label: 'Mối quan hệ' },
+                    { key: 'startDate', label: 'Từ ngày' },
+                    { key: 'endDate', label: 'Đến ngày' }
+                ]" :data="selectedRelations">
+                    <template #actions="{ item }">
+                        <div class="d-flex justify-content-start gap-2">
+                            <ActionButton @click.stop="handleEditFamilyRelation(item)" type="warning" icon="fas fa-pen-to-square" size="sm"></ActionButton>
+                            <ActionButton @click.stop="handleDeleteFamilyRelation(item.id)" type="danger" icon="fas fa-trash" size="sm"></ActionButton>
+                        </div>
+                    </template>
+                </DataTable>
+                <div class="mt-3 text-end">
+                    <ActionButton @click="handleAddFamilyRelation" type="success" icon="fas fa-plus">
+                        Thêm quan hệ gia đình
+                    </ActionButton>
+                </div>
+            </div>
+        </ModalDialog>
+        
+        <!-- Family Relation Form Modal -->
+        <ModalDialog 
+            :title="familyFormMode === 'create' ? 'Thêm quan hệ gia đình' : 'Cập nhật quan hệ gia đình'" 
+            :show="showFamilyFormModal" 
+            size="lg" 
+            @update:show="closeFamilyFormModal"
+        >
+            <FamilyRelationForm 
+                :mode="familyFormMode" 
+                :familyRelation="selectedFamilyRelation" 
+                :employeeId="selectedEmployee?.id || ''"
+                :employeeName="selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : ''"
+                @submit="handleFamilyRelationSubmit"
+                @close="closeFamilyFormModal" 
+            />
+        </ModalDialog>
+        
+        <GlobalMessageModal />
     </div>
 </template>

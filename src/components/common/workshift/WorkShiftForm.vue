@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, watch } from 'vue'
+import { reactive, watch, toRefs } from 'vue'
 import FormField from '@/components/common/FormField.vue'
 
 const props = defineProps({
@@ -11,22 +11,29 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
-const weekDays = ['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật']
+const weekDays = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật']
 
+// Always show all weekdays, map shiftDetails to correct day index, keep inactive days visible
 const formData = reactive({
   shiftName: props.workshift.shiftName || '',
-  assignedType: 'employee', // employee hoặc department
-  assignedId: '', // id nhân viên hoặc phòng ban
-  days: weekDays.map(day => ({
-    day,
-    active: true,
-    startTime: '08:00',
-    endTime: '17:00',
-    lunchStart: '12:00',
-    lunchEnd: '13:00',
-    workHours: 0,
-    workDate: 0
-  })),
+  assignedType: 'employee',
+  assignedId: '',
+  days: weekDays.map((dayName) => {
+    // Find shiftDetail for this weekday by dayOfWeek
+    const detail = props.workshift.shiftDetails?.find(d => d.dayOfWeek === dayName)
+    return {
+      day: dayName,
+      id: detail ? detail.id ?? 0 : 0,
+      workShiftID: detail ? detail.workShiftID ?? 0 : 0,
+      active: !!detail,
+      startTime: detail ? detail.startTime ?? '' : '',
+      endTime: detail ? detail.endTime ?? '' : '',
+      breakStart: detail ? detail.breakStart ?? '' : '',
+      breakEnd: detail ? detail.breakEnd ?? '' : '',
+      workHours: 0,
+      workDate: 0
+    }
+  }),
   totalHours: 0,
   totalDays: 0
 })
@@ -37,13 +44,13 @@ const calculateHours = (day) => {
     day.workDate = 0
     return
   }
-  const parseTime = (t) => t ? t.split(':').map(Number) : [0,0]
+  const parseTime = (t) => t ? t.split(':').map(Number) : [0, 0]
   const [sh, sm] = parseTime(day.startTime)
   const [eh, em] = parseTime(day.endTime)
-  const [lh, lm] = parseTime(day.lunchStart)
-  const [lhEnd, lmEnd] = parseTime(day.lunchEnd)
+  const [lh, lm] = parseTime(day.breakStart)
+  const [lhEnd, lmEnd] = parseTime(day.breakEnd)
 
-  let hours = (eh + em/60) - (sh + sm/60) - ((lhEnd + lmEnd/60) - (lh + lm/60))
+  let hours = (eh + em / 60) - (sh + sm / 60) - ((lhEnd + lmEnd / 60) - (lh + lm / 60))
   if (hours < 0) hours = 0
   day.workHours = Number(hours.toFixed(2))
   day.workDate = Number((hours / 8).toFixed(2))
@@ -52,7 +59,7 @@ const calculateHours = (day) => {
 // Watch từng ngày
 formData.days.forEach(day => {
   watch(
-    () => [day.startTime, day.endTime, day.lunchStart, day.lunchEnd, day.active],
+    () => [day.startTime, day.endTime, day.breakStart, day.breakEnd, day.active],
     () => {
       calculateHours(day)
       formData.totalHours = formData.days.reduce((sum, d) => sum + d.workHours, 0).toFixed(2)
@@ -70,14 +77,33 @@ const copyToAll = (sourceDay) => {
     if (day.active && day.day !== sourceDay.day) {
       day.startTime = sourceDay.startTime;
       day.endTime = sourceDay.endTime;
-      day.lunchStart = sourceDay.lunchStart;
-      day.lunchEnd = sourceDay.lunchEnd;
+      day.breakStart = sourceDay.breakStart;
+      day.breakEnd = sourceDay.breakEnd;
     }
   });
 }
+const padTime = (t) => {
+  if (!t) return '00:00:00'
+  // Nếu đã có giây thì giữ nguyên, nếu chỉ có HH:mm thì thêm :00
+  return t.length === 5 ? t + ':00' : t
+}
+
 const handleSubmit = () => {
-  console.log('📤 WorkShift Data:', formData)
-  emit('close')
+  const shiftDetails = formData.days.map((day, idx) => ({
+    id: day.id ?? 0,
+    workShiftID: day.workShiftID ?? 0,
+    dayOfWeek: day.day,
+    startTime: padTime(day.startTime),
+    endTime: padTime(day.endTime),
+    breakStart: padTime(day.breakStart),
+    breakEnd: padTime(day.breakEnd)
+  }))
+  const payload = {
+    shiftName: formData.shiftName,
+    shiftDetails
+  }
+  emit('submit', payload)
+  // emit('close')
 }
 
 const handleClose = () => emit('close')
@@ -89,7 +115,7 @@ const handleClose = () => emit('close')
       <div class="col-md-12">
         <FormField label="Tên ca" type="text" v-model="formData.shiftName" required />
       </div>
-      <div class="col-md-6" v-if="formData.assignedType==='department'">
+      <div class="col-md-6" v-if="formData.assignedType === 'department'">
         <FormField label="Chọn phòng ban" type="select" v-model="formData.assignedId" required>
           <option v-for="dep in departments" :key="dep.id" :value="dep.id">{{ dep.name }}</option>
         </FormField>
@@ -120,22 +146,26 @@ const handleClose = () => emit('close')
             </td>
             <td>
               <div class="time-range-input">
-                <input type="time" v-model="day.startTime" class="form-control form-control-sm" :disabled="!day.active" />
+                <input type="time" v-model="day.startTime" class="form-control form-control-sm"
+                  :disabled="!day.active" />
                 <span>-</span>
                 <input type="time" v-model="day.endTime" class="form-control form-control-sm" :disabled="!day.active" />
               </div>
             </td>
             <td>
               <div class="time-range-input">
-                <input type="time" v-model="day.lunchStart" class="form-control form-control-sm" :disabled="!day.active" />
+                <input type="time" v-model="day.breakStart" class="form-control form-control-sm"
+                  :disabled="!day.active" />
                 <span>-</span>
-                <input type="time" v-model="day.lunchEnd" class="form-control form-control-sm" :disabled="!day.active" />
+                <input type="time" v-model="day.breakEnd" class="form-control form-control-sm"
+                  :disabled="!day.active" />
               </div>
             </td>
             <td class="text-center work-hours">{{ day.workHours }}</td>
             <td class="text-center work-hours">{{ day.workDate }}</td>
             <td class="text-center">
-              <button type="button" @click="copyToAll(day)" class="btn-copy" title="Áp dụng cho tất cả" :disabled="!day.active">
+              <button type="button" @click="copyToAll(day)" class="btn-copy" title="Áp dụng cho tất cả"
+                :disabled="!day.active">
                 <i class="fas fa-copy"></i>
               </button>
             </td>
@@ -154,7 +184,8 @@ const handleClose = () => emit('close')
 
     <div class="mt-4 d-flex justify-content-end gap-2">
       <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
-      <button type="submit" class="btn btn-primary btn-gradient">{{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}</button>
+      <button type="submit" class="btn btn-primary btn-gradient">{{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới'
+        }}</button>
     </div>
   </form>
 </template>
@@ -166,10 +197,12 @@ form {
   border-radius: 1rem;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
 }
+
 .shift-schedule-table {
   width: 100%;
   border-collapse: separate;
-  border-spacing: 0 8px; /* Add space between rows */
+  border-spacing: 0 8px;
+  /* Add space between rows */
 }
 
 .shift-schedule-table thead th {
@@ -187,13 +220,13 @@ form {
 .shift-schedule-table tbody tr {
   background-color: #fff;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
   transition: all 0.2s ease-in-out;
 }
 
 .shift-schedule-table tbody tr:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06);
 }
 
 .shift-schedule-table tbody tr.inactive {
@@ -203,7 +236,7 @@ form {
 
 .shift-schedule-table tbody tr.inactive:hover {
   transform: none;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .shift-schedule-table tbody td {
@@ -217,6 +250,7 @@ form {
   border-top-left-radius: 8px;
   border-bottom-left-radius: 8px;
 }
+
 .shift-schedule-table tbody tr td:last-child {
   border-top-right-radius: 8px;
   border-bottom-right-radius: 8px;
@@ -254,7 +288,7 @@ form {
 
 .form-control-sm:focus {
   border-color: #80bdff;
-  box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, .25);
   outline: none;
 }
 
@@ -277,6 +311,7 @@ tfoot td {
   background-color: #f1f5f9;
   color: #1a202c;
 }
+
 tfoot td.text-end {
   text-align: right !important;
 }
@@ -288,11 +323,13 @@ tfoot td.text-end {
   width: 44px;
   height: 24px;
 }
+
 .switch input {
   opacity: 0;
   width: 0;
   height: 0;
 }
+
 .slider {
   position: absolute;
   cursor: pointer;
@@ -304,6 +341,7 @@ tfoot td.text-end {
   transition: .4s;
   border-radius: 24px;
 }
+
 .slider:before {
   position: absolute;
   content: "";
@@ -315,13 +353,16 @@ tfoot td.text-end {
   transition: .4s;
   border-radius: 50%;
 }
-input:checked + .slider {
+
+input:checked+.slider {
   background-color: #28a745;
 }
-input:focus + .slider {
+
+input:focus+.slider {
   box-shadow: 0 0 1px #28a745;
 }
-input:checked + .slider:before {
+
+input:checked+.slider:before {
   transform: translateX(20px);
 }
 
@@ -340,10 +381,12 @@ input:checked + .slider:before {
   justify-content: center;
   transition: all 0.2s ease;
 }
+
 .btn-copy:hover:not(:disabled) {
   background-color: #e9ecef;
   color: #0d6efd;
 }
+
 .btn-copy:disabled {
   color: #ced4da;
   cursor: not-allowed;

@@ -49,6 +49,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/contract-management',
+      name: 'ContractManagement',
+      component: () => import('../views/human_resources/ContractManagementView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/construction-management',
       name: 'construction-management',
       component: ConstructionManagementView,

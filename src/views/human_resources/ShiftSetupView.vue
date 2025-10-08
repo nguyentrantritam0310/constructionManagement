@@ -16,10 +16,12 @@ import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import AttendanceMachineForm from '@/components/common/workshift/AttendanceMachineForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
-
 const {
   workshifts,
   fetchWorkShifts,
+  createWorkShifts,
+  updateWorkShift,
+  deleteWorkShift
 } = useWorkShift()
 const {
   attendanceMachines,
@@ -41,6 +43,28 @@ onMounted(async () => {
   await fetchWorkShifts()
   await fetchAttendanceMachines()
 })
+
+const openUpdateForm = (id) => {
+  const found = workshifts.value.find(w => w.id === id || w.ID === id)
+  selectedItem.value = found
+  showUpdateForm.value = true
+}
+
+const handleUpdateWorkShift = async (payload) => {
+  // Đảm bảo truyền đúng id
+  const id = selectedItem.value.id || selectedItem.value.ID
+  await updateWorkShift(id, { ...payload, id })
+  showUpdateForm.value = false
+  selectedItem.value = null
+  await fetchWorkShifts()
+}
+
+const handleDeleteWorkShift = async (item) => {
+   if (confirm(`Bạn có chắc chắn muốn xóa ca làm "${item.name}" không?`)) {
+    await deleteWorkShift(item.code || item.ID)
+  }
+}
+
 const activeTab = ref('shift')
 
 const tabs = [
@@ -48,9 +72,10 @@ const tabs = [
   { key: 'machine', label: 'Máy chấm công' }
 ]
 
-const handleCreateWorkShift = () => {
+const handleCreateWorkShift = async (payload) => {
+  await createWorkShifts(payload)
   showCreateForm.value = false
-  fetchWorkShifts() // Refresh the list after creating
+  await fetchWorkShifts() // Refresh lại danh sách ca làm việc
 }
 const handleCreateMachine = async (formData) => {
   await createAttendanceMachine(formData)
@@ -437,11 +462,11 @@ const handleUpdateSubmit = async (formData) => {
             CA-{{ item.code < 10 ? '0' + item.code : item.code }} </span>
         </template>
         <template #actions="{ item }">
-        <div class="d-flex justify-content-center gap-2">
-          <UpdateButton @click.stop="openUpdateForm(item.id)" />
-          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
-        </div>
-      </template>
+          <div class="d-flex justify-content-start gap-2">
+            <UpdateButton @click.stop="openUpdateForm(item.code)" />
+            <DeleteButton @click.stop="handleDeleteWorkShift(item)" />
+          </div>
+        </template>
       </DataTable>
       <Pagination :totalItems="shiftData.length" :itemsPerPage="shiftItemsPerPage" :currentPage="shiftCurrentPage"
         @update:currentPage="shiftCurrentPage = $event" />
@@ -463,13 +488,13 @@ const handleUpdateSubmit = async (formData) => {
         @update:currentPage="machineCurrentPage = $event" />
     </div>
     <ModalDialog v-model:show="showCreateForm" title="Tạo ca làm" size="xl">
-      <WorkShiftForm mode="create" @close="handleCreateWorkShift" />
+  <WorkShiftForm mode="create" @close="showCreateForm = false" @submit="handleCreateWorkShift" />
     </ModalDialog>
     <ModalDialog v-model:show="showCreateFormAttendanceMachine" title="Thêm máy chấm công" size="lg">
       <AttendanceMachineForm mode="create" @submit="handleCreateMachine" @close="showCreateFormAttendanceMachine = false" />
     </ModalDialog>
     <ModalDialog v-model:show="showUpdateForm" title="Cập nhật ca làm" size="xl">
-      <WorkShiftForm mode="update" :workshift="selectedItem" @close="showUpdateForm = false" />
+      <WorkShiftForm mode="update" :workshift="selectedItem" @close="showUpdateForm = false" @submit="handleUpdateWorkShift" />
     </ModalDialog>
     <ModalDialog v-model:show="showUpdateFormAttendanceMachine" title="Cập nhật máy chấm công" size="lg">
       <AttendanceMachineForm  :key="selectedItem?.id" mode="update" :attendancemachine="selectedItem" @submit="handleUpdateMachine" @close="showUpdateFormAttendanceMachine = false" />

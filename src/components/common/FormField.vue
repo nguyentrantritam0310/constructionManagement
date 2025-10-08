@@ -54,9 +54,11 @@ const emit = defineEmits(['update:modelValue'])
     <input v-else-if="type === 'file'" type="file" class="form-control" :class="{ 'is-invalid': error }"
       @change="$emit('update:modelValue', $event.target.files[0])" :required="required" :disabled="disabled" />
 
-    <input v-else-if="['text', 'number', 'date'].includes(type)" :type="type" class="form-control"
+    <input v-else-if="['text', 'number', 'date', 'time', 'datetime-local', 'email'].includes(type)" :type="type" class="form-control"
       :class="{ 'is-invalid': error }" :value="modelValue" @input="$emit('update:modelValue', $event.target.value)"
       :required="required" :disabled="disabled" />
+
+
 
     <div v-if="error" class="invalid-feedback">
       {{ error }}
