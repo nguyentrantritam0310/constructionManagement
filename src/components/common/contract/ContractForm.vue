@@ -1,6 +1,8 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import FormField from '../FormField.vue'
+import { CONTRACT_APPROVE_STATUS, CONTRACT_APPROVE_STATUS_LABELS } from '../../../constants/status.js'
+import { contractService } from '../../../services/contractService.js'
 
 const props = defineProps({
   mode: {
@@ -16,68 +18,97 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
-  contractTypes: {
-    type: Array,
-    default: () => []
-  },
-  contractForms: {
-    type: Array,
-    default: () => []
-  },
-  allowances: {
-    type: Array,
-    default: () => []
-  }
+  // Remove props for contractTypes and allowances since we'll fetch them from API
 })
 
 const emit = defineEmits(['submit', 'close'])
+
+// Data from API
+const contractTypes = ref([])
+const allowances = ref([])
+const loading = ref(false)
 
 const formData = ref({
   id: props.contract?.id ?? '',
   contractNumber: props.contract?.contractNumber ?? '',
   contractTypeID: props.contract?.contractTypeID ?? '',
-  contractFormID: props.contract?.contractFormID ?? '',
   employeeID: props.contract?.employeeID ?? '',
-  status: props.contract?.status ?? 'Đã ký',
   startDate: formatDateForInput(props.contract?.startDate),
   endDate: formatDateForInput(props.contract?.endDate),
   contractSalary: props.contract?.contractSalary ?? '',
   insuranceSalary: props.contract?.insuranceSalary ?? '',
-  approveStatus: props.contract?.approveStatus ?? 'Chờ duyệt',
+  approveStatus: props.contract?.approveStatus ?? CONTRACT_APPROVE_STATUS.CREATED,
+  validityPeriod: props.contract?.validityPeriod ?? '', // Thêm trường hiệu lực
   allowances: (props.contract?.allowances || []).map(a => ({
     allowanceID: a.allowanceID || a.allowance?.id || '',
     value: a.value || 0
   }))
 })
 
-const statusOptions = [
-  { value: 'Chờ ký', text: 'Chờ ký' },
-  { value: 'Đã ký', text: 'Đã ký' },
-  { value: 'Hết hạn', text: 'Hết hạn' },
-  { value: 'Hủy bỏ', text: 'Hủy bỏ' }
-]
 
 const approveStatusOptions = [
-  { value: 'Chờ duyệt', text: 'Chờ duyệt' },
-  { value: 'Đã duyệt', text: 'Đã duyệt' },
-  { value: 'Từ chối', text: 'Từ chối' }
+  { value: CONTRACT_APPROVE_STATUS.CREATED, text: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.CREATED] },
+  { value: CONTRACT_APPROVE_STATUS.PENDING, text: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.PENDING] },
+  { value: CONTRACT_APPROVE_STATUS.APPROVED, text: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.APPROVED] },
+  { value: CONTRACT_APPROVE_STATUS.REJECTED, text: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.REJECTED] }
 ]
+
+const validityOptions = [
+  { value: '3', text: '3 tháng' },
+  { value: '6', text: '6 tháng' },
+  { value: '12', text: '12 tháng' },
+  { value: '24', text: '24 tháng' },
+  { value: '36', text: '36 tháng' }
+]
+
+// Computed properties
+const isDeterminedTermContract = computed(() => {
+  const contractType = contractTypes.value?.find(type => type.id == formData.value.contractTypeID)
+  return contractType?.contractTypeName?.toLowerCase().includes('xác định') || false
+})
+
+const isIndeterminateTermContract = computed(() => {
+  const contractType = contractTypes.value?.find(type => type.id == formData.value.contractTypeID)
+  return contractType?.contractTypeName?.toLowerCase().includes('không xác định') || false
+})
+
+const isProbationContract = computed(() => {
+  const contractType = contractTypes.value?.find(type => type.id == formData.value.contractTypeID)
+  return contractType?.contractTypeName?.toLowerCase().includes('thử việc') || false
+})
 
 // Watch for changes in contract prop
 watch(() => props.contract, (newContract) => {
   if (newContract) {
+    // Convert approveStatus from string to int if needed
+    let approveStatusValue = CONTRACT_APPROVE_STATUS.CREATED
+    if (newContract.approveStatus) {
+      // If it's already a number, use it; if it's a string, convert it
+      if (typeof newContract.approveStatus === 'number') {
+        approveStatusValue = newContract.approveStatus
+      } else if (typeof newContract.approveStatus === 'string') {
+        // Convert string back to enum value
+        const statusMap = {
+          'Tạo mới': CONTRACT_APPROVE_STATUS.CREATED,
+          'Chờ duyệt': CONTRACT_APPROVE_STATUS.PENDING,
+          'Đã duyệt': CONTRACT_APPROVE_STATUS.APPROVED,
+          'Từ chối': CONTRACT_APPROVE_STATUS.REJECTED
+        }
+        approveStatusValue = statusMap[newContract.approveStatus] || CONTRACT_APPROVE_STATUS.CREATED
+      }
+    }
+
     formData.value = {
       id: newContract.id ?? '',
       contractNumber: newContract.contractNumber ?? '',
       contractTypeID: newContract.contractTypeID ?? '',
-      contractFormID: newContract.contractFormID ?? '',
       employeeID: newContract.employeeID ?? '',
-      status: newContract.status ?? 'Đã ký',
       startDate: formatDateForInput(newContract.startDate),
       endDate: formatDateForInput(newContract.endDate),
       contractSalary: newContract.contractSalary ?? '',
       insuranceSalary: newContract.insuranceSalary ?? '',
-      approveStatus: newContract.approveStatus ?? 'Chờ duyệt',
+      approveStatus: approveStatusValue,
+      validityPeriod: newContract.validityPeriod ?? '',
       allowances: (newContract.allowances || []).map(a => ({
         allowanceID: a.allowanceID || a.allowance?.id || '',
         value: a.value || 0
@@ -92,23 +123,90 @@ function formatDateForInput(dateString) {
   return date.toISOString().split('T')[0]
 }
 
+// Function to calculate end date based on validity period
+function calculateEndDate(startDate, validityMonths) {
+  if (!startDate || !validityMonths) return ''
+  
+  const start = new Date(startDate)
+  const end = new Date(start)
+  end.setMonth(end.getMonth() + parseInt(validityMonths))
+  
+  return end.toISOString().split('T')[0]
+}
+
+// Watch for changes in start date and validity period to auto-calculate end date
+watch([() => formData.value.startDate, () => formData.value.validityPeriod], ([newStartDate, newValidityPeriod]) => {
+  if ((isDeterminedTermContract.value || isProbationContract.value) && newStartDate && newValidityPeriod) {
+    formData.value.endDate = calculateEndDate(newStartDate, newValidityPeriod)
+  }
+})
+
+// Watch for contract type changes to reset validity period
+watch(() => formData.value.contractTypeID, (newContractTypeID) => {
+  if (!isDeterminedTermContract.value && !isProbationContract.value) {
+    formData.value.validityPeriod = ''
+    if (isIndeterminateTermContract.value) {
+      // For indeterminate term contracts, set end date to empty or a far future date
+      formData.value.endDate = ''
+    }
+  }
+  
+  // Auto-set validity period for probation contracts
+  if (isProbationContract.value) {
+    formData.value.validityPeriod = '2' // 2 months default for probation
+  }
+})
+
 const handleSubmit = () => {
-  // Validation
+  // Basic validation
   if (!formData.value.contractNumber || !formData.value.contractTypeID || 
-      !formData.value.contractFormID || !formData.value.employeeID ||
-      !formData.value.startDate || !formData.value.endDate ||
-      !formData.value.contractSalary || !formData.value.insuranceSalary) {
+      !formData.value.employeeID ||
+      !formData.value.startDate || !formData.value.contractSalary || !formData.value.insuranceSalary) {
     alert('Vui lòng điền đầy đủ thông tin bắt buộc')
     return
   }
 
-  // Date validation
-  const startDate = new Date(formData.value.startDate)
-  const endDate = new Date(formData.value.endDate)
-  
-  if (startDate >= endDate) {
-    alert('Ngày kết thúc phải sau ngày bắt đầu')
-    return
+  // Validation for determined term contracts and probation contracts
+  if (isDeterminedTermContract.value || isProbationContract.value) {
+    if (!formData.value.validityPeriod) {
+      alert('Vui lòng chọn hiệu lực hợp đồng')
+      return
+    }
+    if (!formData.value.endDate) {
+      alert('Ngày kết thúc không được để trống')
+      return
+    }
+  }
+
+  // Validation for indeterminate term contracts
+  if (isIndeterminateTermContract.value) {
+    // End date is not required for indeterminate term contracts
+    // But if provided, it should be after start date
+    if (formData.value.endDate) {
+      const startDate = new Date(formData.value.startDate)
+      const endDate = new Date(formData.value.endDate)
+      
+      if (startDate >= endDate) {
+        alert('Ngày kết thúc phải sau ngày bắt đầu')
+        return
+      }
+    }
+  }
+
+  // Validation for other contract types (excluding determined term, indeterminate term, and probation)
+  if (!isDeterminedTermContract.value && !isIndeterminateTermContract.value && !isProbationContract.value) {
+    if (!formData.value.endDate) {
+      alert('Ngày kết thúc không được để trống')
+      return
+    }
+    
+    const startDate = new Date(formData.value.startDate)
+    const endDate = new Date(formData.value.endDate)
+    
+    if (startDate >= endDate) {
+      alert('Ngày kết thúc phải sau ngày bắt đầu')
+      return
+    }
   }
 
   // Salary validation
@@ -117,7 +215,25 @@ const handleSubmit = () => {
     return
   }
 
-  emit('submit', formData.value)
+  // Probation contract duration validation
+  if (isProbationContract.value && formData.value.startDate && formData.value.endDate) {
+    const startDate = new Date(formData.value.startDate)
+    const endDate = new Date(formData.value.endDate)
+    const durationInMonths = ((endDate.getFullYear() - startDate.getFullYear()) * 12) + (endDate.getMonth() - startDate.getMonth())
+    
+    if (durationInMonths > 2) {
+      alert('Hợp đồng thử việc không được vượt quá 2 tháng')
+      return
+    }
+  }
+
+  // Format data for API submission - convert approveStatus to int for enum
+  const submitData = {
+    ...formData.value,
+    approveStatus: parseInt(formData.value.approveStatus) // Convert string to int for enum
+  }
+
+  emit('submit', submitData)
 }
 
 const handleClose = () => {
@@ -135,6 +251,43 @@ const removeAllowance = (index) => {
   formData.value.allowances.splice(index, 1)
 }
 
+// Fetch data from API
+const fetchContractTypes = async () => {
+  try {
+    loading.value = true
+    const data = await contractService.getContractTypes()
+    contractTypes.value = data
+  } catch (error) {
+    console.error('Error fetching contract types:', error)
+    // Fallback to empty array if API fails
+    contractTypes.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+const fetchAllowances = async () => {
+  try {
+    loading.value = true
+    const data = await contractService.getAllowances()
+    allowances.value = data
+  } catch (error) {
+    console.error('Error fetching allowances:', error)
+    // Fallback to empty array if API fails
+    allowances.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+// Load data on component mount
+onMounted(async () => {
+  await Promise.all([
+    fetchContractTypes(),
+    fetchAllowances()
+  ])
+})
+
 // Reset form when mode changes
 watch(() => props.mode, (newMode) => {
   if (newMode === 'create') {
@@ -142,14 +295,13 @@ watch(() => props.mode, (newMode) => {
       id: '',
       contractNumber: '',
       contractTypeID: '',
-      contractFormID: '',
       employeeID: '',
-      status: 'Đã ký',
       startDate: '',
       endDate: '',
       contractSalary: '',
       insuranceSalary: '',
-      approveStatus: 'Chờ duyệt',
+      approveStatus: CONTRACT_APPROVE_STATUS.CREATED,
+      validityPeriod: '',
       allowances: []
     }
   }
@@ -191,27 +343,77 @@ watch(() => props.mode, (newMode) => {
         <div class="row g-4 mb-3">
           <div class="col-md-6">
             <label class="form-label">Loại hợp đồng <span class="text-danger">*</span></label>
-            <select class="form-select" v-model="formData.contractTypeID" required>
-              <option value="">Chọn loại hợp đồng</option>
+            <select class="form-select" v-model="formData.contractTypeID" required :disabled="loading">
+              <option value="">{{ loading ? 'Đang tải...' : 'Chọn loại hợp đồng' }}</option>
               <option v-for="type in contractTypes" :key="type.id" :value="type.id" 
                       :selected="formData.contractTypeID == type.id">
                 {{ type.contractTypeName }}
               </option>
             </select>
           </div>
+        </div>
+
+        <!-- Hiệu lực hợp đồng cho hợp đồng xác định thời hạn và thử việc -->
+        <div v-if="isDeterminedTermContract || isProbationContract" class="row g-4 mb-3">
           <div class="col-md-6">
-            <label class="form-label">Hình thức hợp đồng <span class="text-danger">*</span></label>
-            <select class="form-select" v-model="formData.contractFormID" required>
-              <option value="">Chọn hình thức hợp đồng</option>
-              <option v-for="form in contractForms" :key="form.id" :value="form.id" 
-                      :selected="formData.contractFormID == form.id">
-                {{ form.contractFormName }}
+            <label class="form-label">Hiệu lực <span class="text-danger">*</span></label>
+            <select class="form-select" v-model="formData.validityPeriod" required>
+              <option value="">Chọn hiệu lực</option>
+              <option v-for="validity in validityOptions" :key="validity.value" :value="validity.value">
+                {{ validity.text }}
               </option>
             </select>
+            <small v-if="isProbationContract" class="form-text text-info">
+              <i class="fas fa-info-circle me-1"></i>Hợp đồng thử việc mặc định 2 tháng
+            </small>
+          </div>
+          <div class="col-md-6">
+            <FormField 
+              label="Từ ngày" 
+              type="date" 
+              v-model="formData.startDate" 
+              required 
+            />
           </div>
         </div>
 
-        <div class="row g-4 mb-3">
+        <!-- Ngày tháng cho hợp đồng xác định thời hạn và thử việc -->
+        <div v-if="isDeterminedTermContract || isProbationContract" class="row g-4 mb-3">
+          <div class="col-md-6">
+            <FormField 
+              label="Đến ngày" 
+              type="date" 
+              v-model="formData.endDate" 
+              required 
+              readonly
+            />
+            <small class="form-text text-muted">Tự động tính dựa trên từ ngày và hiệu lực</small>
+          </div>
+        </div>
+
+        <!-- Ngày tháng cho hợp đồng không xác định thời hạn -->
+        <div v-if="isIndeterminateTermContract" class="row g-4 mb-3">
+          <div class="col-md-6">
+            <FormField 
+              label="Từ ngày" 
+              type="date" 
+              v-model="formData.startDate" 
+              required 
+            />
+          </div>
+          <div class="col-md-6">
+            <FormField 
+              label="Đến ngày" 
+              type="date" 
+              v-model="formData.endDate" 
+              readonly
+            />
+            <small class="form-text text-muted">Hợp đồng không xác định thời hạn</small>
+          </div>
+        </div>
+
+        <!-- Ngày tháng mặc định cho các loại hợp đồng khác -->
+        <div v-if="!isDeterminedTermContract && !isIndeterminateTermContract" class="row g-4 mb-3">
           <div class="col-md-6">
             <FormField 
               label="Từ ngày" 
@@ -255,15 +457,6 @@ watch(() => props.mode, (newMode) => {
 
         <div class="row g-4 mb-3">
           <div class="col-md-6">
-            <label class="form-label">Trạng thái</label>
-            <select class="form-select" v-model="formData.status">
-              <option v-for="status in statusOptions" :key="status.value" :value="status.value" 
-                      :selected="formData.status === status.value">
-                {{ status.text }}
-              </option>
-            </select>
-          </div>
-          <div class="col-md-6">
             <label class="form-label">Trạng thái duyệt</label>
             <select class="form-select" v-model="formData.approveStatus">
               <option v-for="status in approveStatusOptions" :key="status.value" :value="status.value" 
@@ -290,8 +483,8 @@ watch(() => props.mode, (newMode) => {
           <div v-for="(allowance, index) in formData.allowances" :key="index" class="row g-3 mb-3">
             <div class="col-md-5">
               <label class="form-label">Loại phụ cấp</label>
-              <select class="form-select" v-model="allowance.allowanceID">
-                <option value="">Chọn phụ cấp</option>
+              <select class="form-select" v-model="allowance.allowanceID" :disabled="loading">
+                <option value="">{{ loading ? 'Đang tải...' : 'Chọn phụ cấp' }}</option>
                 <option v-for="allow in allowances" :key="allow.id" :value="allow.id">
                   {{ allow.allowanceName }}
                 </option>

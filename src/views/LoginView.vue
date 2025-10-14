@@ -49,6 +49,7 @@
         </button>
       </form>
     </div>
+
   </div>
 </template>
 
@@ -70,6 +71,10 @@ const handleLogin = async () => {
 
   if (!result.success) {
     error.value = result.message
+  } else if (result.requiresPasswordChange) {
+    // Lưu thông tin yêu cầu đổi mật khẩu vào localStorage
+    localStorage.setItem('requiresPasswordChange', 'true')
+    console.log('User requires password change - flag set in localStorage')
   }
 
   loading.value = false

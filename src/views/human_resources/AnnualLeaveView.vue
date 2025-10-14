@@ -1,8 +1,23 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import { useEmployee } from '../../composables/useEmployee'
+import { useLeaveRequest } from '../../composables/useLeaveRequest'
+import { useEmployeeRequest } from '../../composables/useEmployeeRequest'
+import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
+import { CONTRACT_APPROVE_STATUS, isApprovedStatus } from '../../constants/status.js'
+
+// Composables
+const { employees, fetchAllEmployees, loading: employeeLoading, error: employeeError } = useEmployee()
+const { leaveRequests, fetchLeaveRequests, loading: leaveLoading, error: leaveError } = useLeaveRequest()
+const { employeeRequests, fetchEmployeeRequests, loading: requestLoading, error: requestError } = useEmployeeRequest()
+const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
+
+// Combined loading state
+const loading = computed(() => employeeLoading.value || leaveLoading.value || requestLoading.value || overtimeLoading.value)
+const error = computed(() => employeeError.value || leaveError.value || requestError.value || overtimeError.value)
 
 const activeTab = ref('annual')
 const tabs = [
@@ -10,13 +25,21 @@ const tabs = [
   { key: 'otLeave', label: 'Phép bù tăng ca' }
 ]
 
+// Year filter
+const selectedYear = ref(new Date().getFullYear())
+const availableYears = computed(() => {
+  const currentYear = new Date().getFullYear()
+  return Array.from({ length: 5 }, (_, i) => currentYear - 2 + i)
+})
+
 // ----------- Phép năm quy định -----------
-const leaveColumns = [
+// Computed columns with dynamic year
+const leaveColumns = computed(() => [
   { key: 'empId', label: 'Mã nhân viên' },
   { key: 'empName', label: 'Tên nhân viên' },
   ...Array.from({ length: 12 }, (_, i) => ({
     key: `month${i + 1}`,
-    label: `${i + 1 < 10 ? '0' : ''}${i + 1}/2025`
+    label: `${i + 1 < 10 ? '0' : ''}${i + 1}/${selectedYear.value}`
   })),
   { key: 'joinDate', label: 'Ngày vào làm' },
   { key: 'leavePolicy', label: 'Phép năm quy định' },
@@ -25,37 +48,158 @@ const leaveColumns = [
   { key: 'totalUsed', label: 'Tổng ngày đã nghỉ' },
   { key: 'leaveRemain', label: 'Số phép còn lại' },
   { key: 'seniorityDate', label: 'Ngày thâm niên' }
-]
+])
 
-const leaveData = Array.from({ length: 15 }, (_, i) => ({
-  empId: `NV${String(1001 + i)}`,
-  empName: `Nhân viên ${i + 1}`,
-  month1: i % 3 === 0 ? 1 : 0,
-  month2: i % 4 === 0 ? 2 : 0,
-  month3: i % 5 === 0 ? 1 : 0,
-  month4: i % 2 === 0 ? 1 : 0,
-  month5: i % 6 === 0 ? 1 : 0,
-  month6: i % 7 === 0 ? 2 : 0,
-  month7: i % 3 === 0 ? 1 : 0,
-  month8: i % 4 === 0 ? 1 : 0,
-  month9: i % 5 === 0 ? 2 : 0,
-  month10: i % 2 === 0 ? 1 : 0,
-  month11: i % 6 === 0 ? 1 : 0,
-  month12: i % 7 === 0 ? 1 : 0,
-  joinDate: `0${(i % 9) + 1}/0${(i % 12) + 1}/2020`,
-  leavePolicy: 12,
-  seniorityLeave: i % 3,
-  totalLeave: 12 + (i % 3),
-  totalUsed: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15][i],
-  leaveRemain: 12 + (i % 3) - [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15][i],
-  seniorityDate: `0${(i % 9) + 1}/0${(i % 12) + 1}/2022`
-}))
+// Function to calculate seniority leave (1 day for every 5 years)
+const calculateSeniorityLeave = (joinDate) => {
+  if (!joinDate) return 0
+  const join = new Date(joinDate)
+  const current = new Date()
+  const yearsWorked = current.getFullYear() - join.getFullYear()
+  return Math.floor(yearsWorked / 5)
+}
+
+// Function to calculate total used leave days for an employee
+const calculateTotalUsedLeave = (employeeId) => {
+  if (!leaveRequests.value || leaveRequests.value.length === 0) {
+    console.log('No leave requests available for calculation')
+    return 0
+  }
+  
+  const employeeLeaveRequests = leaveRequests.value.filter(request => 
+    request.employeeID === employeeId && 
+    isApprovedStatus(request.approveStatus) // Backend maps enum to Vietnamese string
+  )
+  
+  console.log(`Employee ${employeeId} has ${employeeLeaveRequests.length} approved leave requests`)
+  
+  const total = employeeLeaveRequests.reduce((total, request) => {
+    const fromDate = new Date(request.startDateTime)
+    const toDate = new Date(request.endDateTime)
+    const requestYear = fromDate.getFullYear()
+    
+    if (requestYear === selectedYear.value) {
+      const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1
+      console.log(`Leave request ${request.voucherCode}: ${days} days in ${requestYear}`)
+      return total + days
+    }
+    return total
+  }, 0)
+  
+  console.log(`Total used leave for employee ${employeeId} in ${selectedYear.value}: ${total}`)
+  return total
+}
+
+// Function to get leave days by month for an employee
+const getLeaveDaysByMonth = (employeeId, month) => {
+  if (!leaveRequests.value || leaveRequests.value.length === 0) {
+    return 0
+  }
+  
+  const employeeLeaveRequests = leaveRequests.value.filter(request => 
+    request.employeeID === employeeId && 
+    isApprovedStatus(request.approveStatus) // Backend maps enum to Vietnamese string
+  )
+  
+  return employeeLeaveRequests.reduce((total, request) => {
+    const fromDate = new Date(request.startDateTime)
+    const toDate = new Date(request.endDateTime)
+    const requestMonth = fromDate.getMonth() + 1 // JavaScript months are 0-indexed
+    const requestYear = fromDate.getFullYear()
+    
+    if (requestMonth === month && requestYear === selectedYear.value) {
+      const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1
+      return total + days
+    }
+    return total
+  }, 0)
+}
+
+// Computed property for leave data based on real API data
+const leaveData = computed(() => {
+  console.log('=== LEAVE DATA COMPUTED ===')
+  console.log('Employees value:', employees.value)
+  console.log('Employees length:', employees.value?.length || 0)
+  console.log('Leave requests value:', leaveRequests.value)
+  console.log('Leave requests length:', leaveRequests.value?.length || 0)
+  
+  // Check if data is loaded
+  if (!employees.value || employees.value.length === 0) {
+    console.log('No employees data available')
+    return []
+  }
+  
+  // Debug: Log first employee structure
+  if (employees.value.length > 0) {
+    console.log('First employee structure:', employees.value[0])
+    console.log('Employee status values:', employees.value.map(emp => ({ id: emp.id, status: emp.status, employeeCode: emp.employeeCode })))
+  }
+  
+  // Filter only active employees - try different status values
+  const activeEmployees = employees.value.filter(emp => {
+    console.log(`Employee ${emp.employeeCode}: status = ${emp.status} (type: ${typeof emp.status})`)
+    return emp.status === 0 || emp.status === '0' || emp.status === 'Active' || emp.status === null || emp.status === undefined
+  })
+  
+  console.log('Total employees:', employees.value.length)
+  console.log('Active employees after filter:', activeEmployees.length)
+  
+  if (activeEmployees.length === 0) {
+    console.log('No active employees found - showing all employees instead')
+    const allEmployees = employees.value
+    console.log('All employees count:', allEmployees.length)
+  }
+  
+  const employeesToProcess = activeEmployees.length > 0 ? activeEmployees : employees.value
+  
+  const result = employeesToProcess.map(employee => {
+    const joinDate = new Date(employee.joinDate)
+    const seniorityLeave = calculateSeniorityLeave(employee.joinDate)
+    const totalUsed = calculateTotalUsedLeave(employee.id)
+    const totalLeave = 12 + seniorityLeave // 12 days default + seniority leave
+    
+    // Generate month data
+    const monthData = {}
+    for (let i = 1; i <= 12; i++) {
+      monthData[`month${i}`] = getLeaveDaysByMonth(employee.id, i)
+    }
+    
+    const employeeData = {
+      empId: employee.id, // Use employee ID instead of employeeCode
+      empCode: employee.employeeCode, // Keep employeeCode for display
+      empName: `${employee.firstName} ${employee.lastName}`,
+      ...monthData,
+      joinDate: joinDate.toLocaleDateString('vi-VN'),
+      leavePolicy: 12,
+      seniorityLeave,
+      totalLeave,
+      totalUsed,
+      leaveRemain: Math.max(0, totalLeave - totalUsed),
+      seniorityDate: joinDate.toLocaleDateString('vi-VN'),
+      employeeId: employee.id // Keep for modal usage
+    }
+    
+    // Debug logging for first employee
+    if (employee === activeEmployees[0]) {
+      console.log('Sample employee data:', employeeData)
+      console.log('Employee leave requests:', leaveRequests.value.filter(req => req.employeeID === employee.id))
+    }
+    
+    return employeeData
+  })
+  
+  console.log('Leave data computed:', result.length, 'employees')
+  return result
+})
 
 const annualCurrentPage = ref(1)
 const annualItemsPerPage = ref(10)
 const paginatedLeaveData = computed(() => {
+  if (!leaveData.value || leaveData.value.length === 0) {
+    return []
+  }
   const start = (annualCurrentPage.value - 1) * annualItemsPerPage.value
-  return leaveData.slice(start, start + annualItemsPerPage.value)
+  return leaveData.value.slice(start, start + annualItemsPerPage.value)
 })
 
 // ----------- Phép bù tăng ca -----------
@@ -72,32 +216,164 @@ const otLeaveColumns = [
   { key: 'otLeaveRemain', label: 'Phép bù còn lại' }
 ]
 
-const otLeaveData = Array.from({ length: 15 }, (_, i) => ({
-  empId: `NV${String(1001 + i)}`,
-  empName: `Nhân viên ${i + 1}`,
-  month1: i % 2 === 0 ? 1 : 0,
-  month2: i % 3 === 0 ? 2 : 0,
-  month3: i % 4 === 0 ? 1 : 0,
-  month4: i % 5 === 0 ? 2 : 0,
-  month5: i % 6 === 0 ? 1 : 0,
-  month6: i % 7 === 0 ? 2 : 0,
-  month7: i % 2 === 0 ? 1 : 0,
-  month8: i % 3 === 0 ? 1 : 0,
-  month9: i % 4 === 0 ? 2 : 0,
-  month10: i % 5 === 0 ? 1 : 0,
-  month11: i % 6 === 0 ? 1 : 0,
-  month12: i % 7 === 0 ? 1 : 0,
-  totalOTHours: 20 + i * 3,
-  otLeaveDays: Math.floor((20 + i * 3) / 8),
-  otLeaveUsed: i % 4,
-  otLeaveRemain: Math.floor((20 + i * 3) / 8) - (i % 4)
-}))
+// Function to calculate total overtime days for an employee (only overtime leave compensation, not paid overtime)
+const calculateTotalOTDays = (employeeId) => {
+  if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
+    console.log(`No overtime requests available for employee ${employeeId}`)
+    return 0
+  }
+  
+  const employeeOTRequests = overtimeRequests.value.filter(request => 
+    request.employeeID === employeeId && 
+    isApprovedStatus(request.approveStatus) && // Backend maps enum to Vietnamese string
+    request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation), not "Tăng ca tính lương"
+  )
+  
+  console.log(`Employee ${employeeId} has ${employeeOTRequests.length} approved overtime leave compensation requests`)
+  
+  // Debug: Log overtime form information
+  if (employeeOTRequests.length > 0) {
+    console.log('Overtime leave compensation requests:', employeeOTRequests.map(req => ({
+      voucherCode: req.voucherCode,
+      overtimeFormID: req.overtimeFormID,
+      overtimeFormName: req.overtimeFormName,
+      reason: req.reason
+    })))
+  }
+  
+  const totalDays = employeeOTRequests.reduce((total, request) => {
+    const fromDate = new Date(request.startDateTime)
+    const toDate = new Date(request.endDateTime)
+    const requestYear = fromDate.getFullYear()
+    
+    if (requestYear === selectedYear.value) {
+      const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1 // Calculate actual days
+      console.log(`Overtime request ${request.voucherCode}: ${days} days (${fromDate.toLocaleDateString('vi-VN')} - ${toDate.toLocaleDateString('vi-VN')})`)
+      return total + days
+    }
+    return total
+  }, 0)
+  
+  console.log(`Total OT days for employee ${employeeId} in ${selectedYear.value}: ${totalDays}`)
+  return totalDays
+}
+
+// Function to get overtime days by month for an employee (only overtime leave compensation)
+const getOTDaysByMonth = (employeeId, month) => {
+  if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
+    return 0
+  }
+  
+  const employeeOTRequests = overtimeRequests.value.filter(request => 
+    request.employeeID === employeeId && 
+    isApprovedStatus(request.approveStatus) &&
+    request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation)
+  )
+  
+  const monthDays = employeeOTRequests.reduce((total, request) => {
+    const fromDate = new Date(request.startDateTime)
+    const toDate = new Date(request.endDateTime)
+    const requestMonth = fromDate.getMonth() + 1 // JavaScript months are 0-indexed
+    const requestYear = fromDate.getFullYear()
+    
+    if (requestMonth === month && requestYear === selectedYear.value) {
+      const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1 // Calculate actual days
+      console.log(`Month ${month}: Overtime request ${request.voucherCode}: ${days} days`)
+      return total + days
+    }
+    return total
+  }, 0)
+  
+  if (monthDays > 0) {
+    console.log(`Employee ${employeeId} - Month ${month}: ${monthDays} OT days`)
+  }
+  return monthDays
+}
+
+// Function to calculate total overtime hours for display (only overtime leave compensation)
+const calculateTotalOTHours = (employeeId) => {
+  if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
+    return 0
+  }
+  
+  const employeeOTRequests = overtimeRequests.value.filter(request => 
+    request.employeeID === employeeId && 
+    isApprovedStatus(request.approveStatus) &&
+    request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation)
+  )
+  
+  return employeeOTRequests.reduce((total, request) => {
+    const fromDate = new Date(request.startDateTime)
+    const toDate = new Date(request.endDateTime)
+    const requestYear = fromDate.getFullYear()
+    
+    if (requestYear === selectedYear.value) {
+      const hours = Math.ceil((toDate - fromDate) / (1000 * 60 * 60)) // Convert to hours
+      return total + hours
+    }
+    return total
+  }, 0)
+}
+
+// Overtime leave data computed from API data
+const otLeaveData = computed(() => {
+  console.log('=== OT LEAVE DATA COMPUTED ===')
+  console.log('Employees value:', employees.value)
+  console.log('Employees length:', employees.value?.length || 0)
+  console.log('Overtime requests value:', overtimeRequests.value)
+  console.log('Overtime requests length:', overtimeRequests.value?.length || 0)
+  
+  // Check if data is loaded
+  if (!employees.value || employees.value.length === 0) {
+    console.log('No employees data available for OT leave')
+    return []
+  }
+  
+  // Filter only active employees - try different status values
+  const activeEmployees = employees.value.filter(emp => {
+    return emp.status === 0 || emp.status === '0' || emp.status === 'Active' || emp.status === null || emp.status === undefined
+  })
+  
+  console.log('Total employees for OT:', employees.value.length)
+  console.log('Active employees for OT after filter:', activeEmployees.length)
+  
+  const employeesToProcess = activeEmployees.length > 0 ? activeEmployees : employees.value
+  
+  return employeesToProcess.map(employee => {
+    const totalOTDays = calculateTotalOTDays(employee.id) // Calculate actual days from overtime requests
+    const totalOTHours = calculateTotalOTHours(employee.id) // Keep hours for display
+    const otLeaveDays = totalOTDays // Use actual days from overtime requests
+    const otLeaveUsed = totalOTDays // Same as otLeaveDays for now (assuming all overtime becomes leave)
+    const otLeaveRemain = Math.max(0, otLeaveDays - otLeaveUsed)
+    
+    // Generate month data using actual days
+    const monthData = {}
+    for (let i = 1; i <= 12; i++) {
+      monthData[`month${i}`] = getOTDaysByMonth(employee.id, i) // Use actual days
+    }
+    
+    return {
+      empId: employee.id, // Use employee ID instead of employeeCode
+      empCode: employee.employeeCode, // Keep employeeCode for display
+      empName: `${employee.firstName} ${employee.lastName}`,
+      ...monthData,
+      totalOTHours,
+      otLeaveDays,
+      otLeaveUsed,
+      otLeaveRemain,
+      employeeId: employee.id // Keep for modal usage
+    }
+  })
+})
 
 const otCurrentPage = ref(1)
 const otItemsPerPage = ref(10)
 const paginatedOtLeaveData = computed(() => {
+  if (!otLeaveData.value || otLeaveData.value.length === 0) {
+    return []
+  }
   const start = (otCurrentPage.value - 1) * otItemsPerPage.value
-  return otLeaveData.slice(start, start + otItemsPerPage.value)
+  return otLeaveData.value.slice(start, start + otItemsPerPage.value)
 })
 
 // ----------- Modal phiếu nghỉ phép -----------
@@ -117,51 +393,11 @@ const leaveTicketColumns = [
   { key: 'reason', label: 'Lý do' }
 ]
 
-// Dữ liệu phiếu nghỉ phép cho phép năm quy định
+// Dữ liệu phiếu nghỉ phép cho phép năm quy định - Sẽ được tạo động từ API data
 const leaveTickets = {}
-for (let i = 0; i < 15; i++) {
-  const empId = `NV${1001 + i}`
-  leaveTickets[empId] = {}
-  for (let m = 1; m <= 12; m++) {
-    if (leaveData[i][`month${m}`] > 0) {
-      leaveTickets[empId][m] = [
-        {
-          ticketId: `P${empId}${m}`,
-          empName: leaveData[i].empName,
-          fromDate: `0${m}/0${(i % 28) + 1}/2025`,
-          toDate: `0${m}/0${(i % 28) + 1}/2025`,
-          days: leaveData[i][`month${m}`],
-          reason: 'Nghỉ phép cá nhân'
-        }
-      ]
-    }
-  }
-  // Tổng ngày đã nghỉ: gom tất cả phiếu nghỉ trong năm
-  leaveTickets[empId]['total'] = Object.values(leaveTickets[empId]).flat()
-}
 
-// Dữ liệu phiếu nghỉ phép bù tăng ca
+// Dữ liệu phiếu nghỉ phép bù tăng ca - Sẽ được tạo động từ API data
 const otTickets = {}
-for (let i = 0; i < 15; i++) {
-  const empId = `NV${1001 + i}`
-  otTickets[empId] = {}
-  for (let m = 1; m <= 12; m++) {
-    if (otLeaveData[i][`month${m}`] > 0) {
-      otTickets[empId][m] = [
-        {
-          ticketId: `OT${empId}${m}`,
-          empName: otLeaveData[i].empName,
-          fromDate: `0${m}/0${(i % 28) + 1}/2025`,
-          toDate: `0${m}/0${(i % 28) + 1}/2025`,
-          days: otLeaveData[i][`month${m}`],
-          reason: 'Phép bù tăng ca'
-        }
-      ]
-    }
-  }
-  // Đã nghỉ phép bù: gom tất cả phiếu nghỉ phép bù trong năm
-  otTickets[empId]['total'] = Object.values(otTickets[empId]).flat()
-}
 
 function openLeaveModal(emp, month, type = 'annual', field = 'month') {
   modalEmployee.value = emp
@@ -172,15 +408,329 @@ function openLeaveModal(emp, month, type = 'annual', field = 'month') {
 }
 
 function getTickets(empId, month, type, field) {
+  console.log('getTickets called:', { empId, month, type, field })
+  
   if (type === 'annual') {
-    if (field === 'month') return leaveTickets[empId]?.[month] || []
-    if (field === 'totalUsed') return leaveTickets[empId]?.['total'] || []
+    // Check if data is loaded
+    if (!leaveData.value || leaveData.value.length === 0 || !leaveRequests.value) {
+      console.log('No data available for getTickets')
+      return []
+    }
+    
+    // Find employee by ID from leaveData
+    const employee = leaveData.value.find(emp => emp.empId === empId)
+    if (!employee) {
+      console.log('Employee not found:', empId)
+      return []
+    }
+    
+    console.log('Found employee:', employee.empName, 'ID:', employee.employeeId)
+    
+    // Filter leave requests for this employee
+    const employeeLeaveRequests = leaveRequests.value.filter(request => 
+      request.employeeID === employee.employeeId && 
+      isApprovedStatus(request.approveStatus) // Backend maps enum to Vietnamese string
+    )
+    
+    console.log('Employee leave requests:', employeeLeaveRequests.length)
+    
+    if (field === 'month' && typeof month === 'number') {
+      // Filter by specific month and year
+      const monthRequests = employeeLeaveRequests.filter(request => {
+        const fromDate = new Date(request.startDateTime)
+        const requestMonth = fromDate.getMonth() + 1
+        const requestYear = fromDate.getFullYear()
+        return requestMonth === month && requestYear === selectedYear.value
+      })
+      
+      console.log(`Month ${month} requests:`, monthRequests.length)
+      
+      return monthRequests.map(request => ({
+        ticketId: request.voucherCode,
+        empName: employee.empName,
+        fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
+        toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
+        days: Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60 * 24)) + 1,
+        reason: request.reason || 'Nghỉ phép cá nhân'
+      }))
+    }
+    
+    if (field === 'totalUsed') {
+      // Return all approved leave requests for this employee in selected year
+      const yearRequests = employeeLeaveRequests.filter(request => {
+        const fromDate = new Date(request.startDateTime)
+        const requestYear = fromDate.getFullYear()
+        return requestYear === selectedYear.value
+      })
+      
+      console.log(`Year ${selectedYear.value} requests:`, yearRequests.length)
+      
+      return yearRequests.map(request => ({
+        ticketId: request.voucherCode,
+        empName: employee.empName,
+        fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
+        toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
+        days: Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60 * 24)) + 1,
+        reason: request.reason || 'Nghỉ phép cá nhân'
+      }))
+    }
   }
+  
   if (type === 'otLeave') {
-    if (field === 'month') return otTickets[empId]?.[month] || []
-    if (field === 'otLeaveUsed') return otTickets[empId]?.['total'] || []
+    console.log('Processing overtime leave tickets:', { empId, month, field })
+    
+    // Check if data is loaded
+    if (!otLeaveData.value || otLeaveData.value.length === 0 || !overtimeRequests.value) {
+      console.log('No overtime data available for getTickets')
+      return []
+    }
+    
+    // Find employee by ID from otLeaveData
+    const employee = otLeaveData.value.find(emp => emp.empId === empId)
+    if (!employee) {
+      console.log('Employee not found in overtime data:', empId)
+      return []
+    }
+    
+    console.log('Found employee in overtime data:', employee.empName, 'ID:', employee.employeeId)
+    
+    // Filter overtime requests for this employee (only overtime leave compensation)
+    const employeeOTRequests = overtimeRequests.value.filter(request => 
+      request.employeeID === employee.employeeId && 
+      isApprovedStatus(request.approveStatus) &&
+      request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation)
+    )
+    
+    console.log('Employee overtime requests:', employeeOTRequests.length)
+    
+    if (field === 'month' && typeof month === 'number') {
+      // Filter by specific month and year
+      const monthRequests = employeeOTRequests.filter(request => {
+        const fromDate = new Date(request.startDateTime)
+        const requestMonth = fromDate.getMonth() + 1
+        const requestYear = fromDate.getFullYear()
+        return requestMonth === month && requestYear === selectedYear.value
+      })
+      
+      console.log(`Month ${month} overtime requests:`, monthRequests.length)
+      
+      return monthRequests.map(request => {
+        const days = Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60 * 24)) + 1
+        return {
+          ticketId: request.voucherCode,
+          empName: employee.empName,
+          fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
+          toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
+          days: days,
+          reason: request.reason || 'Nghỉ bù tăng ca'
+        }
+      })
+    }
+    
+    if (field === 'otLeaveUsed') {
+      // Return all approved overtime requests for this employee in selected year
+      const yearRequests = employeeOTRequests.filter(request => {
+        const fromDate = new Date(request.startDateTime)
+        const requestYear = fromDate.getFullYear()
+        return requestYear === selectedYear.value
+      })
+      
+      console.log(`Year ${selectedYear.value} overtime requests:`, yearRequests.length)
+      
+      return yearRequests.map(request => {
+        const days = Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60 * 24)) + 1
+        return {
+          ticketId: request.voucherCode,
+          empName: employee.empName,
+          fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
+          toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
+          days: days,
+          reason: request.reason || 'Nghỉ bù tăng ca'
+        }
+      })
+    }
   }
   return []
+}
+
+// Debug function
+const debugData = () => {
+  console.log('=== DEBUG DATA ===')
+  console.log('Selected year:', selectedYear.value)
+  console.log('Loading states:', {
+    employeeLoading: employeeLoading.value,
+    leaveLoading: leaveLoading.value,
+    requestLoading: requestLoading.value,
+    overtimeLoading: overtimeLoading.value,
+    combinedLoading: loading.value
+  })
+  console.log('Error states:', {
+    employeeError: employeeError.value,
+    leaveError: leaveError.value,
+    requestError: requestError.value,
+    overtimeError: overtimeError.value,
+    combinedError: error.value
+  })
+  console.log('Employees count:', employees.value?.length || 0)
+  console.log('Leave requests count:', leaveRequests.value?.length || 0)
+  console.log('Overtime requests count:', overtimeRequests.value?.length || 0)
+  console.log('Employee requests count:', employeeRequests.value?.length || 0)
+  console.log('Leave data computed length:', leaveData.value?.length || 0)
+  console.log('OT leave data computed length:', otLeaveData.value?.length || 0)
+  
+  if (employees.value?.length > 0) {
+    console.log('First employee:', employees.value[0])
+  }
+  
+  if (leaveRequests.value?.length > 0) {
+    console.log('All leave requests:', leaveRequests.value)
+    console.log('First leave request:', leaveRequests.value[0])
+    console.log('Leave requests with "Nghỉ phép" type:', leaveRequests.value.filter(req => req.requestType === 'Nghỉ phép'))
+    console.log('Approved leave requests (status = "Đã duyệt"):', leaveRequests.value.filter(req => req.approveStatus === 'Đã duyệt'))
+    
+    // Check specific fields
+    leaveRequests.value.forEach((req, index) => {
+      console.log(`Leave request ${index}:`, {
+        voucherCode: req.voucherCode,
+        employeeID: req.employeeID,
+        requestType: req.requestType,
+        approveStatus: req.approveStatus,
+        startDateTime: req.startDateTime,
+        endDateTime: req.endDateTime
+      })
+    })
+  }
+  
+  if (overtimeRequests.value?.length > 0) {
+    console.log('All overtime requests:', overtimeRequests.value)
+    console.log('First overtime request:', overtimeRequests.value[0])
+    console.log('Approved overtime requests (status = "Đã duyệt"):', overtimeRequests.value.filter(req => req.approveStatus === 'Đã duyệt'))
+    console.log('Overtime leave compensation requests (overtimeFormID = 2):', overtimeRequests.value.filter(req => req.overtimeFormID === 2))
+    console.log('Paid overtime requests (overtimeFormID = 1):', overtimeRequests.value.filter(req => req.overtimeFormID === 1))
+    
+    // Check specific fields
+    overtimeRequests.value.forEach((req, index) => {
+      console.log(`Overtime request ${index}:`, {
+        voucherCode: req.voucherCode,
+        employeeID: req.employeeID,
+        requestType: req.requestType,
+        approveStatus: req.approveStatus,
+        overtimeFormID: req.overtimeFormID,
+        overtimeFormName: req.overtimeFormName,
+        startDateTime: req.startDateTime,
+        endDateTime: req.endDateTime,
+        reason: req.reason
+      })
+    })
+  }
+  
+  console.log('Leave data computed:', leaveData.value?.length || 0)
+  if (leaveData.value?.length > 0) {
+    console.log('First leave data entry:', leaveData.value[0])
+  }
+  
+  console.log('Overtime leave data computed:', otLeaveData.value?.length || 0)
+  if (otLeaveData.value?.length > 0) {
+    console.log('First overtime leave data entry:', otLeaveData.value[0])
+    
+    // Debug calculation for first employee
+    const firstEmployee = otLeaveData.value[0]
+    if (firstEmployee) {
+      console.log('=== OVERTIME CALCULATION DEBUG ===')
+      console.log('Employee:', firstEmployee.empName)
+      console.log('Total OT Hours:', firstEmployee.totalOTHours)
+      console.log('Total OT Days (calculated):', calculateTotalOTDays(firstEmployee.employeeId))
+      console.log('OT Leave Days (displayed):', firstEmployee.otLeaveDays)
+      console.log('Month data:', Object.keys(firstEmployee).filter(key => key.startsWith('month')).map(key => `${key}: ${firstEmployee[key]}`))
+    }
+  }
+}
+
+// Load data on component mount
+onMounted(async () => {
+  console.log('=== ONMOUNTED START ===')
+  try {
+    console.log('Starting to fetch all data...')
+    
+    const results = await Promise.allSettled([
+      fetchAllEmployees(),
+      fetchLeaveRequests(),
+      fetchEmployeeRequests(),
+      fetchOvertimeRequests()
+    ])
+    
+    console.log('All fetch operations completed:', results)
+    
+    // Check each result
+    results.forEach((result, index) => {
+      const operations = ['fetchAllEmployees', 'fetchLeaveRequests', 'fetchEmployeeRequests', 'fetchOvertimeRequests']
+      if (result.status === 'fulfilled') {
+        console.log(`${operations[index]} succeeded`)
+      } else {
+        console.error(`${operations[index]} failed:`, result.reason)
+      }
+    })
+    
+    // Debug logging
+    console.log('=== AFTER FETCH ===')
+    console.log('Employees loaded:', employees.value?.length || 0)
+    console.log('Leave requests loaded:', leaveRequests.value?.length || 0)
+    console.log('Overtime requests loaded:', overtimeRequests.value?.length || 0)
+    console.log('Employee requests loaded:', employeeRequests.value?.length || 0)
+    
+    if (employees.value?.length > 0) {
+      console.log('First employee:', employees.value[0])
+      console.log('Employee fields:', Object.keys(employees.value[0]))
+    }
+    
+    if (leaveRequests.value?.length > 0) {
+      console.log('First leave request:', leaveRequests.value[0])
+      console.log('Leave request fields:', Object.keys(leaveRequests.value[0]))
+    }
+    
+    if (overtimeRequests.value?.length > 0) {
+      console.log('First overtime request:', overtimeRequests.value[0])
+      console.log('Overtime request fields:', Object.keys(overtimeRequests.value[0]))
+    }
+    
+    // Force computed properties to recalculate
+    console.log('Leave data after mount:', leaveData.value?.length || 0)
+    console.log('OT leave data after mount:', otLeaveData.value?.length || 0)
+    
+  } catch (error) {
+    console.error('Error loading data:', error)
+  }
+  console.log('=== ONMOUNTED END ===')
+})
+
+// Reload data function
+const reloadData = async () => {
+  console.log('=== RELOAD DATA ===')
+  try {
+    console.log('Reloading all data...')
+    
+    const results = await Promise.allSettled([
+      fetchAllEmployees(),
+      fetchLeaveRequests(),
+      fetchEmployeeRequests(),
+      fetchOvertimeRequests()
+    ])
+    
+    console.log('Reload results:', results)
+    console.log('Data after reload:', {
+      employees: employees.value?.length || 0,
+      leaveRequests: leaveRequests.value?.length || 0,
+      overtimeRequests: overtimeRequests.value?.length || 0,
+      employeeRequests: employeeRequests.value?.length || 0
+    })
+    
+    // Force reactive updates
+    console.log('Leave data after reload:', leaveData.value?.length || 0)
+    console.log('OT leave data after reload:', otLeaveData.value?.length || 0)
+    
+  } catch (error) {
+    console.error('Error reloading data:', error)
+  }
 }
 </script>
 
@@ -197,118 +747,176 @@ function getTickets(empId, month, type, field) {
         {{ tab.label }}
       </button>
     </div>
+    <!-- Year Filter -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="d-flex align-items-center gap-3">
+        <label class="form-label mb-0 fw-bold">Năm:</label>
+        <select v-model="selectedYear" class="form-select" style="width: 120px;">
+          <option v-for="year in availableYears" :key="year" :value="year">
+            {{ year }}
+          </option>
+        </select>
+        <button class="btn btn-sm btn-outline-success" @click="reloadData">
+          <i class="fas fa-sync me-1"></i> Reload
+        </button>
+      </div>
+      <div class="text-muted">
+        <i class="fas fa-calendar-alt me-2"></i>
+        Dữ liệu phép năm {{ selectedYear }}
+      </div>
+    </div>
+    
+
     <div v-if="activeTab === 'annual'">
-      <div class="table-responsive leave-table">
+      <!-- Loading State -->
+      <div v-if="loading" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Đang tải...</span>
+        </div>
+        <p class="mt-2">Đang tải dữ liệu phép năm...</p>
+      </div>
+      
+      <!-- Error State -->
+      <div v-else-if="error" class="alert alert-danger">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        {{ error }}
+      </div>
+      
+      <!-- Data Table -->
+      <div v-else-if="leaveData && leaveData.length > 0" class="table-responsive leave-table">
         <DataTable :columns="leaveColumns" :data="paginatedLeaveData">
           <template v-for="i in 12" #[`month${i}`]="{ item }">
             <span
-              v-if="item[`month${i}`] > 0"
+              v-if="item && item[`month${i}`] > 0"
               class="leave-cell clickable"
               @click.stop="openLeaveModal(item.empId, i, 'annual', 'month')"
               title="Xem phiếu nghỉ phép"
             >
               {{ item[`month${i}`] }}
             </span>
-            <span v-else class="leave-cell">{{ item[`month${i}`] }}</span>
+            <span v-else class="leave-cell">{{ item ? item[`month${i}`] : 0 }}</span>
           </template>
-          <template #empId="{ item }">
-            <span class="emp-id">{{ item.empId }}</span>
-          </template>
-          <template #empName="{ item }">
-            <span class="emp-name">{{ item.empName }}</span>
+          <template #empCode="{ item }">
+            <span class="emp-id">{{ item?.empCode || '' }}</span>
           </template>
           <template #joinDate="{ item }">
-            <span class="join-date">{{ item.joinDate }}</span>
+            <span class="join-date">{{ item?.joinDate || '' }}</span>
           </template>
           <template #leavePolicy="{ item }">
-            <span class="leave-policy">{{ item.leavePolicy }}</span>
+            <span class="leave-policy">{{ item?.leavePolicy || 0 }}</span>
           </template>
           <template #seniorityLeave="{ item }">
-            <span class="seniority-leave">{{ item.seniorityLeave }}</span>
+            <span class="seniority-leave">{{ item?.seniorityLeave || 0 }}</span>
           </template>
           <template #totalLeave="{ item }">
-            <span class="total-leave">{{ item.totalLeave }}</span>
+            <span class="total-leave">{{ item?.totalLeave || 0 }}</span>
           </template>
           <template #totalUsed="{ item }">
             <span
               class="total-used clickable"
-              @click.stop="openLeaveModal(item.empId, 'total', 'annual', 'totalUsed')"
+              @click.stop="item && openLeaveModal(item.empId, 'total', 'annual', 'totalUsed')"
               title="Xem tất cả phiếu nghỉ phép năm"
             >
-              {{ item.totalUsed }}
+              {{ item?.totalUsed || 0 }}
             </span>
           </template>
           <template #leaveRemain="{ item }">
-            <span class="leave-remain">{{ item.leaveRemain }}</span>
+            <span class="leave-remain">{{ item?.leaveRemain || 0 }}</span>
           </template>
           <template #seniorityDate="{ item }">
-            <span class="seniority-date">{{ item.seniorityDate }}</span>
+            <span class="seniority-date">{{ item?.seniorityDate || '' }}</span>
           </template>
         </DataTable>
         <Pagination
+          v-if="!loading && !error && leaveData && leaveData.length > 0"
           :totalItems="leaveData.length"
           :itemsPerPage="annualItemsPerPage"
           :currentPage="annualCurrentPage"
           @update:currentPage="annualCurrentPage = $event"
         />
       </div>
+      
+      <!-- No Data State -->
+      <div v-else class="text-center py-4">
+        <i class="fas fa-info-circle text-muted" style="font-size: 3rem;"></i>
+        <p class="mt-3 text-muted">Không có dữ liệu phép năm để hiển thị</p>
+      </div>
     </div>
     <div v-else-if="activeTab === 'otLeave'">
-      <div class="table-responsive leave-table">
+      <!-- Loading State -->
+      <div v-if="loading" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Đang tải...</span>
+        </div>
+        <p class="mt-2">Đang tải dữ liệu phép bù tăng ca...</p>
+      </div>
+      
+      <!-- Error State -->
+      <div v-else-if="error" class="alert alert-danger">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        {{ error }}
+      </div>
+      
+      <!-- Data Table -->
+      <div v-else-if="otLeaveData && otLeaveData.length > 0" class="table-responsive leave-table">
         <DataTable :columns="otLeaveColumns" :data="paginatedOtLeaveData">
           <template v-for="i in 12" #[`month${i}`]="{ item }">
             <span
-              v-if="item[`month${i}`] > 0"
+              v-if="item && item[`month${i}`] > 0"
               class="leave-cell leave-ot clickable"
               @click.stop="openLeaveModal(item.empId, i, 'otLeave', 'month')"
               title="Xem phiếu phép bù tăng ca"
             >
               {{ item[`month${i}`] }}
             </span>
-            <span v-else class="leave-cell">{{ item[`month${i}`] }}</span>
+            <span v-else class="leave-cell">{{ item ? item[`month${i}`] : 0 }}</span>
           </template>
-          <template #empId="{ item }">
-            <span class="emp-id">{{ item.empId }}</span>
-          </template>
-          <template #empName="{ item }">
-            <span class="emp-name">{{ item.empName }}</span>
+          <template #empCode="{ item }">
+            <span class="emp-id">{{ item?.empCode || '' }}</span>
           </template>
           <template #totalOTHours="{ item }">
-            <span class="ot-hours">{{ item.totalOTHours }}</span>
+            <span class="ot-hours">{{ item?.totalOTHours || 0 }}</span>
           </template>
           <template #otLeaveDays="{ item }">
-            <span class="ot-leave-days">{{ item.otLeaveDays }}</span>
+            <span class="ot-leave-days">{{ item?.otLeaveDays || 0 }}</span>
           </template>
           <template #otLeaveUsed="{ item }">
             <span
               class="ot-leave-used clickable"
-              @click.stop="openLeaveModal(item.empId, 'total', 'otLeave', 'otLeaveUsed')"
+              @click.stop="item && openLeaveModal(item.empId, 'total', 'otLeave', 'otLeaveUsed')"
               title="Xem tất cả phiếu phép bù tăng ca"
             >
-              {{ item.otLeaveUsed }}
+              {{ item?.otLeaveUsed || 0 }}
             </span>
           </template>
           <template #otLeaveRemain="{ item }">
-            <span class="ot-leave-remain">{{ item.otLeaveRemain }}</span>
+            <span class="ot-leave-remain">{{ item?.otLeaveRemain || 0 }}</span>
           </template>
         </DataTable>
         <Pagination
+          v-if="!loading && !error && otLeaveData && otLeaveData.length > 0"
           :totalItems="otLeaveData.length"
           :itemsPerPage="otItemsPerPage"
           :currentPage="otCurrentPage"
           @update:currentPage="otCurrentPage = $event"
         />
       </div>
+      
+      <!-- No Data State -->
+      <div v-else class="text-center py-4">
+        <i class="fas fa-info-circle text-muted" style="font-size: 3rem;"></i>
+        <p class="mt-3 text-muted">Không có dữ liệu phép bù tăng ca để hiển thị</p>
+      </div>
     </div>
     <ModalDialog
       v-model:show="showModal"
       :title="modalType === 'annual'
         ? (modalField === 'month'
-            ? `Phiếu nghỉ phép năm - ${modalEmployee} tháng ${modalMonth}`
-            : `Tất cả phiếu nghỉ phép năm - ${modalEmployee}`)
+            ? `Phiếu nghỉ phép năm ${selectedYear} - ${modalEmployee} tháng ${modalMonth}`
+            : `Tất cả phiếu nghỉ phép năm ${selectedYear} - ${modalEmployee}`)
         : (modalField === 'month'
-            ? `Phiếu phép bù tăng ca - ${modalEmployee} tháng ${modalMonth}`
-            : `Tất cả phiếu phép bù tăng ca - ${modalEmployee}`)"
+            ? `Phiếu phép bù tăng ca năm ${selectedYear} - ${modalEmployee} tháng ${modalMonth}`
+            : `Tất cả phiếu phép bù tăng ca năm ${selectedYear} - ${modalEmployee}`)"
       size="xl"
       scrollable
     >

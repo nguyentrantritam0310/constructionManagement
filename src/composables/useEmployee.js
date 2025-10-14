@@ -1,11 +1,15 @@
 import { ref } from 'vue'
 import { employeeService } from '../services/employeeService'
+import { useAuth } from './useAuth'
 
 export function useEmployee() {
   const employees = ref([])
   const roles = ref([])
   const loading = ref(false)
   const error = ref(null)
+  
+  // Get auth composable for refreshing user info
+  const { refreshUserInfo } = useAuth()
 
   // Fetch all employees
   const fetchAllEmployees = async () => {
@@ -79,8 +83,21 @@ export function useEmployee() {
     try {
       loading.value = true
       error.value = null
+      console.log('=== UPDATE EMPLOYEE DEBUG ===')
+      console.log('Sending data to API:', employeeData)
+      
       const result = await employeeService.updateEmployee(employeeData)
+      console.log('API response:', result)
+      
       await fetchAllEmployees() // Refresh the list
+      
+      // If updating current user's role, refresh user info
+      if (employeeData.id && employeeData.roleID) {
+        console.log('Employee role updated, refreshing user info...')
+        await refreshUserInfo()
+      }
+      
+      console.log('=== END UPDATE DEBUG ===')
       return result
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.response?.data?.title || 'Có lỗi xảy ra khi cập nhật nhân viên'
@@ -123,7 +140,11 @@ export function useEmployee() {
 
   // Format employee data for form submission
   const formatEmployeeForSubmit = (employeeData) => {
-    console.log('Formatting employee data for submit:', employeeData)
+    console.log('=== FORMAT EMPLOYEE DEBUG ===')
+    console.log('Raw employee data:', employeeData)
+    console.log('Role ID from form:', employeeData.roleID)
+    console.log('Role ID type:', typeof employeeData.roleID)
+    
     const formattedData = {
       employeeCode: employeeData.employeeCode,
       firstName: employeeData.firstName,
@@ -143,7 +164,9 @@ export function useEmployee() {
       formattedData.id = employeeData.id
     }
     
+    console.log('Formatted roleID:', formattedData.roleID)
     console.log('Formatted data:', formattedData)
+    console.log('=== END FORMAT DEBUG ===')
     return formattedData
   }
 

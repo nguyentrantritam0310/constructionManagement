@@ -26,10 +26,12 @@ export const contractService = {
   // Create new contract
   async createContract(contractData) {
     try {
+      console.log('Sending contract data:', contractData) // Debug log
       const response = await api.post('/Contract', contractData)
       return response.data
     } catch (error) {
       console.error('Error creating contract:', error)
+      console.error('Request data:', contractData) // Debug log
       throw error
     }
   },
@@ -37,10 +39,12 @@ export const contractService = {
   // Update contract
   async updateContract(contractData) {
     try {
+      console.log('Updating contract data:', contractData) // Debug log
       const response = await api.put('/Contract', contractData)
       return response.data
     } catch (error) {
       console.error('Error updating contract:', error)
+      console.error('Update request data:', contractData) // Debug log
       throw error
     }
   },
@@ -67,16 +71,6 @@ export const contractService = {
     }
   },
 
-  // Get contract forms
-  async getContractForms() {
-    try {
-      const response = await api.get('/Contract/contract-forms')
-      return response.data
-    } catch (error) {
-      console.error('Error fetching contract forms:', error)
-      throw error
-    }
-  },
 
   // Get allowances
   async getAllowances() {

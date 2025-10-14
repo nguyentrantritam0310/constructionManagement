@@ -18,8 +18,7 @@ const formatDateForInput = (dateValue) => {
 }
 
 const formData = ref({
-    id: props.employee?.id ?? '',
-    employeeCode: props.employee?.employeeCode ?? '',
+    id: props.employee?.id ?? props.employee?.employeeCode ?? '', // Use ID as primary key
     lastName: props.employee?.lastName ?? '',
     firstName: props.employee?.firstName ?? '',
     birthday: formatDateForInput(props.employee?.birthday),
@@ -28,7 +27,7 @@ const formData = ref({
     email: props.employee?.email ?? '',
     gender: props.employee?.gender ?? '',
     roleID: props.employee?.roleID ?? '',
-    password: props.mode === 'create' ? '123456789' : '', // Default password for create mode
+    // password: generated automatically by backend
     status: props.mode === 'create' ? 0 : (props.employee?.status ?? 0) // Default to Active (0) for create mode
 })
 
@@ -37,8 +36,7 @@ watch(() => props.employee, (newEmployee) => {
     console.log('Employee prop changed:', newEmployee)
     if (newEmployee) {
         formData.value = {
-            id: newEmployee.id ?? '',
-            employeeCode: newEmployee.employeeCode ?? '',
+            id: newEmployee.id ?? newEmployee.employeeCode ?? '', // Use ID as primary key
             lastName: newEmployee.lastName ?? '',
             firstName: newEmployee.firstName ?? '',
             birthday: formatDateForInput(newEmployee.birthday),
@@ -47,7 +45,7 @@ watch(() => props.employee, (newEmployee) => {
             email: newEmployee.email ?? '',
             gender: newEmployee.gender ?? '',
             roleID: newEmployee.roleID ?? newEmployee.RoleID ?? '',
-            password: '',
+            // password: generated automatically by backend
             status: newEmployee.status ?? 0
         }
         console.log('Form data updated:', formData.value)
@@ -73,7 +71,7 @@ const roleOptions = computed(() => {
 
 const handleSubmit = () => {
     // Validate required fields
-    if (!formData.value.employeeCode || !formData.value.firstName || !formData.value.lastName || !formData.value.email || !formData.value.phone) {
+    if (!formData.value.id || !formData.value.firstName || !formData.value.lastName || !formData.value.email || !formData.value.phone) {
         alert('Vui lòng điền đầy đủ thông tin bắt buộc')
         return
     }
@@ -100,20 +98,23 @@ const handleClose = () => emit('close')
     <div class="form-card">
         <form @submit.prevent="handleSubmit">
             <div class="row g-4 mb-3">
-                <div class="col-md-4" v-if="mode === 'update'">
-                    <FormField label="ID hệ thống" type="text" v-model="formData.id" readonly />
-                </div>
                 <div class="col-md-4">
-                    <FormField label="Mã nhân viên" type="text" v-model="formData.employeeCode" required />
+                    <FormField 
+                        label="ID nhân viên" 
+                        type="text" 
+                        v-model="formData.id" 
+                        :readonly="mode === 'update'"
+                        required 
+                    />
                 </div>
                 <div class="col-md-4">
                     <FormField label="Họ và tên đệm" type="text" v-model="formData.lastName" required />
                 </div>
-            </div>
-            <div class="row g-4 mb-3">
                 <div class="col-md-4">
                     <FormField label="Tên nhân viên" type="text" v-model="formData.firstName" required />
                 </div>
+            </div>
+            <div class="row g-4 mb-3">
                 <div class="col-md-4">
                     <FormField label="Ngày sinh" type="date" v-model="formData.birthday" required />
                 </div>
@@ -147,9 +148,6 @@ const handleClose = () => emit('close')
             </div>
             <div class="row g-4 mb-3" v-if="mode === 'update'">
                 <div class="col-md-6">
-                    <FormField label="Mật khẩu mới (để trống nếu không muốn thay đổi)" type="password" v-model="formData.password" />
-                </div>
-                <div class="col-md-6">
                     <label class="form-label">Trạng thái</label>
                     <select class="form-select" v-model="formData.status">
                         <option value="0" :selected="formData.status == 0">Đang làm việc</option>
@@ -160,18 +158,18 @@ const handleClose = () => emit('close')
             </div>
             <div class="row g-4 mb-3" v-if="mode === 'create'">
                 <div class="col-md-6">
-                    <label class="form-label">Mật khẩu</label>
-                    <div class="form-control bg-light" style="padding: 0.375rem 0.75rem; border: 1px solid #ced4da;">
-                        <small class="text-muted">Mật khẩu mặc định: 123456789</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
                     <label class="form-label">Trạng thái</label>
                     <select class="form-select" v-model="formData.status">
                         <option value="0" :selected="formData.status == 0">Đang làm việc</option>
                         <option value="1" :selected="formData.status == 1">Nghỉ việc</option>
                         <option value="2" :selected="formData.status == 2">Nghỉ thai sản</option>
                     </select>
+                </div>
+                <div class="col-md-6">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Lưu ý:</strong> Mật khẩu sẽ được tạo tự động và gửi qua email cho nhân viên.
+                    </div>
                 </div>
             </div>
             <div class="d-flex justify-content-end gap-2 mt-4">

@@ -69,6 +69,25 @@ export const employeeService = {
     }
   },
 
+  // Update employee status
+  async updateEmployeeStatus(employeeId, status) {
+    try {
+      // Convert string status to enum value
+      const statusMap = {
+        'Active': 0,
+        'Resigned': 1,
+        'MaternityLeave': 2
+      }
+      
+      const statusValue = statusMap[status] !== undefined ? statusMap[status] : status
+      const response = await api.put(`/ApplicationUser/employee/${employeeId}/status`, { status: statusValue })
+      return response.data
+    } catch (error) {
+      console.error('Error updating employee status:', error)
+      throw error
+    }
+  },
+
   // Get all users (legacy method)
   async getAll() {
     console.log('Calling API: /ApplicationUser')

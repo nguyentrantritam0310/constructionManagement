@@ -30,7 +30,8 @@ defineProps({
           <template v-for="column in columns" :key="column.key">
             <td>
               <slot :name="column.key" :item="item">
-                {{ item[column.key] }}
+                <span v-if="column.key === 'employeeName'" v-html="item[column.key]"></span>
+                <span v-else>{{ item[column.key] }}</span>
               </slot>
             </td>
           </template>

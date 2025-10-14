@@ -5,6 +5,11 @@ import Pagination from '../../components/common/Pagination.vue'
 import { usePayrollAdjustment } from '../../composables/usePayrollAdjustment'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import AdjustmentForm from '@/components/common/adjustment/AdjustmentForm.vue'
+import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
+import ActionButton from '@/components/common/ActionButton.vue'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import * as XLSX from 'xlsx'
 
 const {
   payrollAdjustments,
@@ -35,6 +40,8 @@ const adjustmentColumns = [
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
 const selectedItem = ref(null)
+const showFilter = ref(false)
+const showImportModal = ref(false)
 
 const adjustmentData = computed(() => {
   return payrollAdjustments.value.map(request => ({
@@ -93,15 +100,313 @@ const paginatedAdjustmentData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
   return adjustmentData.value.slice(start, start + itemsPerPage.value)
 })
+
+// Excel import functions
+const file = ref(null)
+
+const handleFileUpload = (event) => {
+  const target = event.target
+  if (target && target.files) {
+    file.value = target.files[0]
+  }
+}
+
+const downloadExcelTemplate = async () => {
+  const workbook = new ExcelJS.Workbook()
+
+  // --- Sheet 1: Dữ liệu nhập ---
+  const dataSheet = workbook.addWorksheet('Dữ liệu nhập')
+  const headers = [
+    { header: 'Số phiếu', key: 'voucherNo', width: 20 },
+    { header: 'Ngày quyết định', key: 'decisionDate', width: 20 },
+    { header: 'Tháng', key: 'month', width: 15 },
+    { header: 'Năm', key: 'year', width: 15 },
+    { header: 'ID Khoản cộng trừ', key: 'adjustmentTypeID', width: 20 },
+    { header: 'ID Hạng mục', key: 'adjustmentItemID', width: 20 },
+    { header: 'Lý do', key: 'reason', width: 30 },
+  ]
+  dataSheet.columns = headers
+
+  // Style header
+  dataSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  })
+
+  // Add example row
+  dataSheet.addRow({
+    voucherNo: 'PC001',
+    decisionDate: '2025-01-15',
+    month: '1',
+    year: '2025',
+    adjustmentTypeID: '1',
+    adjustmentItemID: '1',
+    reason: 'Hoàn thành dự án đúng hạn'
+  })
+
+  // --- Sheet 2: Danh sách nhân viên ---
+  const employeeSheet = workbook.addWorksheet('Danh sách nhân viên')
+  const employeeHeaders = [
+    { header: 'Mã nhân viên', key: 'employeeCode', width: 20 },
+    { header: 'Họ tên', key: 'fullName', width: 30 },
+    { header: 'Giá trị', key: 'value', width: 15 },
+  ]
+  employeeSheet.columns = employeeHeaders
+
+  // Style header
+  employeeSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  })
+
+  // Add example employees
+  employeeSheet.addRows([
+    { employeeCode: 'EMP001', fullName: 'Nguyễn Văn A', value: '500000' },
+    { employeeCode: 'EMP002', fullName: 'Trần Thị B', value: '300000' },
+    { employeeCode: 'EMP003', fullName: 'Lê Văn C', value: '400000' },
+  ])
+
+  // --- Sheet 3: Khoản cộng trừ ---
+  const adjustmentTypeSheet = workbook.addWorksheet('Khoản cộng trừ')
+  const adjustmentTypeHeaders = [
+    { header: 'ID', key: 'id', width: 10 },
+    { header: 'Tên khoản cộng trừ', key: 'name', width: 30 },
+  ]
+  adjustmentTypeSheet.columns = adjustmentTypeHeaders
+
+  // Style header
+  adjustmentTypeSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  })
+
+  // Add example adjustment types
+  adjustmentTypeSheet.addRows([
+    { id: '1', name: 'Thưởng' },
+    { id: '2', name: 'Phạt' },
+    { id: '3', name: 'Phụ cấp' },
+    { id: '4', name: 'Khấu trừ' },
+  ])
+
+  // --- Sheet 4: Hạng mục ---
+  const adjustmentItemSheet = workbook.addWorksheet('Hạng mục')
+  const adjustmentItemHeaders = [
+    { header: 'ID', key: 'id', width: 10 },
+    { header: 'Tên hạng mục', key: 'name', width: 30 },
+  ]
+  adjustmentItemSheet.columns = adjustmentItemHeaders
+
+  // Style header
+  adjustmentItemSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  })
+
+  // Add example adjustment items
+  adjustmentItemSheet.addRows([
+    { id: '1', name: 'Thưởng dự án' },
+    { id: '2', name: 'Thưởng hiệu suất' },
+    { id: '3', name: 'Phạt đi muộn' },
+    { id: '4', name: 'Phụ cấp ăn trưa' },
+  ])
+
+  // --- Sheet 5: Hướng dẫn ---
+  const instructionSheet = workbook.addWorksheet('Hướng dẫn')
+  instructionSheet.columns = [
+    { header: 'Tên cột', key: 'column', width: 30 },
+    { header: 'Mô tả', key: 'description', width: 50 },
+    { header: 'Bắt buộc', key: 'required', width: 15 },
+    { header: 'Ví dụ', key: 'example', width: 30 },
+  ]
+
+  // Style header for instruction sheet
+  instructionSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } }
+  })
+
+  // Add instruction data
+  instructionSheet.addRows([
+    { column: 'Số phiếu', description: 'Mã số phiếu khoản cộng trừ.', required: 'Có', example: 'PC001' },
+    { column: 'Ngày quyết định', description: 'Ngày ra quyết định (định dạng: YYYY-MM-DD).', required: 'Có', example: '2025-01-15' },
+    { column: 'Tháng', description: 'Tháng áp dụng (1-12).', required: 'Có', example: '1' },
+    { column: 'Năm', description: 'Năm áp dụng.', required: 'Có', example: '2025' },
+    { column: 'ID Khoản cộng trừ', description: 'ID của khoản cộng trừ (tra cứu trong sheet "Khoản cộng trừ").', required: 'Có', example: '1' },
+    { column: 'ID Hạng mục', description: 'ID của hạng mục (tra cứu trong sheet "Hạng mục").', required: 'Có', example: '1' },
+    { column: 'Lý do', description: 'Lý do áp dụng khoản cộng trừ.', required: 'Có', example: 'Hoàn thành dự án đúng hạn' },
+    { column: '', description: '', required: '', example: '' },
+    { column: 'Danh sách nhân viên', description: 'Sheet "Danh sách nhân viên" chứa thông tin nhân viên và giá trị tương ứng.', required: '', example: '' },
+    { column: 'Khoản cộng trừ', description: 'Sheet "Khoản cộng trừ" chứa danh sách các loại khoản cộng trừ.', required: '', example: '' },
+    { column: 'Hạng mục', description: 'Sheet "Hạng mục" chứa danh sách các hạng mục chi tiết.', required: '', example: '' },
+  ])
+
+  // Auto-fit columns for instruction sheet
+  instructionSheet.columns.forEach(column => {
+    let maxLength = 0
+    column.eachCell({ includeEmpty: true }, cell => {
+      const val = cell.value ? cell.value.toString() : ''
+      maxLength = Math.max(maxLength, val.length)
+    })
+    column.width = Math.max(column.width, maxLength + 2)
+  })
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Mau_Nhap_Khoan_Cong_Tru.xlsx')
+}
+
+const processImport = () => {
+  if (!file.value) {
+    alert('Vui lòng chọn một file Excel.')
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    try {
+      const data = new Uint8Array(e.target.result)
+      const workbook = XLSX.read(data, { type: 'array' })
+      
+      // Process main data sheet
+      const dataSheetName = workbook.SheetNames.find(name => name.includes('Dữ liệu nhập')) || workbook.SheetNames[0]
+      const dataWorksheet = workbook.Sheets[dataSheetName]
+      const adjustmentData = XLSX.utils.sheet_to_json(dataWorksheet)
+
+      // Process employee sheet
+      const employeeSheetName = workbook.SheetNames.find(name => name.includes('Danh sách nhân viên'))
+      let employeeData = []
+      if (employeeSheetName) {
+        const employeeWorksheet = workbook.Sheets[employeeSheetName]
+        employeeData = XLSX.utils.sheet_to_json(employeeWorksheet)
+      }
+
+      if (adjustmentData.length === 0) {
+        alert('File Excel không có dữ liệu khoản cộng trừ.')
+        return
+      }
+
+      if (employeeData.length === 0) {
+        alert('File Excel không có dữ liệu nhân viên.')
+        return
+      }
+
+      const adjustmentsToCreate = adjustmentData.map(row => ({
+        voucherNo: row['Số phiếu'],
+        decisionDate: row['Ngày quyết định'],
+        month: row['Tháng'],
+        year: row['Năm'],
+        adjustmentTypeID: row['ID Khoản cộng trừ'],
+        adjustmentItemID: row['ID Hạng mục'],
+        reason: row['Lý do'],
+        employees: employeeData.map(emp => ({
+          employeeCode: emp['Mã nhân viên'],
+          fullName: emp['Họ tên'],
+          value: emp['Giá trị']
+        }))
+      })).filter(adj => adj.voucherNo && adj.decisionDate && adj.month && adj.year && adj.adjustmentTypeID && adj.adjustmentItemID && adj.reason)
+
+      if (adjustmentsToCreate.length === 0) {
+        alert('Không tìm thấy dữ liệu hợp lệ trong file.')
+        return
+      }
+
+      // Create adjustments with employees
+      for (const adjustment of adjustmentsToCreate) {
+        await createPayrollAdjustment(adjustment)
+      }
+
+      alert(`Đã nhập thành công ${adjustmentsToCreate.length} khoản cộng trừ với ${employeeData.length} nhân viên.`)
+      file.value = null
+      showImportModal.value = false
+    } catch (error) {
+      console.error('Lỗi khi xử lý file Excel:', error)
+      alert('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.')
+    }
+  }
+  reader.readAsArrayBuffer(file.value)
+}
+
+// Excel export function
+const exportToExcel = async (type) => {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('PayrollAdjustments')
+
+  // Thêm header
+  worksheet.columns = adjustmentColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+
+  // Thêm dữ liệu
+  adjustmentData.value.forEach((row, index) => {
+    worksheet.addRow(row)
+  })
+
+  // Style header
+  worksheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
+    }
+  })
+
+  // Style dữ liệu
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    row.eachCell(cell => {
+      if (rowNumber !== 1) { // skip header
+        cell.alignment = { vertical: 'middle', horizontal: 'center' }
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        }
+      }
+    })
+  })
+
+  // Auto-fit chiều ngang cho từng cột
+  worksheet.columns.forEach(column => {
+    let maxLength = 0
+    column.eachCell({ includeEmpty: true }, cell => {
+      const val = cell.value ? cell.value.toString() : ''
+      maxLength = Math.max(maxLength, val.length)
+    })
+    column.width = maxLength + 2 // padding để text không sát
+  })
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'PayrollAdjustments.xlsx')
+}
 </script>
 
 <template>
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="adjustment-title mb-0">Danh sách khoản cộng trừ</h4>
-      <button class="btn btn-primary" style="min-width:120px" @click="showCreateForm = true">
-        <i class="fas fa-plus me-2"></i>Thêm
-      </button>
+      <div class="d-flex gap-2">
+        <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateForm = true">
+          Thêm
+        </ActionButton>
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+          Lọc
+        </ActionButton>
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('adjustment')">
+          Xuất Excel
+        </ActionButton>
+        <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
+          Nhập Excel
+        </ActionButton>
+      </div>
     <ModalDialog v-model:show="showCreateForm" title="Thêm khoản cộng trừ" size="lg">
       <AdjustmentForm mode="create" @submit="handleCreate" @close="showCreateForm = false" />
     </ModalDialog>
@@ -112,23 +417,23 @@ const paginatedAdjustmentData = computed(() => {
     <div class="table-responsive adjustment-table">
       <DataTable :columns="adjustmentColumns" :data="paginatedAdjustmentData">
         <template #actions="{ item }">
-          <button class="table-action-btn" title="Xem chi tiết">
-            <i class="fas fa-eye"></i>
-          </button>
-          <button class="table-action-btn" title="Sửa" @click="openUpdateForm(item.voucherNo)">
-            <i class="fas fa-edit"></i>
-          </button>
-          <button class="table-action-btn delete" title="Xóa" @click="handleDelete(item.voucherNo)">
-            <i class="fas fa-trash"></i>
-          </button>
+          <div class="d-flex justify-content-start gap-2">
+            <ActionButton 
+              type="success" 
+              icon="fas fa-edit" 
+              title="Sửa" 
+              @click="openUpdateForm(item.voucherNo)" 
+            />
+            <ActionButton 
+              type="danger" 
+              icon="fas fa-trash" 
+              title="Xóa" 
+              @click="handleDelete(item.voucherNo)" 
+            />
+          </div>
         </template>
-        <template #status="{ item }">
-          <span :class="[
-            'status-badge',
-            item.approveStatus === 'Đã duyệt' ? 'approved' : item.approveStatus === 'Chờ duyệt' ? 'pending' : 'rejected'
-          ]">
-            {{ item.approveStatus }}
-          </span>
+        <template #approveStatus="{ item }">
+          <ApprovalStatusLabel :status="item.approveStatus" />
         </template>
       </DataTable>
     </div>
@@ -138,6 +443,38 @@ const paginatedAdjustmentData = computed(() => {
       :currentPage="currentPage"
       @update:currentPage="currentPage = $event"
     />
+
+    <!-- Import Excel Modal -->
+    <ModalDialog v-model:show="showImportModal" title="Nhập khoản cộng trừ từ Excel" size="lg">
+      <div class="p-4">
+        <div class="alert alert-info">
+          <h6><i class="fas fa-info-circle me-2"></i>Hướng dẫn nhập Excel</h6>
+          <p class="mb-2">File Excel bao gồm các sheet sau:</p>
+          <ul class="mb-0">
+            <li><strong>Dữ liệu nhập:</strong> Thông tin khoản cộng trừ (sử dụng ID thay vì tên)</li>
+            <li><strong>Danh sách nhân viên:</strong> Mã nhân viên, họ tên và giá trị tương ứng</li>
+            <li><strong>Khoản cộng trừ:</strong> Tra cứu ID của các loại khoản cộng trừ</li>
+            <li><strong>Hạng mục:</strong> Tra cứu ID của các hạng mục chi tiết</li>
+            <li><strong>Hướng dẫn:</strong> Chi tiết về cách điền dữ liệu</li>
+          </ul>
+        </div>
+        
+        <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
+          Tải file mẫu
+        </ActionButton>
+
+        <hr class="my-4">
+
+        <h5>Tải lên file đã điền</h5>
+        <div class="input-group">
+          <input type="file" class="form-control" @change="handleFileUpload" accept=".xlsx, .xls">
+          <button class="btn btn-primary" @click="processImport" :disabled="!file">
+            <i class="fas fa-upload me-2"></i>
+            Xử lý
+          </button>
+        </div>
+      </div>
+    </ModalDialog>
   </div>
 </template>
 
@@ -174,40 +511,6 @@ const paginatedAdjustmentData = computed(() => {
 }
 .table tr:hover {
   background: #f0f6ff;
-}
-.table-action-btn {
-  background: none;
-  border: none;
-  color: #0d6efd;
-  font-size: 1.15rem;
-  padding: 4px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.18s, color 0.18s;
-}
-.table-action-btn.delete {
-  color: #ff6b6b;
-}
-.table-action-btn:hover {
-  background: #e9ecef;
-}
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 1rem;
-  color: #fff;
-}
-.status-badge.approved {
-  background: #28a745;
-}
-.status-badge.pending {
-  background: #ffc107;
-  color: #222;
-}
-.status-badge.rejected {
-  background: #ff6b6b;
 }
 </style>
 

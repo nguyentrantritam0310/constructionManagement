@@ -19,6 +19,10 @@ defineProps({
   customZIndex: {
     type: [String, Number],
     default: null
+  },
+  closable: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -29,7 +33,7 @@ const emit = defineEmits(['update:show'])
   <Teleport to="body">
     <!-- Backdrop -->
     <div v-if="show" class="modal-backdrop fade show" :style="customZIndex ? { zIndex: customZIndex - 1 } : {}"
-      @click="$emit('update:show', false)"></div>
+      @click="closable ? $emit('update:show', false) : null"></div>
 
     <!-- Modal -->
     <div v-if="show" class="modal fade show" :style="customZIndex ? { zIndex: customZIndex } : {}"
@@ -42,7 +46,7 @@ const emit = defineEmits(['update:show'])
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">{{ title }}</h5>
-            <button type="button" class="btn-close" @click="$emit('update:show', false)"></button>
+            <button v-if="closable" type="button" class="btn-close" @click="$emit('update:show', false)"></button>
           </div>
           <div class="modal-body">
             <slot></slot>

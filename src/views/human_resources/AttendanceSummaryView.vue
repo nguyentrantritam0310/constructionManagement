@@ -126,8 +126,26 @@ const deleteWorkHistory = ref([
     location: 'Máy quét: Importfile'
   }
 ])
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import TabBar from '../../components/common/TabBar.vue'
+import TimeFilter from '../../components/common/TimeFilter.vue'
+import { attendanceDataService } from '../../services/attendanceDataService'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import { useEmployee } from '../../composables/useEmployee'
+import { useAttendance } from '../../composables/useAttendance'
+import { useWorkShift } from '../../composables/useWorkShift'
+
+const { showMessage } = useGlobalMessage()
+
+// Initialize composables
+const { employees: allEmployees, fetchAllEmployees } = useEmployee()
+const { attendanceList, fetchAttendance } = useAttendance()
+const { workshifts, fetchWorkShifts } = useWorkShift()
+
+// Components
+const components = {
+  TimeFilter
+}
 
 const activeTab = ref('summary')
 const showMoreTabs = ref(false) // Control visibility of the "More" dropdown
@@ -140,6 +158,14 @@ const tabs = [
   { key: 'closeHistory', label: 'Lịch sử chốt công', icon: 'fas fa-history' },
   { key: 'feedbackHistory', label: 'Lịch sử phản ánh', icon: 'fas fa-comment-dots' }
 ]
+
+// Time filter controls for all tabs
+const currentMonth = ref(new Date())
+const selectedStartDate = ref('')
+const selectedEndDate = ref('')
+const selectedWeek = ref('')
+const selectedYear = ref(new Date().getFullYear())
+const selectedMonth = ref(new Date().getMonth() + 1)
 
 // Limit the number of visible tabs
 const visibleTabsCount = 6
@@ -460,8 +486,8 @@ const detailColumns = [
   { key: 'name', label: 'Tên nhân viên' },
   { key: 'shift', label: 'Ca làm việc' },
   { key: 'date', label: 'Ngày làm' },
-  { key: 'in', label: 'Giờ vào' },
-  { key: 'out', label: 'Giờ ra' },
+  { key: 'checkInTime', label: 'Giờ vào' },
+  { key: 'checkOutTime', label: 'Giờ ra' },
   { key: 'type', label: 'Loại công' },
   { key: 'hours', label: 'Số giờ' },
   { key: 'days', label: 'Số ngày' },
@@ -469,65 +495,112 @@ const detailColumns = [
   { key: 'early', label: 'Về sớm (phút)' }
 ];
 
-// Dữ liệu mẫu cho bảng công chi tiết
-const detailData = [
-  {
-    stt: 1,
-    id: 'NV0001',
-    name: 'Vũ Thị Hợp',
-    shift: 'Ca hành chính (08:30-17:30)',
-    date: '01/09/2025',
-    in: '08:30',
-    out: '17:30',
-    type: 'Đi làm',
-    hours: 8,
-    days: 1,
-    late: 0,
-    early: 0
-  },
-  {
-    stt: 2,
-    id: 'NV0002',
-    name: 'Trần Nha Trang',
-    shift: 'Ca hành chính (08:30-17:30)',
-    date: '01/09/2025',
-    in: '08:45',
-    out: '17:30',
-    type: 'Đi làm',
-    hours: 7.75,
-    days: 1,
-    late: 15,
-    early: 0
-  },
-  {
-    stt: 3,
-    id: 'NV0224',
-    name: 'Nguyễn Thạc Hùng',
-    shift: 'Ca hành chính (08:30-17:30)',
-    date: '01/09/2025',
-    in: '08:30',
-    out: '17:00',
-    type: 'Nghỉ phép',
-    hours: 7.5,
-    days: 0.5,
-    late: 0,
-    early: 30
-  },
-  {
-    stt: 4,
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    shift: 'Ca hành chính (08:30-17:30)',
-    date: '01/09/2025',
-    in: '08:30',
-    out: '17:30',
-    type: 'Làm việc từ xa',
-    hours: 8,
-    days: 1,
-    late: 0,
-    early: 0
+// Real detail data from API
+const detailData = ref([])
+const detailLoading = ref(false)
+const detailError = ref(null)
+
+// Work shift data from API
+const workShifts = ref([])
+const workShiftLoading = ref(false)
+
+// Function to calculate work hours, days, late and early minutes
+const calculateWorkDetails = (checkInTime, checkOutTime, shiftName) => {
+  if (!checkInTime || !checkOutTime) {
+    return { hours: 0, days: 0, late: 0, early: 0 }
   }
-];
+
+  // Find work shift data from API
+  const workShift = workShifts.value.find(shift => 
+    shift.shiftName.toLowerCase().includes(shiftName.toLowerCase()) ||
+    shiftName.toLowerCase().includes(shift.shiftName.toLowerCase())
+  )
+
+  if (!workShift || !workShift.shiftDetails || workShift.shiftDetails.length === 0) {
+    return { hours: 0, days: 0, late: 0, early: 0 }
+  }
+
+  const shiftStartTime = shiftMatch[1] // e.g., "08:30"
+  const shiftEndTime = shiftMatch[2]   // e.g., "17:30"
+
+  // Convert time strings to minutes since midnight
+  const timeToMinutes = (timeStr) => {
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    return hours * 60 + minutes
+  }
+
+  const checkInMinutes = timeToMinutes(checkInTime)
+  const checkOutMinutes = timeToMinutes(checkOutTime)
+  const shiftStartMinutes = timeToMinutes(shiftStartTime)
+  const shiftEndMinutes = timeToMinutes(shiftEndTime)
+
+  // Calculate total time from check-in to check-out
+  const totalMinutes = checkOutMinutes - checkInMinutes
+
+  // Calculate break time (lunch break)
+  // Default break time: 12:00-13:00 (60 minutes)
+  // This can be customized based on shift type
+  let breakStartTime = '12:00'
+  let breakEndTime = '13:00'
+  
+  // Customize break time based on shift type
+  if (shiftName.includes('hành chính') || shiftName.includes('08:30')) {
+    // Office hours: 12:00-13:00
+    breakStartTime = '12:00'
+    breakEndTime = '13:00'
+  } else if (shiftName.includes('ca đêm') || shiftName.includes('night')) {
+    // Night shift: no lunch break or different break time
+    breakStartTime = '00:00'
+    breakEndTime = '00:00'
+  } else if (shiftName.includes('ca sáng') || shiftName.includes('morning')) {
+    // Morning shift: 11:30-12:30
+    breakStartTime = '11:30'
+    breakEndTime = '12:30'
+  }
+  
+  // Check if break time overlaps with work time
+  const breakStartMinutes = timeToMinutes(breakStartTime)
+  const breakEndMinutes = timeToMinutes(breakEndTime)
+  
+  // Calculate actual break time that overlaps with work time
+  const breakOverlapStart = Math.max(checkInMinutes, breakStartMinutes)
+  const breakOverlapEnd = Math.min(checkOutMinutes, breakEndMinutes)
+  const actualBreakMinutes = Math.max(0, breakOverlapEnd - breakOverlapStart)
+
+  // Calculate actual work hours (total time minus break time)
+  const workMinutes = totalMinutes - actualBreakMinutes
+  const workHours = Math.round((workMinutes / 60) * 100) / 100
+
+  // Calculate work days (assuming 8 hours = 1 day)
+  const workDays = Math.round((workHours / 8) * 100) / 100
+
+  // Calculate late minutes (if check-in is after shift start)
+  const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes)
+
+  // Calculate early minutes (if check-out is before shift end)
+  const earlyMinutes = Math.max(0, shiftEndMinutes - checkOutMinutes)
+
+  return {
+    hours: workHours,
+    days: workDays,
+    late: lateMinutes,
+    early: earlyMinutes
+  }
+}
+
+// Process detail data to include calculated values
+const processedDetailData = computed(() => {
+  return detailData.value.map(item => {
+    const calculated = calculateWorkDetails(item.checkInTime, item.checkOutTime, item.shift)
+    return {
+      ...item,
+      hours: calculated.hours,
+      days: calculated.days,
+      late: calculated.late,
+      early: calculated.early
+    }
+  })
+})
 const attendanceDataColumns = [
   { key: 'stt', label: 'STT' },
   { key: 'avatar', label: 'Ảnh chấm công' },
@@ -536,66 +609,101 @@ const attendanceDataColumns = [
   { key: 'shift', label: 'Ca làm việc' },
   { key: 'date', label: 'Ngày làm' },
   { key: 'scanTime', label: 'Giờ quét' },
-  { key: 'inout', label: 'Vào/ra' },
   { key: 'machine', label: 'Máy chấm công' },
   { key: 'location', label: 'Vị trí' },
   { key: 'type', label: 'Loại công' }
 ];
 
-const attendanceData = [
-  {
-    stt: 1,
-    avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
-    id: 'NV0001',
-    name: 'Vũ Thị Hợp',
-    shift: 'Ca hành chính (08:30-17:30)',
-    date: '01/09/2025',
-    scanTime: '08:30',
-    inout: 'Vào',
-    machine: 'Máy quét 01',
-    location: 'Văn phòng Hà Nội',
-    type: 'Đi làm'
-  },
-  {
-    stt: 2,
-    avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
-    id: 'NV0002',
-    name: 'Trần Nha Trang',
-    shift: 'Ca hành chính (08:30-17:30)',
-    date: '01/09/2025',
-    scanTime: '17:30',
-    inout: 'Ra',
-    machine: 'Máy quét 01',
-    location: 'Văn phòng Hà Nội',
-    type: 'Đi làm'
-  },
-  {
-    stt: 3,
-    avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
-    id: 'NV0224',
-    name: 'Nguyễn Thạc Hùng',
-    shift: 'Ca hành chính (08:30-17:30)',
-    date: '01/09/2025',
-    scanTime: '08:30',
-    inout: 'Vào',
-    machine: 'Máy quét 02',
-    location: 'Văn phòng HCM',
-    type: 'Nghỉ phép'
-  },
-  {
-    stt: 4,
-    avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    shift: 'Ca hành chính (08:30-17:30)',
-    date: '01/09/2025',
-    scanTime: '08:30',
-    inout: 'Vào',
-    machine: 'Máy quét 03',
-    location: 'Văn phòng Đà Nẵng',
-    type: 'Làm việc từ xa'
+// Real attendance data from API
+const attendanceData = ref([])
+const attendanceLoading = ref(false)
+const attendanceError = ref(null)
+
+// Load attendance data from API
+const loadAttendanceData = async () => {
+  attendanceLoading.value = true
+  attendanceError.value = null
+  
+  try {
+    let data
+    
+    // Check if week filter is selected
+    if (selectedWeek.value) {
+      data = await attendanceDataService.getAttendanceDataByWeek(selectedWeek.value)
+    }
+    // Check if date range is selected
+    else if (selectedStartDate.value && selectedEndDate.value) {
+      data = await attendanceDataService.getAttendanceDataByDateRange(selectedStartDate.value, selectedEndDate.value)
+    } else {
+      // Default to current month
+      data = await attendanceDataService.getAttendanceDataByMonth(selectedYear.value, selectedMonth.value)
+    }
+    
+    // Transform data to match the expected format
+    const transformedData = []
+    
+    data.forEach(item => {
+      // Tạo dòng cho giờ vào nếu có
+      if (item.checkInTime) {
+        transformedData.push({
+          stt: item.stt,
+          avatar: item.imageCheckIn || 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
+          id: item.employeeCode,
+          name: item.employeeName,
+          shift: item.shiftName,
+          date: new Date(item.workDate).toLocaleDateString('vi-VN'),
+          scanTime: item.checkInTime.toString().substring(0, 5),
+          machine: item.machineName,
+          location: item.location,
+          type: 'Vào'
+        })
+      }
+      
+      // Tạo dòng cho giờ ra nếu có
+      if (item.checkOutTime) {
+        transformedData.push({
+          stt: item.stt,
+          avatar: item.imageCheckOut || 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
+          id: item.employeeCode,
+          name: item.employeeName,
+          shift: item.shiftName,
+          date: new Date(item.workDate).toLocaleDateString('vi-VN'),
+          scanTime: item.checkOutTime.toString().substring(0, 5),
+          machine: item.machineName,
+          location: item.location,
+          type: 'Ra'
+        })
+      }
+    })
+    
+    attendanceData.value = transformedData
+    
+    console.log('Attendance data loaded:', attendanceData.value)
+  } catch (error) {
+    console.error('Error loading attendance data:', error)
+    attendanceError.value = error.message || 'Lỗi khi tải dữ liệu chấm công'
+  } finally {
+    attendanceLoading.value = false
   }
-];
+}
+
+// Helper function to get attendance type based on status
+const getAttendanceType = (status) => {
+  switch (status) {
+    case 'Present':
+      return 'Đi làm'
+    case 'Absent':
+      return 'Vắng mặt'
+    case 'Late':
+      return 'Đi trễ'
+    case 'EarlyLeave':
+      return 'Về sớm'
+    case 'Remote':
+      return 'Làm việc từ xa'
+    default:
+      return 'Chưa xác định'
+  }
+}
 const closeHistoryColumns = [
   { key: 'stt', label: 'STT' },
   { key: 'closeDate', label: 'Ngày chốt công' },
@@ -668,14 +776,113 @@ const detailCurrentPage = ref(1)
 const detailItemsPerPage = ref(10)
 const paginatedDetailData = computed(() => {
   const start = (detailCurrentPage.value - 1) * detailItemsPerPage.value
-  return detailData.slice(start, start + detailItemsPerPage.value)
+  return processedDetailData.value.slice(start, start + detailItemsPerPage.value)
 })
 
 const attendanceCurrentPage = ref(1)
 const attendanceItemsPerPage = ref(10)
 const paginatedAttendanceData = computed(() => {
   const start = (attendanceCurrentPage.value - 1) * attendanceItemsPerPage.value
-  return attendanceData.slice(start, start + attendanceItemsPerPage.value)
+  return attendanceData.value.slice(start, start + attendanceItemsPerPage.value)
+})
+
+// Time filter functions
+const handleDateRangeChanged = (dateRange) => {
+  if (dateRange.startDate && dateRange.endDate) {
+    selectedStartDate.value = dateRange.startDate
+    selectedEndDate.value = dateRange.endDate
+    selectedWeek.value = '' // Clear week filter when using date range
+    loadAttendanceData()
+    loadDetailData()
+  } else if (!dateRange.startDate && !dateRange.endDate) {
+    // Clear date range, use month filter
+    selectedStartDate.value = ''
+    selectedEndDate.value = ''
+    loadAttendanceData()
+    loadDetailData()
+  }
+}
+
+const handleWeekChanged = (weekData) => {
+  if (weekData.week) {
+    selectedWeek.value = weekData.week
+    selectedStartDate.value = '' // Clear date range when using week filter
+    selectedEndDate.value = ''
+    loadAttendanceData()
+    loadDetailData()
+  } else {
+    selectedWeek.value = ''
+    loadAttendanceData()
+    loadDetailData()
+  }
+}
+
+// Watch for changes in year/month filters
+watch([selectedYear, selectedMonth], () => {
+  if (activeTab.value === 'attendance') {
+    selectedWeek.value = '' // Clear week filter when changing month
+    loadAttendanceData()
+  }
+  if (activeTab.value === 'detail') {
+    selectedWeek.value = '' // Clear week filter when changing month
+    loadDetailData()
+  }
+})
+
+// Load detail data from API
+const loadDetailData = async () => {
+  detailLoading.value = true
+  detailError.value = null
+  
+  try {
+    let data
+    
+    // Check if week filter is selected
+    if (selectedWeek.value) {
+      data = await attendanceDataService.getAttendanceDataByWeek(selectedWeek.value)
+    }
+    // Check if date range is selected
+    else if (selectedStartDate.value && selectedEndDate.value) {
+      data = await attendanceDataService.getAttendanceDataByDateRange(selectedStartDate.value, selectedEndDate.value)
+    } else {
+      // Default to current month
+      data = await attendanceDataService.getAttendanceDataByMonth(selectedYear.value, selectedMonth.value)
+    }
+    
+    // Transform data to match the expected format for detail view
+    const transformedData = []
+    
+    data.forEach((item, index) => {
+      // Only include records that have both check-in and check-out times
+      if (item.checkInTime && item.checkOutTime) {
+        transformedData.push({
+          stt: index + 1,
+          id: item.employeeCode,
+          name: item.employeeName,
+          shift: item.shiftName,
+          date: new Date(item.workDate).toLocaleDateString('vi-VN'),
+          checkInTime: item.checkInTime.toString().substring(0, 5),
+          checkOutTime: item.checkOutTime.toString().substring(0, 5),
+          type: getAttendanceType(item.status)
+        })
+      }
+    })
+    
+    detailData.value = transformedData
+    
+    console.log('Detail data loaded:', detailData.value)
+  } catch (error) {
+    console.error('Error loading detail data:', error)
+    detailError.value = error.message || 'Lỗi khi tải dữ liệu công chi tiết'
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+// Load attendance data on component mount
+onMounted(() => {
+  loadAttendanceData()
+  loadDetailData()
 })
 
 const closeHistoryCurrentPage = ref(1)
@@ -726,6 +933,14 @@ const paginatedFeedbackData = computed(() => {
     <div class="card shadow-sm">
       <div class="card-body">
         <div v-if="activeTab === 'summary'">
+          <!-- Time Filter for Summary Tab -->
+          <TimeFilter
+            v-model:year="selectedYear"
+            v-model:month="selectedMonth"
+            :show-date-range="false"
+            :show-refresh-button="false"
+          />
+          
           <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center legend-row">
             <span class="legend-item" style="background:#28a745"></span> Đi làm
             <span class="legend-item" style="background:#ff6b6b"></span> Nghỉ phép
@@ -913,6 +1128,14 @@ const paginatedFeedbackData = computed(() => {
           </div>
         </div>
                 <div v-else-if="activeTab === 'overtime'">
+          <!-- Time Filter for Overtime Tab -->
+          <TimeFilter
+            v-model:year="selectedYear"
+            v-model:month="selectedMonth"
+            :show-date-range="false"
+            :show-refresh-button="false"
+          />
+          
           <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center legend-row mb-2">
             <span class="legend-item" style="background:#2196f3"></span> Tăng ca nghỉ bù
             <span class="legend-item" style="background:#28a745"></span> Tăng ca tính lương
@@ -978,7 +1201,50 @@ const paginatedFeedbackData = computed(() => {
         </ModalDialog>
         </div>
         <div v-else-if="activeTab === 'detail'">
-          <div class="attendance-summary-table">
+          <!-- Time Filter for Detail Tab -->
+          <TimeFilter
+            v-model:year="selectedYear"
+            v-model:month="selectedMonth"
+            v-model:week="selectedWeek"
+            v-model:start-date="selectedStartDate"
+            v-model:end-date="selectedEndDate"
+            :show-week-filter="true"
+            :show-date-range="true"
+            :show-refresh-button="true"
+            :loading="detailLoading"
+            @refresh="loadDetailData"
+            @week-changed="handleWeekChanged"
+            @date-range-changed="handleDateRangeChanged"
+          />
+          
+          <!-- Loading State -->
+          <div v-if="detailLoading" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Đang tải...</span>
+            </div>
+            <p class="mt-2">Đang tải dữ liệu công chi tiết...</p>
+          </div>
+          
+          <!-- Error State -->
+          <div v-else-if="detailError" class="alert alert-danger">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                {{ detailError }}
+              </div>
+              <button 
+                class="btn btn-outline-danger btn-sm" 
+                @click="loadDetailData"
+                :disabled="detailLoading"
+              >
+                <i class="fas fa-redo me-1"></i>
+                Thử lại
+              </button>
+            </div>
+          </div>
+          
+          <!-- Data Table -->
+          <div v-else class="attendance-summary-table">
             <DataTable :columns="detailColumns" :data="paginatedDetailData">
               <template #type="{ item }">
                 <span
@@ -991,9 +1257,27 @@ const paginatedFeedbackData = computed(() => {
                   {{ item.type }}
                 </span>
               </template>
+              <template #late="{ item }">
+                <span v-if="item.late > 0" class="text-warning fw-bold">
+                  {{ item.late }} phút
+                </span>
+                <span v-else class="text-success">Đúng giờ</span>
+              </template>
+              <template #early="{ item }">
+                <span v-if="item.early > 0" class="text-danger fw-bold">
+                  {{ item.early }} phút
+                </span>
+                <span v-else class="text-success">Đúng giờ</span>
+              </template>
+              <template #hours="{ item }">
+                <span class="fw-bold">{{ item.hours }}h</span>
+              </template>
+              <template #days="{ item }">
+                <span class="fw-bold">{{ item.days }}</span>
+              </template>
             </DataTable>
             <Pagination
-              :totalItems="detailData.length"
+              :totalItems="processedDetailData.length"
               :itemsPerPage="detailItemsPerPage"
               :currentPage="detailCurrentPage"
               @update:currentPage="detailCurrentPage = $event"
@@ -1001,7 +1285,47 @@ const paginatedFeedbackData = computed(() => {
           </div>
         </div>
         <div v-else-if="activeTab === 'attendance'">
-          <div class="attendance-summary-table">
+          <!-- Time Filter for Attendance Tab -->
+          <TimeFilter
+            v-model:year="selectedYear"
+            v-model:month="selectedMonth"
+            v-model:start-date="selectedStartDate"
+            v-model:end-date="selectedEndDate"
+            :show-date-range="true"
+            :show-refresh-button="true"
+            :loading="attendanceLoading"
+            @refresh="loadAttendanceData"
+            @date-range-changed="handleDateRangeChanged"
+          />
+          
+          <!-- Loading State -->
+          <div v-if="attendanceLoading" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Đang tải...</span>
+            </div>
+            <p class="mt-2">Đang tải dữ liệu chấm công...</p>
+          </div>
+          
+          <!-- Error State -->
+          <div v-else-if="attendanceError" class="alert alert-danger">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                {{ attendanceError }}
+              </div>
+              <button 
+                class="btn btn-outline-danger btn-sm" 
+                @click="loadAttendanceData"
+                :disabled="attendanceLoading"
+              >
+                <i class="fas fa-redo me-1"></i>
+                Thử lại
+              </button>
+            </div>
+          </div>
+          
+          <!-- Data Table -->
+          <div v-else class="attendance-summary-table">
             <DataTable :columns="attendanceDataColumns" :data="paginatedAttendanceData">
               <template #avatar="{ item }">
                 <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar" />
@@ -1009,9 +1333,8 @@ const paginatedFeedbackData = computed(() => {
               <template #type="{ item }">
                 <span
                   :class="{
-                    'cell-work': item.type === 'Đi làm',
-                    'cell-leave': item.type === 'Nghỉ phép',
-                    'cell-remote': item.type === 'Làm việc từ xa'
+                    'cell-in': item.type === 'Vào',
+                    'cell-out': item.type === 'Ra'
                   }"
                 >
                   {{ item.type }}
@@ -1075,6 +1398,7 @@ const paginatedFeedbackData = computed(() => {
     </div>
   </div>
 </template>
+
 
 <style scoped>
 /* Màu cho ô tăng ca */
@@ -1420,6 +1744,36 @@ const paginatedFeedbackData = computed(() => {
   background: #e0e0e0;
   color: #888;
   border: 1px solid #d1d1d1;
+}
+.attendance-summary-table .cell-late {
+  background: #fff3cd;
+  color: #856404;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.attendance-summary-table .cell-early {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.attendance-summary-table .cell-in {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.attendance-summary-table .cell-out {
+  background: #e8f5e8;
+  color: #2e7d32;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
 }
 
 .attendance-summary-table .cell-time {

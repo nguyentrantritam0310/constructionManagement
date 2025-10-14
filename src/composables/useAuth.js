@@ -92,7 +92,7 @@ axios.interceptors.response.use(
     if (error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const response = await axios.post('/auth/refresh-token', {
+        const response = await axios.post('/Auth/refresh-token', {
           token: token.value,
           refreshToken: refreshToken.value
         });
@@ -119,10 +119,48 @@ export function useAuth() {
 
   const userRole = computed(() => currentUser.value?.role)
 
+  // Helper functions for role checking
+  const isDirector = computed(() => {
+    const role = currentUser.value?.role
+    console.log('Checking isDirector, current role:', role)
+    return role === 'director' || role === 'DIRECTOR' || role === '3'
+  })
+  const isHRManager = computed(() => {
+    const role = currentUser.value?.role
+    console.log('Checking isHRManager, current role:', role)
+    return role === 'hr_manager' || role === 'HR_MANAGER' || role === '5'
+  })
+  const isHREmployee = computed(() => {
+    const role = currentUser.value?.role
+    console.log('Checking isHREmployee, current role:', role)
+    return role === 'hr_employee' || role === 'HR_EMPLOYEE' || role === '6'
+  })
+  const isHRStaff = computed(() => {
+    const result = isHRManager.value || isHREmployee.value
+    console.log('Checking isHRStaff, result:', result, 'HRManager:', isHRManager.value, 'HREmployee:', isHREmployee.value)
+    return result
+  })
+  const canManageAll = computed(() => {
+    const result = isHRStaff.value
+    console.log('Checking canManageAll, result:', result)
+    return result
+  })
+  const canViewAll = computed(() => {
+    const result = isDirector.value || isHRStaff.value
+    console.log('Checking canViewAll, result:', result, 'Director:', isDirector.value, 'HRStaff:', isHRStaff.value)
+    return result
+  })
+  const canEdit = computed(() => {
+    // Allow editing for HR staff, and also for regular users on their own data
+    const result = isHRStaff.value || !canViewAll.value
+    console.log('Checking canEdit, result:', result, 'HRStaff:', isHRStaff.value, 'Not canViewAll:', !canViewAll.value)
+    return result
+  })
+
   const login = async (email, password) => {
     try {
-      const response = await axios.post('/auth/login', { email, password })
-      const { token: newToken, refreshToken: newRefreshToken, message } = response.data
+      const response = await axios.post('/Auth/login', { email, password })
+      const { token: newToken, refreshToken: newRefreshToken, message, requiresPasswordChange } = response.data
 
       token.value = newToken
       refreshToken.value = newRefreshToken
@@ -133,7 +171,11 @@ export function useAuth() {
       currentUser.value = getUserFromToken(newToken)
 
       router.push('/')
-      return { success: true, message }
+      return { 
+        success: true, 
+        message, 
+        requiresPasswordChange: requiresPasswordChange || false 
+      }
     } catch (error) {
       return {
         success: false,
@@ -144,7 +186,7 @@ export function useAuth() {
 
   const register = async (userData) => {
     try {
-      const response = await axios.post('/auth/register', userData)
+      const response = await axios.post('/Auth/register', userData)
       return { success: true, message: response.data.message }
     } catch (error) {
       return {
@@ -156,7 +198,7 @@ export function useAuth() {
 
   const logout = async () => {
     try {
-      await axios.post('/auth/logout')
+      await axios.post('/Auth/logout')
     } catch (error) {
       console.error('Logout error:', error)
     } finally {
@@ -165,6 +207,7 @@ export function useAuth() {
       currentUser.value = null
       localStorage.removeItem('token')
       localStorage.removeItem('refreshToken')
+      localStorage.removeItem('requiresPasswordChange') // Xóa flag khi logout
       router.push('/login')
     }
   }
@@ -173,7 +216,7 @@ export function useAuth() {
     if (!token.value) return false
 
     try {
-      const response = await axios.get('/auth/me')
+      const response = await axios.get('/Auth/me')
       currentUser.value = response.data
       return true
     } catch (error) {
@@ -182,13 +225,57 @@ export function useAuth() {
     }
   }
 
+  // Function to refresh user info and update token
+  const refreshUserInfo = async () => {
+    if (!token.value) return false
+    
+    try {
+      console.log('Refreshing user info...')
+      const response = await axios.get('/Auth/me')
+      currentUser.value = response.data
+      
+      // Also try to get fresh token if available
+      try {
+        const tokenResponse = await axios.post('/Auth/refresh-token', {
+          token: token.value,
+          refreshToken: refreshToken.value
+        })
+        
+        if (tokenResponse.data.token) {
+          const newToken = tokenResponse.data.token
+          token.value = newToken
+          localStorage.setItem('token', newToken)
+          
+          // Update currentUser from new token
+          currentUser.value = getUserFromToken(newToken)
+          console.log('Token refreshed, new user info:', currentUser.value)
+        }
+      } catch (tokenError) {
+        console.log('Token refresh failed, using API user info:', currentUser.value)
+      }
+      
+      return true
+    } catch (error) {
+      console.error('Error refreshing user info:', error)
+      return false
+    }
+  }
+
   return {
     currentUser,
     isAuthenticated,
     userRole,
+    isDirector,
+    isHRManager,
+    isHREmployee,
+    isHRStaff,
+    canManageAll,
+    canViewAll,
+    canEdit,
     login,
     logout,
     register,
-    checkAuth
+    checkAuth,
+    refreshUserInfo
   }
 }

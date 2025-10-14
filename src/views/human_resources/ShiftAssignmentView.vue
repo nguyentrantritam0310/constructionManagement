@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import TimeFilter from '../../components/common/TimeFilter.vue'
 import { useWorkShift } from '../../composables/useWorkShift'
 import { useShiftAssignment } from '../../composables/useShiftAssignment'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
@@ -990,6 +991,7 @@ const paginatedScheduleData = computed(() => {
     
     <!-- Week Filter for Schedule Tab -->
     <div v-if="activeTab === 'schedule'" class="mb-3">
+      <!-- Custom week filter for schedule tab -->
       <div class="d-flex flex-wrap align-items-center gap-3 py-3 border-bottom">
         <!-- Week Navigation -->
         <div class="d-flex align-items-center gap-2">

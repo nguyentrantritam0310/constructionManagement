@@ -67,6 +67,9 @@ import ActionButton from '@/components/common/ActionButton.vue'
 import UpdateButton from '@/components/common/UpdateButton.vue'
 import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import * as XLSX from 'xlsx'
 
 const {
     employees,
@@ -99,8 +102,17 @@ onMounted(async () => {
         fetchAllEmployees(),
         fetchAllRoles()
     ])
+    console.log('=== ROLES DEBUG ===')
     console.log('Roles loaded:', roles.value)
+    roles.value.forEach(role => {
+        console.log(`Role ID: ${role.id}, Role Name: ${role.roleName}`)
+    })
+    console.log('=== EMPLOYEES DEBUG ===')
     console.log('Employees loaded:', employees.value)
+    employees.value.forEach(emp => {
+        console.log(`Employee: ${emp.firstName} ${emp.lastName}, RoleID: ${emp.roleID}, RoleName: ${emp.roleName}`)
+    })
+    console.log('=== END DEBUG ===')
 })
 const activeTab = ref('employeeList')
 
@@ -112,11 +124,12 @@ const employeesData = computed(() => {
                 .toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
             joinDate: new Date(employee.joinDate)
                 .toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+            employeeName: getEmployeeNameWithStatus(employee),
         }))
 })
 
 const columns = [
-    { key: 'employeeCode', label: 'Mã nhân viên' },
+    { key: 'id', label: 'Mã nhân viên' },
     { key: 'employeeName', label: 'Tên nhân viên' },
     { key: 'birthday', label: 'Ngày sinh' },
     { key: 'email', label: 'Email' },
@@ -136,6 +149,8 @@ const selectedRelations = ref([])
 const showFamilyFormModal = ref(false)
 const selectedFamilyRelation = ref(null)
 const familyFormMode = ref('create')
+const showFilter = ref(false)
+const showImportModal = ref(false)
 
 const openFamilyModal = async (employee) => {
     selectedEmployee.value = employee
@@ -217,14 +232,114 @@ const handlePageChange = (page) => {
     currentPage.value = page
 }
 
+// Excel export function
+const exportToExcel = async (type) => {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Employees')
+
+    // Thêm header
+    worksheet.columns = columns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+
+    // Thêm dữ liệu
+    employeesData.value.forEach((row, index) => {
+        worksheet.addRow(row)
+    })
+
+    // Style header
+    worksheet.getRow(1).eachCell(cell => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+        cell.alignment = { vertical: 'middle', horizontal: 'center' }
+        cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+        }
+    })
+
+    // Style dữ liệu
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        row.eachCell(cell => {
+            if (rowNumber !== 1) { // skip header
+                cell.alignment = { vertical: 'middle', horizontal: 'center' }
+                cell.border = {
+                    top: { style: 'thin' },
+                    left: { style: 'thin' },
+                    bottom: { style: 'thin' },
+                    right: { style: 'thin' }
+                }
+            }
+        })
+    })
+
+    // Auto-fit chiều ngang cho từng cột
+    worksheet.columns.forEach(column => {
+        let maxLength = 0
+        column.eachCell({ includeEmpty: true }, cell => {
+            const val = cell.value ? cell.value.toString() : ''
+            maxLength = Math.max(maxLength, val.length)
+        })
+        column.width = maxLength + 2 // padding để text không sát
+    })
+
+    const buf = await workbook.xlsx.writeBuffer()
+    saveAs(new Blob([buf]), 'Employees.xlsx')
+}
+
+// Function to get employee name with status indicator
+const getEmployeeNameWithStatus = (employee) => {
+    const fullName = `${employee.firstName} ${employee.lastName}`
+    const status = employee.status || 0 // Default to Active (0)
+    
+    let statusColor = ''
+    let statusText = ''
+    
+    switch (status) {
+        case 0: // Active
+            statusColor = '#28a745' // Green
+            statusText = 'Đang làm việc'
+            break
+        case 1: // Resigned
+            statusColor = '#000000' // Black
+            statusText = 'Nghỉ việc'
+            break
+        case 2: // MaternityLeave
+            statusColor = '#e91e63' // Pink
+            statusText = 'Nghỉ thai sản'
+            break
+        default:
+            statusColor = '#28a745' // Default to green
+            statusText = 'Đang làm việc'
+    }
+    
+    return `<span class="employee-name-with-status" title="${statusText}">
+        <span class="status-dot" style="background-color: ${statusColor};"></span>
+        ${fullName}
+    </span>`
+}
+
 </script>
 
 <template>
     <div class="container-fluid py-4">
-        <h2 class="mb-4">Quản lý nhân sự</h2>
-        <ActionButton type="primary" icon="fas fa-plus me-2" @click="openAddEmployeeForm">
-            Thêm
-        </ActionButton>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="mb-0">Quản lý nhân sự</h2>
+            <div class="d-flex gap-2">
+                <ActionButton type="primary" icon="fas fa-plus me-2" @click="openAddEmployeeForm">
+                    Thêm
+                </ActionButton>
+                <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+                    Lọc
+                </ActionButton>
+                <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('employees')">
+                    Xuất Excel
+                </ActionButton>
+                <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
+                    Nhập Excel
+                </ActionButton>
+            </div>
+        </div>
         
         <!-- Loading State -->
         <div v-if="loading" class="text-center py-4">
@@ -323,3 +438,34 @@ const handlePageChange = (page) => {
         <GlobalMessageModal />
     </div>
 </template>
+
+<style scoped>
+.employee-name-with-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* Override DataTable styles for employee name column */
+:deep(.employee-name-with-status) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+:deep(.status-dot) {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+</style>

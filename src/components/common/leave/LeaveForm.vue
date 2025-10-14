@@ -4,6 +4,9 @@ import FormField from '../FormField.vue'
 import { useWorkShift } from '../../../composables/useWorkShift.js'
 import { useLeaveType } from '../../../composables/useLeaveType.js'
 import { useEmployee } from '@/composables/useEmployee'
+import { useLeaveRequest } from '@/composables/useLeaveRequest'
+import { useOvertimeRequest } from '@/composables/useOvertimeRequest'
+import { isApprovedStatus } from '@/constants/status.js'
 
 const props = defineProps({
     mode: { type: String, required: true, validator: v => ['create', 'update'].includes(v) },
@@ -20,6 +23,8 @@ const emit = defineEmits(['close', 'submit'])
 const { employees, fetchAllEmployees } = useEmployee()
 const { workshifts, fetchWorkShifts } = useWorkShift()
 const { leaveTypes, fetchLeaveTypes } = useLeaveType()
+const { leaveRequests, fetchLeaveRequests } = useLeaveRequest()
+const { overtimeRequests, fetchOvertimeRequests } = useOvertimeRequest()
 
 // Form data
 const formData = ref({
@@ -34,6 +39,114 @@ const formData = ref({
 
 // Validation
 const errors = ref({})
+
+// Selected year for calculations (current year)
+const selectedYear = ref(new Date().getFullYear())
+
+// Function to calculate seniority leave (1 day for every 5 years)
+const calculateSeniorityLeave = (joinDate) => {
+    if (!joinDate) return 0
+    const join = new Date(joinDate)
+    const current = new Date()
+    const yearsWorked = current.getFullYear() - join.getFullYear()
+    return Math.floor(yearsWorked / 5)
+}
+
+// Function to calculate total used leave days for an employee
+const calculateTotalUsedLeave = (employeeId) => {
+    if (!leaveRequests.value || leaveRequests.value.length === 0) {
+        return 0
+    }
+    
+    const employeeLeaveRequests = leaveRequests.value.filter(request => 
+        request.employeeID === employeeId && 
+        isApprovedStatus(request.approveStatus)
+    )
+    
+    const total = employeeLeaveRequests.reduce((total, request) => {
+        const fromDate = new Date(request.startDateTime)
+        const toDate = new Date(request.endDateTime)
+        const requestYear = fromDate.getFullYear()
+        
+        if (requestYear === selectedYear.value) {
+            const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1
+            return total + days
+        }
+        return total
+    }, 0)
+    
+    return total
+}
+
+// Function to calculate total overtime leave days for an employee
+const calculateTotalOTLeaveDays = (employeeId) => {
+    if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
+        return 0
+    }
+    
+    const employeeOTRequests = overtimeRequests.value.filter(request => 
+        request.employeeID === employeeId && 
+        isApprovedStatus(request.approveStatus) &&
+        request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation)
+    )
+    
+    const totalDays = employeeOTRequests.reduce((total, request) => {
+        const fromDate = new Date(request.startDateTime)
+        const toDate = new Date(request.endDateTime)
+        const requestYear = fromDate.getFullYear()
+        
+        if (requestYear === selectedYear.value) {
+            const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1
+            return total + days
+        }
+        return total
+    }, 0)
+    
+    return totalDays
+}
+
+// Computed property for employee leave information
+const employeeLeaveInfo = computed(() => {
+    if (!formData.value.employeeID) {
+        return null
+    }
+    
+    const employee = employees.value.find(emp => emp.id === formData.value.employeeID)
+    if (!employee) {
+        return null
+    }
+    
+    const joinDate = new Date(employee.joinDate)
+    const seniorityLeave = calculateSeniorityLeave(employee.joinDate)
+    const totalLeave = 12 + seniorityLeave // 12 days default + seniority leave
+    const totalUsed = calculateTotalUsedLeave(employee.id)
+    const leaveRemain = Math.max(0, totalLeave - totalUsed)
+    
+    const otLeaveDays = calculateTotalOTLeaveDays(employee.id)
+    const otLeaveUsed = calculateTotalOTLeaveDays(employee.id) // Same as otLeaveDays for now
+    const otLeaveRemain = Math.max(0, otLeaveDays - otLeaveUsed)
+    
+    return {
+        employee,
+        totalLeave,
+        seniorityLeave,
+        totalUsed,
+        leaveRemain,
+        otLeaveDays,
+        otLeaveUsed,
+        otLeaveRemain
+    }
+})
+
+// Computed property for requested days
+const requestedDays = computed(() => {
+    if (formData.value.startDateTime && formData.value.endDateTime) {
+        const startDate = new Date(formData.value.startDateTime)
+        const endDate = new Date(formData.value.endDateTime)
+        return Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
+    }
+    return 0
+})
 
 const validateForm = () => {
     errors.value = {}
@@ -76,6 +189,26 @@ const validateForm = () => {
         }
     }
     
+    // Validate leave days availability
+    if (formData.value.employeeID && formData.value.startDateTime && formData.value.endDateTime) {
+        const startDate = new Date(formData.value.startDateTime)
+        const endDate = new Date(formData.value.endDateTime)
+        const requestedDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
+        
+        const leaveInfo = employeeLeaveInfo.value
+        if (leaveInfo) {
+            const selectedLeaveType = leaveTypes.value.find(type => type.id == formData.value.leaveTypeID)
+            
+            if (selectedLeaveType) {
+                if (selectedLeaveType.leaveTypeName === 'Phép năm' && leaveInfo.leaveRemain < requestedDays) {
+                    errors.value.leaveTypeID = `Không đủ phép năm. Còn lại: ${leaveInfo.leaveRemain} ngày, yêu cầu: ${requestedDays} ngày`
+                } else if (selectedLeaveType.leaveTypeName === 'Nghỉ bù' && leaveInfo.otLeaveRemain < requestedDays) {
+                    errors.value.leaveTypeID = `Không đủ phép bù tăng ca. Còn lại: ${leaveInfo.otLeaveRemain} ngày, yêu cầu: ${requestedDays} ngày`
+                }
+            }
+        }
+    }
+    
     return Object.keys(errors.value).length === 0
 }
 
@@ -99,7 +232,9 @@ onMounted(async () => {
         await Promise.all([
             fetchAllEmployees(), // Lấy tất cả employees
             fetchWorkShifts(),
-            fetchLeaveTypes()
+            fetchLeaveTypes(),
+            fetchLeaveRequests(), // Load leave requests for calculations
+            fetchOvertimeRequests() // Load overtime requests for calculations
         ])
         
         console.log('Loaded data:', {
@@ -183,6 +318,73 @@ watch(() => props.leave, (newLeave) => {
                 </div>
             </div>
         </div>
+        
+        <!-- Employee Leave Information -->
+        <div v-if="employeeLeaveInfo" class="row g-3 mb-3">
+            <div class="col-12">
+                <div class="card border-light">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 text-muted">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Thông tin phép của {{ employeeLeaveInfo.employee.firstName }} {{ employeeLeaveInfo.employee.lastName }}
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-muted mb-3">Phép năm {{ selectedYear }}</h6>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Tổng phép năm:</span>
+                                    <span class="fw-bold">{{ employeeLeaveInfo.totalLeave }} ngày</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Phép thâm niên:</span>
+                                    <span class="fw-bold">{{ employeeLeaveInfo.seniorityLeave }} ngày</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Đã sử dụng:</span>
+                                    <span class="fw-bold">{{ employeeLeaveInfo.totalUsed }} ngày</span>
+                                </div>
+                                <hr class="my-3">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Còn lại:</span>
+                                    <span class="fw-bold" :class="employeeLeaveInfo.leaveRemain > 0 ? 'text-success' : 'text-danger'">
+                                        {{ employeeLeaveInfo.leaveRemain }} ngày
+                                    </span>
+                                </div>
+                                <div v-if="requestedDays > 0" class="d-flex justify-content-between">
+                                    <span class="text-muted">Yêu cầu:</span>
+                                    <span class="fw-bold">{{ requestedDays }} ngày</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-muted mb-3">Phép bù tăng ca {{ selectedYear }}</h6>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Tổng phép bù:</span>
+                                    <span class="fw-bold">{{ employeeLeaveInfo.otLeaveDays }} ngày</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Đã sử dụng:</span>
+                                    <span class="fw-bold">{{ employeeLeaveInfo.otLeaveUsed }} ngày</span>
+                                </div>
+                                <hr class="my-3">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Còn lại:</span>
+                                    <span class="fw-bold" :class="employeeLeaveInfo.otLeaveRemain > 0 ? 'text-success' : 'text-danger'">
+                                        {{ employeeLeaveInfo.otLeaveRemain }} ngày
+                                    </span>
+                                </div>
+                                <div v-if="requestedDays > 0" class="d-flex justify-content-between">
+                                    <span class="text-muted">Yêu cầu:</span>
+                                    <span class="fw-bold">{{ requestedDays }} ngày</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">Loại nghỉ phép <span class="text-danger">*</span></label>

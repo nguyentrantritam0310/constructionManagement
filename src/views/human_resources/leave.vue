@@ -6,9 +6,14 @@ import UpdateButton from '@/components/common/UpdateButton.vue'
 import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import { useLeaveRequest } from '../../composables/useLeaveRequest'
 import { useUser } from '../../composables/useUser'
+import { useAuth } from '../../composables/useAuth'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import LeaveForm from '@/components/common/leave/LeaveForm.vue'
+import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import * as XLSX from 'xlsx'
 
 // Composables
 const {
@@ -21,6 +26,9 @@ const {
 } = useLeaveRequest()
 
 const { users, fetchUsers } = useUser()
+
+// Auth composable for role checking
+const { currentUser, canViewAll, canEdit, refreshUserInfo } = useAuth()
 
 // Leave types will be loaded from API in LeaveForm component
 
@@ -42,15 +50,42 @@ const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
 const showDeleteDialog = ref(false)
 const selectedItem = ref(null)
+const showFilter = ref(false)
+const showImportModal = ref(false)
 
 // Pagination
 const currentPage = ref(1)
 const itemsPerPage = ref(8)
 
 // Computed
+// Filter leave requests based on user role
+const filteredLeaveRequests = computed(() => {
+  console.log('=== LEAVE FILTER DEBUG ===')
+  console.log('Current user:', currentUser.value)
+  console.log('Can view all:', canViewAll.value)
+  console.log('Can edit:', canEdit.value)
+  console.log('Leave requests count:', leaveRequests.value?.length || 0)
+  
+  if (!leaveRequests.value || leaveRequests.value.length === 0) return []
+  
+  if (canViewAll.value) {
+    // HR staff and Director can see all leave requests
+    console.log('User can view all - returning all requests')
+    return leaveRequests.value
+  } else {
+    // Regular employees can only see their own leave requests
+    console.log('User can only view own - filtering by employeeID:', currentUser.value?.id)
+    const filtered = leaveRequests.value.filter(request => 
+      request.employeeID === currentUser.value?.id
+    )
+    console.log('Filtered requests count:', filtered.length)
+    return filtered
+  }
+})
+
 const paginatedLeaveData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
-  return leaveRequests.value.slice(start, start + itemsPerPage.value)
+  return filteredLeaveRequests.value.slice(start, start + itemsPerPage.value)
 })
 
 // Methods
@@ -98,6 +133,198 @@ const formatDateTime = (dateTime) => {
   return new Date(dateTime).toLocaleString('vi-VN')
 }
 
+// Excel import functions
+const file = ref(null)
+
+const handleFileUpload = (event) => {
+  const target = event.target
+  if (target && target.files) {
+    file.value = target.files[0]
+  }
+}
+
+const downloadExcelTemplate = async () => {
+  const workbook = new ExcelJS.Workbook()
+
+  // --- Sheet 1: Dữ liệu ---
+  const dataSheet = workbook.addWorksheet('Dữ liệu nhập')
+  const headers = [
+    { header: 'Mã nhân viên', key: 'employeeID', width: 20 },
+    { header: 'Loại nghỉ phép', key: 'leaveTypeName', width: 25 },
+    { header: 'Ca làm việc', key: 'workShiftName', width: 20 },
+    { header: 'Ngày bắt đầu', key: 'startDateTime', width: 20 },
+    { header: 'Ngày kết thúc', key: 'endDateTime', width: 20 },
+    { header: 'Lý do', key: 'reason', width: 30 },
+  ]
+  dataSheet.columns = headers
+
+  // Style header
+  dataSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  })
+
+  // Add example row
+  dataSheet.addRow({
+    employeeID: 'EMP001',
+    leaveTypeName: 'Nghỉ phép năm',
+    workShiftName: 'Ca ngày',
+    startDateTime: '2025-01-15 08:00:00',
+    endDateTime: '2025-01-15 17:00:00',
+    reason: 'Nghỉ phép cá nhân'
+  })
+
+  // --- Sheet 2: Hướng dẫn ---
+  const instructionSheet = workbook.addWorksheet('Hướng dẫn')
+  instructionSheet.columns = [
+    { header: 'Tên cột', key: 'column', width: 30 },
+    { header: 'Mô tả', key: 'description', width: 50 },
+    { header: 'Bắt buộc', key: 'required', width: 15 },
+    { header: 'Ví dụ', key: 'example', width: 30 },
+  ]
+
+  // Style header for instruction sheet
+  instructionSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } }
+  })
+
+  // Add instruction data
+  instructionSheet.addRows([
+    { column: 'Mã nhân viên', description: 'Mã định danh của nhân viên trong hệ thống.', required: 'Có', example: 'EMP001' },
+    { column: 'Loại nghỉ phép', description: 'Loại nghỉ phép được áp dụng.', required: 'Có', example: 'Nghỉ phép năm' },
+    { column: 'Ca làm việc', description: 'Ca làm việc của nhân viên.', required: 'Không', example: 'Ca ngày' },
+    { column: 'Ngày bắt đầu', description: 'Ngày và giờ bắt đầu nghỉ phép (định dạng: YYYY-MM-DD HH:mm:ss).', required: 'Có', example: '2025-01-15 08:00:00' },
+    { column: 'Ngày kết thúc', description: 'Ngày và giờ kết thúc nghỉ phép (định dạng: YYYY-MM-DD HH:mm:ss).', required: 'Có', example: '2025-01-15 17:00:00' },
+    { column: 'Lý do', description: 'Lý do nghỉ phép.', required: 'Có', example: 'Nghỉ phép cá nhân' },
+  ])
+
+  // Auto-fit columns for instruction sheet
+  instructionSheet.columns.forEach(column => {
+    let maxLength = 0
+    column.eachCell({ includeEmpty: true }, cell => {
+      const val = cell.value ? cell.value.toString() : ''
+      maxLength = Math.max(maxLength, val.length)
+    })
+    column.width = Math.max(column.width, maxLength + 2)
+  })
+
+  // Generate and download file
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Mau_Nhap_Don_Nghi_Phep.xlsx')
+}
+
+const processImport = () => {
+  if (!file.value) {
+    alert('Vui lòng chọn một file Excel.')
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    try {
+      const data = new Uint8Array(e.target.result)
+      const workbook = XLSX.read(data, { type: 'array' })
+      const sheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[sheetName]
+      const jsonData = XLSX.utils.sheet_to_json(worksheet)
+
+      if (jsonData.length === 0) {
+        alert('File Excel không có dữ liệu.')
+        return
+      }
+
+      const leaveRequestsToCreate = jsonData.map(row => ({
+        employeeID: row['Mã nhân viên'],
+        leaveTypeName: row['Loại nghỉ phép'],
+        workShiftName: row['Ca làm việc'],
+        startDateTime: row['Ngày bắt đầu'],
+        endDateTime: row['Ngày kết thúc'],
+        reason: row['Lý do'],
+      })).filter(request => request.employeeID && request.leaveTypeName && request.startDateTime && request.endDateTime && request.reason)
+
+      if (leaveRequestsToCreate.length === 0) {
+        alert('Không tìm thấy dữ liệu hợp lệ trong file.')
+        return
+      }
+
+      // Create leave requests
+      for (const request of leaveRequestsToCreate) {
+        await createLeaveRequest(request)
+      }
+
+      alert(`Đã nhập thành công ${leaveRequestsToCreate.length} đơn nghỉ phép.`)
+      file.value = null
+      showImportModal.value = false
+    } catch (error) {
+      console.error('Lỗi khi xử lý file Excel:', error)
+      alert('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.')
+    }
+  }
+  reader.readAsArrayBuffer(file.value)
+}
+
+// Excel export function
+const exportToExcel = async (type) => {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('LeaveRequests')
+
+  // Thêm header
+  worksheet.columns = leaveColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+
+  // Thêm dữ liệu
+  filteredLeaveRequests.value.forEach((row, index) => {
+    worksheet.addRow({
+      ...row,
+      startDateTime: formatDateTime(row.startDateTime),
+      endDateTime: formatDateTime(row.endDateTime)
+    })
+  })
+
+  // Style header
+  worksheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
+    }
+  })
+
+  // Style dữ liệu
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    row.eachCell(cell => {
+      if (rowNumber !== 1) { // skip header
+        cell.alignment = { vertical: 'middle', horizontal: 'center' }
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        }
+      }
+    })
+  })
+
+  // Auto-fit chiều ngang cho từng cột
+  worksheet.columns.forEach(column => {
+    let maxLength = 0
+    column.eachCell({ includeEmpty: true }, cell => {
+      const val = cell.value ? cell.value.toString() : ''
+      maxLength = Math.max(maxLength, val.length)
+    })
+    column.width = maxLength + 2 // padding để text không sát
+  })
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'LeaveRequests.xlsx')
+}
+
 // Lifecycle
 onMounted(async () => {
   await Promise.all([
@@ -112,7 +339,12 @@ onMounted(async () => {
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="adjustment-title mb-0">Danh sách đơn nghỉ phép</h4>
       <div class="d-flex gap-2">
-        <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateForm = true">
+        <ActionButton 
+          v-if="canEdit || !canViewAll" 
+          type="primary" 
+          icon="fas fa-plus me-2" 
+          @click="showCreateForm = true"
+        >
           Thêm
         </ActionButton>
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
@@ -121,8 +353,21 @@ onMounted(async () => {
         <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('leave')">
           Xuất Excel
         </ActionButton>
-        <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
+        <ActionButton 
+          v-if="canEdit || !canViewAll" 
+          type="info" 
+          icon="fas fa-file-import me-2" 
+          @click="showImportModal = true"
+        >
           Nhập Excel
+        </ActionButton>
+        <ActionButton 
+          type="secondary" 
+          icon="fas fa-sync me-2" 
+          @click="refreshUserInfo"
+          title="Làm mới thông tin người dùng"
+        >
+          Refresh
         </ActionButton>
       </div>
     </div>
@@ -138,15 +383,20 @@ onMounted(async () => {
     <div v-else class="table-responsive adjustment-table">
       <DataTable :columns="leaveColumns" :data="paginatedLeaveData">
         <template #actions="{ item }">
-          <div class="d-flex justify-content-center gap-2">
-            <UpdateButton @click.stop="openUpdateForm(item.voucherCode)" />
-            <button 
-              class="btn btn-sm btn-outline-danger" 
-              @click.stop="openDeleteDialog(item.voucherCode)"
-              title="Xóa"
-            >
-              <i class="fas fa-trash"></i>
-            </button>
+          <div class="d-flex justify-content-start gap-2">
+            <!-- <UpdateButton @click.stop="openUpdateForm(item.voucherCode)" /> -->
+            <ActionButton 
+              v-if="canEdit || item.employeeID === currentUser?.id" 
+              icon="fas fa-edit" 
+              type="success" 
+              @click.stop="openUpdateForm(item.voucherCode)" 
+            ></ActionButton>
+            <ActionButton 
+              v-if="canEdit || item.employeeID === currentUser?.id" 
+              type="danger" 
+              @click.stop="openDeleteDialog(item.voucherCode)" 
+              icon="fas fa-trash" 
+            ></ActionButton>
           </div>
         </template>
         <template #startDateTime="{ item }">
@@ -159,20 +409,14 @@ onMounted(async () => {
           {{ item.workShiftName || 'N/A' }}
         </template>
         <template #approveStatus="{ item }">
-          <span :class="[
-            'status-badge',
-            item.approveStatus === 'Đã duyệt' ? 'approved' : 
-            item.approveStatus === 'Chờ duyệt' ? 'pending' : 'rejected'
-          ]">
-            {{ item.approveStatus }}
-          </span>
+          <ApprovalStatusLabel :status="item.approveStatus" />
         </template>
       </DataTable>
     </div>
     
     <!-- Pagination -->
     <Pagination 
-      :totalItems="leaveRequests.length" 
+      :totalItems="filteredLeaveRequests.length" 
       :itemsPerPage="itemsPerPage" 
       :currentPage="currentPage"
       @update:currentPage="currentPage = $event" 
@@ -208,6 +452,27 @@ onMounted(async () => {
         </button>
         <button class="btn btn-danger" @click="handleDelete(selectedItem?.voucherCode)">
           Xóa
+        </button>
+      </div>
+    </div>
+  </ModalDialog>
+
+  <!-- Import Excel Modal -->
+  <ModalDialog v-model:show="showImportModal" title="Nhập đơn nghỉ phép từ Excel" size="lg">
+    <div class="p-4">
+      <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
+      <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
+        Tải file mẫu
+      </ActionButton>
+
+      <hr class="my-4">
+
+      <h5>Tải lên file đã điền</h5>
+      <div class="input-group">
+        <input type="file" class="form-control" @change="handleFileUpload" accept=".xlsx, .xls">
+        <button class="btn btn-primary" @click="processImport" :disabled="!file">
+          <i class="fas fa-upload me-2"></i>
+          Xử lý
         </button>
       </div>
     </div>
@@ -273,25 +538,4 @@ onMounted(async () => {
   background: #e9ecef;
 }
 
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 1rem;
-  color: #fff;
-}
-
-.status-badge.approved {
-  background: #28a745;
-}
-
-.status-badge.pending {
-  background: #ffc107;
-  color: #222;
-}
-
-.status-badge.rejected {
-  background: #ff6b6b;
-}
 </style>

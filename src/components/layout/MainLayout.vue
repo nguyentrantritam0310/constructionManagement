@@ -13,13 +13,27 @@
           <h1 class="navbar-brand mb-0 h1">Hệ Thống Quản Lý Xây Dựng</h1>
         </div>
         <div class="d-flex align-items-center gap-3">
-          <div class="user-info">
-            <i class="fas fa-user-circle me-2"></i>
-            <span>{{ currentUser?.fullName }}</span>
+          <!-- User Dropdown -->
+          <div class="user-dropdown">
+            <div class="user-info">
+              <i class="fas fa-user-circle me-2"></i>
+              <span>{{ currentUser?.fullName }}</span>
+              <i class="fas fa-chevron-down ms-2 dropdown-arrow"></i>
+            </div>
+            
+            <!-- Dropdown Menu -->
+            <div class="dropdown-menu">
+              <div class="dropdown-item" @click="handleChangePassword">
+                <i class="fas fa-key me-2"></i>
+                <span>Đổi mật khẩu</span>
+              </div>
+              <div class="dropdown-divider"></div>
+              <div class="dropdown-item" @click="logout">
+                <i class="fas fa-sign-out-alt me-2"></i>
+                <span>Đăng xuất</span>
+              </div>
+            </div>
           </div>
-          <button class="logout-btn" @click="logout">
-            <i class="fas fa-sign-out-alt"></i>
-          </button>
         </div>
       </div>
     </header>
@@ -75,6 +89,14 @@
         <slot></slot>
       </div>
     </main>
+
+    <!-- Change Password Modal -->
+    <ChangePasswordModal 
+      :show="showChangePasswordModal"
+      @update:show="showChangePasswordModal = $event"
+      @password-changed="handlePasswordChangeSuccess"
+      :is-required="false"
+    />
   </div>
 </template>
 
@@ -82,6 +104,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Breadcrumb from './Breadcrumb.vue'
+import ChangePasswordModal from '../common/ChangePasswordModal.vue'
 import { useAuth } from '../../composables/useAuth'
 
 const { currentUser, logout } = useAuth()
@@ -91,6 +114,7 @@ const isSidebarOpen = ref(true)
 const isSubsystemSelectorOpen = ref(false)
 const selectedModule = ref(null)
 const searchQuery = ref('')
+const showChangePasswordModal = ref(false)
 
 // Role-based menu items for "Phân hệ Công trình"
 const constructionMenuItems = computed(() => {
@@ -244,6 +268,17 @@ const selectModule = (module) => {
   if (module.children && module.children.length > 0) {
     router.push(module.children[0].route)
   }
+}
+
+// User dropdown functions
+const handleChangePassword = () => {
+  showChangePasswordModal.value = true
+}
+
+const handlePasswordChangeSuccess = (message) => {
+  showChangePasswordModal.value = false
+  // Show success message if needed
+  console.log('Password changed successfully:', message)
 }
 
 // Set default module to "Công trình" on component load
@@ -425,6 +460,71 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 20px;
   backdrop-filter: blur(5px);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+}
+
+.user-info:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.user-dropdown {
+  position: relative;
+}
+
+.dropdown-arrow {
+  font-size: 0.8rem;
+  transition: transform 0.3s ease;
+}
+
+.user-dropdown:hover .dropdown-arrow,
+.user-dropdown .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+  z-index: 1000;
+  overflow: hidden;
+  margin-top: 8px;
+  display: none;
+}
+
+.user-dropdown:hover .dropdown-menu {
+  display: block;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  color: #333;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.dropdown-item:hover {
+  background-color: #f8f9fa;
+}
+
+.dropdown-item i {
+  width: 16px;
+  text-align: center;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background-color: #e9ecef;
+  margin: 0;
 }
 
 .menu-toggle-row {

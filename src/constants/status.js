@@ -18,3 +18,65 @@ export const CONSTRUCTION_STATUS_COLORS = {
   [CONSTRUCTION_STATUS.COMPLETED]: 'success',
   [CONSTRUCTION_STATUS.CANCELLED]: 'danger'
 }
+
+// Contract status based on ApproveStatusEnum from backend
+export const CONTRACT_APPROVE_STATUS = {
+  CREATED: 'Created',
+  PENDING: 'Pending', 
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected'
+}
+
+export const CONTRACT_APPROVE_STATUS_LABELS = {
+  [CONTRACT_APPROVE_STATUS.CREATED]: 'Tạo mới',
+  [CONTRACT_APPROVE_STATUS.PENDING]: 'Chờ duyệt',
+  [CONTRACT_APPROVE_STATUS.APPROVED]: 'Đã duyệt',
+  [CONTRACT_APPROVE_STATUS.REJECTED]: 'Từ chối'
+}
+
+export const CONTRACT_APPROVE_STATUS_COLORS = {
+  [CONTRACT_APPROVE_STATUS.CREATED]: 'secondary',
+  [CONTRACT_APPROVE_STATUS.PENDING]: 'warning',
+  [CONTRACT_APPROVE_STATUS.APPROVED]: 'success',
+  [CONTRACT_APPROVE_STATUS.REJECTED]: 'danger'
+}
+
+// Contract status for operational purposes (different from approval status)
+export const CONTRACT_STATUS = {
+  ACTIVE: 'Active',
+  SUSPENDED: 'Suspended',
+  TERMINATED: 'Terminated'
+}
+
+export const CONTRACT_STATUS_LABELS = {
+  [CONTRACT_STATUS.ACTIVE]: 'Hoạt động',
+  [CONTRACT_STATUS.SUSPENDED]: 'Tạm ngưng',
+  [CONTRACT_STATUS.TERMINATED]: 'Chấm dứt'
+}
+
+export const CONTRACT_STATUS_COLORS = {
+  [CONTRACT_STATUS.ACTIVE]: 'success',
+  [CONTRACT_STATUS.SUSPENDED]: 'warning',
+  [CONTRACT_STATUS.TERMINATED]: 'danger'
+}
+
+// Helper functions to handle backend enum mapping
+export const getApprovalStatusLabel = (status) => {
+  // Handle both enum values and Vietnamese strings from backend
+  const statusMap = {
+    [CONTRACT_APPROVE_STATUS.CREATED]: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.CREATED],
+    [CONTRACT_APPROVE_STATUS.PENDING]: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.PENDING],
+    [CONTRACT_APPROVE_STATUS.APPROVED]: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.APPROVED],
+    [CONTRACT_APPROVE_STATUS.REJECTED]: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.REJECTED],
+    // Handle Vietnamese strings from backend
+    'Tạo mới': CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.CREATED],
+    'Chờ duyệt': CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.PENDING],
+    'Đã duyệt': CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.APPROVED],
+    'Từ chối': CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.REJECTED]
+  }
+  return statusMap[status] || status
+}
+
+export const isApprovedStatus = (status) => {
+  return status === CONTRACT_APPROVE_STATUS.APPROVED || status === 'Đã duyệt'
+}
