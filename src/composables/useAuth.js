@@ -231,30 +231,40 @@ export function useAuth() {
     
     try {
       console.log('Refreshing user info...')
-      const response = await axios.get('/Auth/me')
-      currentUser.value = response.data
       
-      // Also try to get fresh token if available
-      try {
-        const tokenResponse = await axios.post('/Auth/refresh-token', {
-          token: token.value,
-          refreshToken: refreshToken.value
-        })
-        
-        if (tokenResponse.data.token) {
-          const newToken = tokenResponse.data.token
-          token.value = newToken
-          localStorage.setItem('token', newToken)
+      // First try to refresh token if we have a refresh token
+      if (refreshToken.value) {
+        try {
+          const tokenResponse = await axios.post('/Auth/refresh-token', {
+            token: token.value,
+            refreshToken: refreshToken.value
+          })
           
-          // Update currentUser from new token
-          currentUser.value = getUserFromToken(newToken)
-          console.log('Token refreshed, new user info:', currentUser.value)
+          if (tokenResponse.data.token) {
+            const newToken = tokenResponse.data.token
+            token.value = newToken
+            localStorage.setItem('token', newToken)
+            
+            // Update currentUser from new token
+            currentUser.value = getUserFromToken(newToken)
+            console.log('Token refreshed successfully:', currentUser.value)
+            return true
+          }
+        } catch (tokenError) {
+          console.log('Token refresh failed, trying direct API call...')
         }
-      } catch (tokenError) {
-        console.log('Token refresh failed, using API user info:', currentUser.value)
       }
       
-      return true
+      // Fallback: try to get user info directly from API
+      try {
+        const response = await axios.get('/Auth/me')
+        currentUser.value = response.data
+        console.log('User info refreshed from API:', currentUser.value)
+        return true
+      } catch (apiError) {
+        console.log('API call failed, using cached user info:', currentUser.value)
+        return false
+      }
     } catch (error) {
       console.error('Error refreshing user info:', error)
       return false

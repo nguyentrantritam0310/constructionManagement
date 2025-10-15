@@ -269,6 +269,12 @@ const createContract = async (contractData) => {
 
 const updateContract = async (contractData) => {
   try {
+    console.log('=== UPDATE CONTRACT CALLED ===')
+    console.log('Contract data received:', contractData)
+    console.log('Contract data keys:', Object.keys(contractData))
+    console.log('Contract data values:', Object.values(contractData))
+    console.log('=== END UPDATE CONTRACT DEBUG ===')
+    
     const response = await contractService.updateContract(contractData)
     await fetchAllContracts() // Refresh data
     return response
@@ -288,7 +294,7 @@ const formatContractForSubmit = (data) => {
     endDate: data.endDate,
     contractSalary: parseFloat(data.contractSalary) || 0,
     insuranceSalary: parseFloat(data.insuranceSalary) || 0,
-    approveStatus: data.approveStatus, // Use the approveStatus from ContractForm (already converted to int)
+    approveStatus: data.approveStatus || 0, // Use the approveStatus from ContractForm (already converted to int)
     allowances: (data.allowances || []).map(allowance => ({
       allowanceID: allowance.allowanceID,
       value: parseFloat(allowance.value) || 0,
@@ -302,6 +308,20 @@ const formatContractForSubmit = (data) => {
     formattedData.id = data.id
   }
 
+  // Remove fields that don't exist in ContractDTOPUT
+  delete formattedData.contractTypeName
+  delete formattedData.employeeName
+  delete formattedData.validityStatus
+  delete formattedData.daysToExpire
+  delete formattedData.startDateFormatted
+  delete formattedData.endDateFormatted
+
+  console.log('=== FORMAT CONTRACT FOR SUBMIT DEBUG ===')
+  console.log('Original data:', data)
+  console.log('Formatted data:', formattedData)
+  console.log('Formatted data keys:', Object.keys(formattedData))
+  console.log('=== END FORMAT DEBUG ===')
+
   return formattedData
 }
 onMounted(async () => {
@@ -309,6 +329,13 @@ onMounted(async () => {
     fetchAllContracts(),
     fetchAllEmployees()
   ])
+  
+  // Debug logging after data is loaded
+  console.log('=== LABOR CONTRACT VIEW DEBUG ===')
+  console.log('Contracts loaded:', contracts.value?.length || 0)
+  console.log('Employees loaded:', employees.value?.length || 0)
+  console.log('Sample contract:', contracts.value?.[0])
+  console.log('Sample employee:', employees.value?.[0])
 })
 const today = new Date()
 const endDt = null
@@ -385,22 +412,42 @@ const expiredContracts = computed(() => {
 const notCreatedContracts = computed(() => {
   // Tính toán nhân viên chưa có hợp đồng từ dữ liệu local
   const employeesWithoutContractData = calculateEmployeesWithoutContract(employees.value)
+  
+  console.log('=== NOT CREATED CONTRACTS DEBUG ===')
+  console.log('Total employees:', employees.value?.length || 0)
+  console.log('Total contracts:', contracts.value?.length || 0)
+  console.log('Sample employee data:', employees.value?.[0])
+  console.log('Sample contract data:', contracts.value?.[0])
+  console.log('Employee IDs in contracts:', contracts.value?.map(c => c.employeeID))
+  console.log('Employee IDs in employees:', employees.value?.map(e => e.id))
+  console.log('Employees without contract:', employeesWithoutContractData?.length || 0)
+  console.log('Sample employee without contract:', employeesWithoutContractData?.[0])
 
-  return employeesWithoutContractData.map((employee, index) => ({
-    id: employee.employeeCode,
-    employeeName: `${employee.firstName} ${employee.lastName}`,
-    email: employee.email,
-    phone: employee.phone,
-    birthday: employee.birthday ? new Date(employee.birthday).toLocaleDateString('vi-VN') : '',
-    joinDate: employee.joinDate ? new Date(employee.joinDate).toLocaleDateString('vi-VN') : '',
-    stt: index + 1,
-  }))
+  return employeesWithoutContractData.map((employee, index) => {
+    const processedEmployee = {
+      id: employee.id || employee.employeeID || `emp_${index}`, // Fallback cho id
+      employeeName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
+      email: employee.email || '',
+      phone: employee.phone || '',
+      birthday: employee.birthday ? new Date(employee.birthday).toLocaleDateString('vi-VN') : '',
+      joinDate: employee.joinDate ? new Date(employee.joinDate).toLocaleDateString('vi-VN') : '',
+      stt: index + 1,
+    }
+    
+    if (index === 0) {
+      console.log('First processed employee:', processedEmployee)
+      console.log('Original employee keys:', Object.keys(employee))
+      console.log('Original employee values:', employee)
+    }
+    
+    return processedEmployee
+  })
 })
 
 const contractColumns = [
   { key: 'contractNumber', label: 'Số hợp đồng' },
   { key: 'contractTypeName', label: 'Loại hợp đồng' },
-  { key: 'employeeID', label: 'Mã nhân viên' },
+  { key: 'id', label: 'Mã nhân viên' },
   { key: 'employeeName', label: 'Tên nhân viên' },
   { key: 'approveStatus', label: 'Trạng thái duyệt' },
   { key: 'validityStatus', label: 'Hiệu lực' },
@@ -801,7 +848,13 @@ const handleExtendContract = async () => {
         startDate: newStartDate.value,
         endDate: newEndDate.value
       }
-      await updateContract(updatedContract)
+      
+      console.log('=== EXTEND CONTRACT DEBUG ===')
+      console.log('Contract to extend:', contractToExtend.value)
+      console.log('Updated contract before format:', updatedContract)
+      
+      const formattedData = formatContractForSubmit(updatedContract)
+      await updateContract(formattedData)
       showMessage('Gia hạn hợp đồng thành công!', 'success')
     }
     closeExtendModal()

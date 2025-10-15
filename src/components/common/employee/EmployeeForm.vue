@@ -18,25 +18,31 @@ const formatDateForInput = (dateValue) => {
 }
 
 const formData = ref({
-    id: props.employee?.id ?? props.employee?.employeeCode ?? '', // Use ID as primary key
-    lastName: props.employee?.lastName ?? '',
-    firstName: props.employee?.firstName ?? '',
-    birthday: formatDateForInput(props.employee?.birthday),
-    joinDate: formatDateForInput(props.employee?.joinDate),
-    phone: props.employee?.phone ?? '',
-    email: props.employee?.email ?? '',
-    gender: props.employee?.gender ?? '',
-    roleID: props.employee?.roleID ?? '',
+    id: '',
+    lastName: '',
+    firstName: '',
+    birthday: '',
+    joinDate: '',
+    phone: '',
+    email: '',
+    gender: '',
+    roleID: '',
+    employeeCode: '',
     // password: generated automatically by backend
-    status: props.mode === 'create' ? 0 : (props.employee?.status ?? 0) // Default to Active (0) for create mode
+    status: '0' // Default value, will be updated by watch function
 })
 
 // Watch for changes in employee prop
 watch(() => props.employee, (newEmployee) => {
-    console.log('Employee prop changed:', newEmployee)
+    console.log('=== EMPLOYEE FORM WATCH DEBUG ===')
+    console.log('Employee prop:', newEmployee)
+    console.log('Employee status:', newEmployee?.status, 'Type:', typeof newEmployee?.status)
+    console.log('Form mode:', props.mode)
+    
     if (newEmployee) {
+        // Update mode - populate form with employee data
         formData.value = {
-            id: newEmployee.id ?? newEmployee.employeeCode ?? '', // Use ID as primary key
+            id: newEmployee.id ?? newEmployee.employeeCode ?? '',
             lastName: newEmployee.lastName ?? '',
             firstName: newEmployee.firstName ?? '',
             birthday: formatDateForInput(newEmployee.birthday),
@@ -45,11 +51,30 @@ watch(() => props.employee, (newEmployee) => {
             email: newEmployee.email ?? '',
             gender: newEmployee.gender ?? '',
             roleID: newEmployee.roleID ?? newEmployee.RoleID ?? '',
-            // password: generated automatically by backend
-            status: newEmployee.status ?? 0
+            employeeCode: newEmployee.employeeCode ?? newEmployee.id ?? '',
+            status: newEmployee.status?.toString() ?? '0' // Get status from API
         }
-        console.log('Form data updated:', formData.value)
+        console.log('Form data updated with employee data:', formData.value)
+    } else {
+        // Create mode - reset form to default values
+        formData.value = {
+            id: '',
+            lastName: '',
+            firstName: '',
+            birthday: '',
+            joinDate: '',
+            phone: '',
+            email: '',
+            gender: '',
+            roleID: '',
+            employeeCode: '',
+            status: '0' // Default status for new employee
+        }
+        console.log('Form data reset for create mode:', formData.value)
     }
+    
+    console.log('Form status value:', formData.value.status, 'Type:', typeof formData.value.status)
+    console.log('=== END EMPLOYEE FORM WATCH DEBUG ===')
 }, { deep: true, immediate: true })
 
 // Watch for changes in roles prop
@@ -88,7 +113,6 @@ const handleSubmit = () => {
 
     // Password validation removed - default password is set automatically for create mode
 
-    console.log('Submitting form data:', formData.value)
     emit('submit', formData.value)
 }
 
@@ -150,9 +174,9 @@ const handleClose = () => emit('close')
                 <div class="col-md-6">
                     <label class="form-label">Trạng thái</label>
                     <select class="form-select" v-model="formData.status">
-                        <option value="0" :selected="formData.status == 0">Đang làm việc</option>
-                        <option value="1" :selected="formData.status == 1">Nghỉ việc</option>
-                        <option value="2" :selected="formData.status == 2">Nghỉ thai sản</option>
+                        <option value="0">Đang làm việc</option>
+                        <option value="1">Nghỉ việc</option>
+                        <option value="2">Nghỉ thai sản</option>
                     </select>
                 </div>
             </div>
@@ -160,9 +184,9 @@ const handleClose = () => emit('close')
                 <div class="col-md-6">
                     <label class="form-label">Trạng thái</label>
                     <select class="form-select" v-model="formData.status">
-                        <option value="0" :selected="formData.status == 0">Đang làm việc</option>
-                        <option value="1" :selected="formData.status == 1">Nghỉ việc</option>
-                        <option value="2" :selected="formData.status == 2">Nghỉ thai sản</option>
+                        <option value="0">Đang làm việc</option>
+                        <option value="1">Nghỉ việc</option>
+                        <option value="2">Nghỉ thai sản</option>
                     </select>
                 </div>
                 <div class="col-md-6">

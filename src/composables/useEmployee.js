@@ -83,21 +83,13 @@ export function useEmployee() {
     try {
       loading.value = true
       error.value = null
-      console.log('=== UPDATE EMPLOYEE DEBUG ===')
-      console.log('Sending data to API:', employeeData)
-      
       const result = await employeeService.updateEmployee(employeeData)
-      console.log('API response:', result)
-      
       await fetchAllEmployees() // Refresh the list
       
       // If updating current user's role, refresh user info
       if (employeeData.id && employeeData.roleID) {
-        console.log('Employee role updated, refreshing user info...')
         await refreshUserInfo()
       }
-      
-      console.log('=== END UPDATE DEBUG ===')
       return result
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.response?.data?.title || 'Có lỗi xảy ra khi cập nhật nhân viên'
@@ -140,13 +132,8 @@ export function useEmployee() {
 
   // Format employee data for form submission
   const formatEmployeeForSubmit = (employeeData) => {
-    console.log('=== FORMAT EMPLOYEE DEBUG ===')
-    console.log('Raw employee data:', employeeData)
-    console.log('Role ID from form:', employeeData.roleID)
-    console.log('Role ID type:', typeof employeeData.roleID)
-    
     const formattedData = {
-      employeeCode: employeeData.employeeCode,
+      employeeCode: employeeData.employeeCode || employeeData.id, // Use ID as fallback
       firstName: employeeData.firstName,
       lastName: employeeData.lastName,
       birthday: new Date(employeeData.birthday).toISOString(),
@@ -164,9 +151,6 @@ export function useEmployee() {
       formattedData.id = employeeData.id
     }
     
-    console.log('Formatted roleID:', formattedData.roleID)
-    console.log('Formatted data:', formattedData)
-    console.log('=== END FORMAT DEBUG ===')
     return formattedData
   }
 

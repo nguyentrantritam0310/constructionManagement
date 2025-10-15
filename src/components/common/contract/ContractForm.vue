@@ -136,8 +136,13 @@ function calculateEndDate(startDate, validityMonths) {
 
 // Watch for changes in start date and validity period to auto-calculate end date
 watch([() => formData.value.startDate, () => formData.value.validityPeriod], ([newStartDate, newValidityPeriod]) => {
-  if ((isDeterminedTermContract.value || isProbationContract.value) && newStartDate && newValidityPeriod) {
+  if (isDeterminedTermContract.value && newStartDate && newValidityPeriod) {
     formData.value.endDate = calculateEndDate(newStartDate, newValidityPeriod)
+  }
+  
+  // For probation contracts, always use 2 months
+  if (isProbationContract.value && newStartDate) {
+    formData.value.endDate = calculateEndDate(newStartDate, '2')
   }
 })
 
@@ -154,6 +159,10 @@ watch(() => formData.value.contractTypeID, (newContractTypeID) => {
   // Auto-set validity period for probation contracts
   if (isProbationContract.value) {
     formData.value.validityPeriod = '2' // 2 months default for probation
+    // Auto-calculate end date if start date is set
+    if (formData.value.startDate) {
+      formData.value.endDate = calculateEndDate(formData.value.startDate, '2')
+    }
   }
 })
 
@@ -166,12 +175,20 @@ const handleSubmit = () => {
     return
   }
 
-  // Validation for determined term contracts and probation contracts
-  if (isDeterminedTermContract.value || isProbationContract.value) {
+  // Validation for determined term contracts
+  if (isDeterminedTermContract.value) {
     if (!formData.value.validityPeriod) {
       alert('Vui lòng chọn hiệu lực hợp đồng')
       return
     }
+    if (!formData.value.endDate) {
+      alert('Ngày kết thúc không được để trống')
+      return
+    }
+  }
+
+  // Validation for probation contracts
+  if (isProbationContract.value) {
     if (!formData.value.endDate) {
       alert('Ngày kết thúc không được để trống')
       return
@@ -230,8 +247,21 @@ const handleSubmit = () => {
   // Format data for API submission - convert approveStatus to int for enum
   const submitData = {
     ...formData.value,
-    approveStatus: parseInt(formData.value.approveStatus) // Convert string to int for enum
+    approveStatus: parseInt(formData.value.approveStatus) || 0 // Convert string to int for enum, default to 0
   }
+
+  // Remove ValidityPeriod from submit data as it's not in the backend entity
+  delete submitData.validityPeriod
+
+  console.log('=== CONTRACT FORM SUBMIT DEBUG ===')
+  console.log('Form mode:', props.mode)
+  console.log('Form data:', formData.value)
+  console.log('ApproveStatus before parse:', formData.value.approveStatus, 'Type:', typeof formData.value.approveStatus)
+  console.log('ApproveStatus after parse:', submitData.approveStatus, 'Type:', typeof submitData.approveStatus)
+  console.log('Submit data:', submitData)
+  console.log('Submit data keys:', Object.keys(submitData))
+  console.log('Submit data values:', Object.values(submitData))
+  console.log('=== END SUBMIT DEBUG ===')
 
   emit('submit', submitData)
 }
@@ -353,8 +383,8 @@ watch(() => props.mode, (newMode) => {
           </div>
         </div>
 
-        <!-- Hiệu lực hợp đồng cho hợp đồng xác định thời hạn và thử việc -->
-        <div v-if="isDeterminedTermContract || isProbationContract" class="row g-4 mb-3">
+        <!-- Hiệu lực hợp đồng cho hợp đồng xác định thời hạn -->
+        <div v-if="isDeterminedTermContract" class="row g-4 mb-3">
           <div class="col-md-6">
             <label class="form-label">Hiệu lực <span class="text-danger">*</span></label>
             <select class="form-select" v-model="formData.validityPeriod" required>
@@ -363,9 +393,6 @@ watch(() => props.mode, (newMode) => {
                 {{ validity.text }}
               </option>
             </select>
-            <small v-if="isProbationContract" class="form-text text-info">
-              <i class="fas fa-info-circle me-1"></i>Hợp đồng thử việc mặc định 2 tháng
-            </small>
           </div>
           <div class="col-md-6">
             <FormField 
@@ -374,6 +401,24 @@ watch(() => props.mode, (newMode) => {
               v-model="formData.startDate" 
               required 
             />
+          </div>
+        </div>
+
+        <!-- Hợp đồng thử việc - chỉ hiển thị từ ngày -->
+        <div v-if="isProbationContract" class="row g-4 mb-3">
+          <div class="col-md-6">
+            <FormField 
+              label="Từ ngày" 
+              type="date" 
+              v-model="formData.startDate" 
+              required 
+            />
+          </div>
+          <div class="col-md-6">
+            <div class="alert alert-info">
+              <i class="fas fa-info-circle me-2"></i>
+              <strong>Hợp đồng thử việc:</strong> Tự động có hiệu lực 2 tháng
+            </div>
           </div>
         </div>
 

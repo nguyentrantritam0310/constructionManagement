@@ -68,5 +68,21 @@ export const attendanceDataService = {
       console.error('Error fetching attendance data by week:', error)
       throw error
     }
+  },
+
+  // Get attendance data by employee and specific date
+  async getAttendanceDataByEmployeeAndDate(employeeCode, date) {
+    try {
+      const response = await api.get('/AttendanceData/employee/date', {
+        params: {
+          employeeCode: employeeCode,
+          date: date
+        }
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error fetching attendance data by employee and date:', error)
+      throw error
+    }
   }
 }
