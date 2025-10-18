@@ -94,13 +94,51 @@ const shiftColumns = [
 ]
 const shiftData = computed(() => {
   return workshifts.value.map((shift, index) => {
+    console.log('Processing shift:', shift);
+    console.log('Shift details:', shift.shiftDetails);
+    
+    // Kiểm tra xem shiftDetails có tồn tại và có dữ liệu không
+    if (!shift.shiftDetails || shift.shiftDetails.length === 0) {
+      console.log('No shift details found for shift:', shift.shiftName);
+      return {
+        stt: index + 1,
+        code: shift.id,
+        name: shift.shiftName,
+        in: '--:--',
+        out: '--:--'
+      };
+    }
+    
     // Lấy mảng giờ vào và giờ ra
-    const startTimes = shift.shiftDetails.map(d => d.startTime)
-    const endTimes = shift.shiftDetails.map(d => d.endTime)
+    // Thử cả hai cách để đảm bảo tương thích
+    const startTimes = shift.shiftDetails.map(d => d.StartTime || d.startTime)
+    const endTimes = shift.shiftDetails.map(d => d.EndTime || d.endTime)
+    
+    console.log('Start times:', startTimes);
+    console.log('End times:', endTimes);
 
-    // Tìm giờ vào sớm nhất (min) và giờ ra trễ nhất (max)
-    const earliestStart = startTimes.reduce((a, b) => a < b ? a : b)
-    const latestEnd = endTimes.reduce((a, b) => a > b ? a : b)
+    // Lọc bỏ các ngày nghỉ (00:00:00)
+    const validStartTimes = startTimes.filter(time => time !== '00:00:00')
+    const validEndTimes = endTimes.filter(time => time !== '00:00:00')
+    
+    console.log('Valid start times:', validStartTimes);
+    console.log('Valid end times:', validEndTimes);
+
+    // Tìm giờ vào sớm nhất (min) và giờ ra trễ nhất (max) từ các ngày làm việc
+    const earliestStart = validStartTimes.length > 0 ? validStartTimes.reduce((a, b) => {
+      const timeA = new Date(`2000-01-01T${a}`)
+      const timeB = new Date(`2000-01-01T${b}`)
+      return timeA < timeB ? a : b
+    }) : '--:--'
+    
+    const latestEnd = validEndTimes.length > 0 ? validEndTimes.reduce((a, b) => {
+      const timeA = new Date(`2000-01-01T${a}`)
+      const timeB = new Date(`2000-01-01T${b}`)
+      return timeA > timeB ? a : b
+    }) : '--:--'
+    
+    console.log('Earliest start:', earliestStart);
+    console.log('Latest end:', latestEnd);
 
     return {
       stt: index + 1,

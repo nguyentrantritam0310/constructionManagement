@@ -108,6 +108,17 @@ const handleUpdate = async (formData) => {
   }
 }
 
+const handleSubmitForApproval = async (voucherCode) => {
+  try {
+    // Update status to "Chờ duyệt" (status = 1)
+    await updateLeaveRequest(voucherCode, { approveStatus: 1 })
+    showUpdateForm.value = false
+    selectedItem.value = null
+  } catch (error) {
+    console.error('Error submitting for approval:', error)
+  }
+}
+
 const handleDelete = async (voucherCode) => {
   try {
     await deleteLeaveRequest(voucherCode)
@@ -131,6 +142,16 @@ const openDeleteDialog = (voucherCode) => {
 const formatDateTime = (dateTime) => {
   if (!dateTime) return ''
   return new Date(dateTime).toLocaleString('vi-VN')
+}
+
+const getStatusText = (status) => {
+  const statusMap = {
+    0: 'Tạo mới',
+    1: 'Chờ duyệt', 
+    2: 'Đã duyệt',
+    3: 'Từ chối'
+  }
+  return statusMap[status] || 'Không xác định'
 }
 
 // Excel import functions
@@ -384,19 +405,31 @@ onMounted(async () => {
       <DataTable :columns="leaveColumns" :data="paginatedLeaveData">
         <template #actions="{ item }">
           <div class="d-flex justify-content-start gap-2">
-            <!-- <UpdateButton @click.stop="openUpdateForm(item.voucherCode)" /> -->
+            <!-- Always show edit button for own requests or if can edit -->
             <ActionButton 
               v-if="canEdit || item.employeeID === currentUser?.id" 
               icon="fas fa-edit" 
               type="success" 
               @click.stop="openUpdateForm(item.voucherCode)" 
+              title="Sửa"
             ></ActionButton>
+            <!-- Always show delete button for own requests or if can edit -->
             <ActionButton 
               v-if="canEdit || item.employeeID === currentUser?.id" 
               type="danger" 
               @click.stop="openDeleteDialog(item.voucherCode)" 
               icon="fas fa-trash" 
+              title="Xóa"
             ></ActionButton>
+            <!-- Always show status -->
+            <span class="badge" :class="{
+              'bg-secondary': item.approveStatus == 0 || item.approveStatus === '0',
+              'bg-warning': item.approveStatus == 1 || item.approveStatus === '1',
+              'bg-success': item.approveStatus == 2 || item.approveStatus === '2',
+              'bg-danger': item.approveStatus == 3 || item.approveStatus === '3'
+            }">
+              {{ getStatusText(item.approveStatus) }}
+            </span>
           </div>
         </template>
         <template #startDateTime="{ item }">
@@ -438,7 +471,8 @@ onMounted(async () => {
       mode="update" 
       :leave="selectedItem"
       @submit="handleUpdate" 
-      @close="showUpdateForm = false" 
+      @close="showUpdateForm = false"
+      @submit-for-approval="handleSubmitForApproval"
     />
   </ModalDialog>
   

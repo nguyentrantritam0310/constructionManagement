@@ -269,12 +269,6 @@ const createContract = async (contractData) => {
 
 const updateContract = async (contractData) => {
   try {
-    console.log('=== UPDATE CONTRACT CALLED ===')
-    console.log('Contract data received:', contractData)
-    console.log('Contract data keys:', Object.keys(contractData))
-    console.log('Contract data values:', Object.values(contractData))
-    console.log('=== END UPDATE CONTRACT DEBUG ===')
-    
     const response = await contractService.updateContract(contractData)
     await fetchAllContracts() // Refresh data
     return response
@@ -288,24 +282,28 @@ const formatContractForSubmit = (data) => {
   // Format data for API submission
   const formattedData = {
     contractNumber: data.contractNumber,
-    contractTypeID: data.contractTypeID,
+    contractTypeID: parseInt(data.contractTypeID),
     employeeID: data.employeeID,
-    startDate: data.startDate,
-    endDate: data.endDate,
+    startDate: new Date(data.startDate).toISOString(),
+    endDate: new Date(data.endDate).toISOString(),
     contractSalary: parseFloat(data.contractSalary) || 0,
     insuranceSalary: parseFloat(data.insuranceSalary) || 0,
-    approveStatus: data.approveStatus || 0, // Use the approveStatus from ContractForm (already converted to int)
-    allowances: (data.allowances || []).map(allowance => ({
-      allowanceID: allowance.allowanceID,
-      value: parseFloat(allowance.value) || 0,
-      // Add ContractID for update operations if it exists
-      ...(data.id && { contractID: data.id })
+    approveStatus: parseInt(data.approveStatus) || 0,
+    allowances: []
+  }
+
+  // Only add allowances if they exist and have valid data
+  if (data.allowances && data.allowances.length > 0) {
+    formattedData.allowances = data.allowances.map(allowance => ({
+      contractID: parseInt(data.id) || 0, // ContractID is required for allowances
+      allowanceID: parseInt(allowance.allowanceID),
+      value: parseFloat(allowance.value) || 0
     }))
   }
 
-  // Add ID for update operations
+  // Add ID for update operations (must be int)
   if (data.id) {
-    formattedData.id = data.id
+    formattedData.id = parseInt(data.id)
   }
 
   // Remove fields that don't exist in ContractDTOPUT
@@ -319,7 +317,9 @@ const formatContractForSubmit = (data) => {
   console.log('=== FORMAT CONTRACT FOR SUBMIT DEBUG ===')
   console.log('Original data:', data)
   console.log('Formatted data:', formattedData)
-  console.log('Formatted data keys:', Object.keys(formattedData))
+  console.log('ID type:', typeof formattedData.id, 'value:', formattedData.id)
+  console.log('ContractTypeID type:', typeof formattedData.contractTypeID, 'value:', formattedData.contractTypeID)
+  console.log('Allowances:', formattedData.allowances)
   console.log('=== END FORMAT DEBUG ===')
 
   return formattedData
@@ -329,13 +329,6 @@ onMounted(async () => {
     fetchAllContracts(),
     fetchAllEmployees()
   ])
-  
-  // Debug logging after data is loaded
-  console.log('=== LABOR CONTRACT VIEW DEBUG ===')
-  console.log('Contracts loaded:', contracts.value?.length || 0)
-  console.log('Employees loaded:', employees.value?.length || 0)
-  console.log('Sample contract:', contracts.value?.[0])
-  console.log('Sample employee:', employees.value?.[0])
 })
 const today = new Date()
 const endDt = null
@@ -348,11 +341,18 @@ const contractsData = computed(() => {
     // Calculate validity status based on date
     const validityStatus = end > today ? 'Còn hiệu lực' : 'Hết hiệu lực'
 
+    // Find employee status from employees list
+    const employee = employees.value.find(emp => emp.id === c.employeeID)
+    const employeeStatus = employee ? employee.status : 'Unknown'
+    
+    console.log(`Contract ${c.contractNumber}: employeeID=${c.employeeID}, found employee:`, !!employee, 'status:', employeeStatus)
+
     return {
       ...c,
       stt: index + 1,
       daysToExpire: daysLeft,
       validityStatus: validityStatus,
+      employeeStatus: employeeStatus,
       // Format dates for display
       startDateFormatted: formatDateTime(c.startDate),
       endDateFormatted: formatDateTime(c.endDate)
@@ -406,22 +406,23 @@ const employeesData = computed(() => {
 
 // Sử dụng contractsData để có trường daysToExpire cho bảng
 const expiredContracts = computed(() => {
-  return contractsData.value.filter(c => c.daysToExpire <= 10)
+  const filtered = contractsData.value.filter(c => {
+    // Lọc hợp đồng hết hạn (<= 10 ngày) và chỉ hiển thị nhân viên đang làm việc
+    const isExpired = c.daysToExpire <= 10
+    const isActive = c.employeeStatus === 'Active'
+    
+    console.log(`Contract ${c.contractNumber}: daysToExpire=${c.daysToExpire}, employeeStatus=${c.employeeStatus}, isExpired=${isExpired}, isActive=${isActive}`)
+    
+    return isExpired && isActive
+  })
+  
+  console.log('Expired contracts (Active employees only):', filtered.length)
+  return filtered
 })
 
 const notCreatedContracts = computed(() => {
   // Tính toán nhân viên chưa có hợp đồng từ dữ liệu local
   const employeesWithoutContractData = calculateEmployeesWithoutContract(employees.value)
-  
-  console.log('=== NOT CREATED CONTRACTS DEBUG ===')
-  console.log('Total employees:', employees.value?.length || 0)
-  console.log('Total contracts:', contracts.value?.length || 0)
-  console.log('Sample employee data:', employees.value?.[0])
-  console.log('Sample contract data:', contracts.value?.[0])
-  console.log('Employee IDs in contracts:', contracts.value?.map(c => c.employeeID))
-  console.log('Employee IDs in employees:', employees.value?.map(e => e.id))
-  console.log('Employees without contract:', employeesWithoutContractData?.length || 0)
-  console.log('Sample employee without contract:', employeesWithoutContractData?.[0])
 
   return employeesWithoutContractData.map((employee, index) => {
     const processedEmployee = {
@@ -432,12 +433,6 @@ const notCreatedContracts = computed(() => {
       birthday: employee.birthday ? new Date(employee.birthday).toLocaleDateString('vi-VN') : '',
       joinDate: employee.joinDate ? new Date(employee.joinDate).toLocaleDateString('vi-VN') : '',
       stt: index + 1,
-    }
-    
-    if (index === 0) {
-      console.log('First processed employee:', processedEmployee)
-      console.log('Original employee keys:', Object.keys(employee))
-      console.log('Original employee values:', employee)
     }
     
     return processedEmployee
@@ -849,10 +844,6 @@ const handleExtendContract = async () => {
         endDate: newEndDate.value
       }
       
-      console.log('=== EXTEND CONTRACT DEBUG ===')
-      console.log('Contract to extend:', contractToExtend.value)
-      console.log('Updated contract before format:', updatedContract)
-      
       const formattedData = formatContractForSubmit(updatedContract)
       await updateContract(formattedData)
       showMessage('Gia hạn hợp đồng thành công!', 'success')
@@ -887,24 +878,17 @@ const terminateEmployee = (contract) => {
 const handleTerminateEmployee = async () => {
   try {
     if (employeeToTerminate.value) {
-      // Update contract end date to today to make it expired
-      const contractToUpdate = {
-        ...employeeToTerminate.value,
-        endDate: new Date().toISOString().split('T')[0]
-      }
+      console.log('=== TERMINATE EMPLOYEE DEBUG ===')
+      console.log('Employee to terminate:', employeeToTerminate.value)
+      console.log('Employee ID:', employeeToTerminate.value.employeeID)
+      console.log('=== END TERMINATE EMPLOYEE DEBUG ===')
       
-      // Format the contract data properly for API submission
-      const formattedData = formatContractForSubmit(contractToUpdate)
-      await updateContract(formattedData)
-
-      // Update employee status to resigned
-      try {
-        await employeeService.updateEmployeeStatus(employeeToTerminate.value.employeeID, 'Resigned')
-        showMessage('Cho nhân viên nghỉ việc thành công! Hợp đồng đã chấm dứt và trạng thái nhân viên đã được cập nhật.', 'success')
-      } catch (employeeError) {
-        console.error('Error updating employee status:', employeeError)
-        showMessage('Hợp đồng đã chấm dứt nhưng có lỗi khi cập nhật trạng thái nhân viên.', 'warning')
-      }
+      // Chỉ cập nhật trạng thái nhân viên thành "Nghỉ việc"
+      await employeeService.updateEmployeeStatus(employeeToTerminate.value.employeeID, 'Resigned')
+      showMessage('Cho nhân viên nghỉ việc thành công! Trạng thái nhân viên đã được cập nhật.', 'success')
+      
+      // Refresh danh sách nhân viên để cập nhật trạng thái
+      await fetchAllEmployees()
     }
     closeTerminateModal()
   } catch (err) {

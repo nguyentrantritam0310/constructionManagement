@@ -5,7 +5,6 @@ export const employeeService = {
   async getAllEmployees() {
     try {
       const response = await api.get('/ApplicationUser/employees')
-      console.log('Employees API response:', response.data)
       return response.data
     } catch (error) {
       console.error('Error fetching employees:', error)
@@ -17,7 +16,6 @@ export const employeeService = {
   async getAllRoles() {
     try {
       const response = await api.get('/ApplicationUser/roles')
-      console.log('Roles API response:', response.data)
       return response.data
     } catch (error) {
       console.error('Error fetching roles:', error)
@@ -72,6 +70,10 @@ export const employeeService = {
   // Update employee status
   async updateEmployeeStatus(employeeId, status) {
     try {
+      console.log('=== UPDATE EMPLOYEE STATUS DEBUG ===')
+      console.log('Employee ID:', employeeId)
+      console.log('Status:', status)
+      
       // Convert string status to enum value
       const statusMap = {
         'Active': 0,
@@ -80,10 +82,18 @@ export const employeeService = {
       }
       
       const statusValue = statusMap[status] !== undefined ? statusMap[status] : status
-      const response = await api.put(`/ApplicationUser/employee/${employeeId}/status`, { status: statusValue })
+      const requestData = { Status: statusValue } // Note: capital S to match C# property
+      
+      console.log('Request data:', requestData)
+      console.log('API endpoint:', `/ApplicationUser/employee/${employeeId}/status`)
+      console.log('=== END UPDATE EMPLOYEE STATUS DEBUG ===')
+      
+      const response = await api.put(`/ApplicationUser/employee/${employeeId}/status`, requestData)
       return response.data
     } catch (error) {
       console.error('Error updating employee status:', error)
+      console.error('Error response:', error.response?.data)
+      console.error('Error status:', error.response?.status)
       throw error
     }
   },

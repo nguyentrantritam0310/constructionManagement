@@ -19,7 +19,6 @@ const openAddEmployeeForm = () => {
 
 const openUpdateForm = (id) => {
     const emp = employees.value.find(e => e.id === id)
-    console.log('Found employee for update:', emp)
     selectedEmployeeForm.value = emp
     employeeFormMode.value = 'update'
     showEmployeeModal.value = true
@@ -102,17 +101,6 @@ onMounted(async () => {
         fetchAllEmployees(),
         fetchAllRoles()
     ])
-    console.log('=== ROLES DEBUG ===')
-    console.log('Roles loaded:', roles.value)
-    roles.value.forEach(role => {
-        console.log(`Role ID: ${role.id}, Role Name: ${role.roleName}`)
-    })
-    console.log('=== EMPLOYEES DEBUG ===')
-    console.log('Employees loaded:', employees.value)
-    employees.value.forEach(emp => {
-        console.log(`Employee: ${emp.firstName} ${emp.lastName}, RoleID: ${emp.roleID}, RoleName: ${emp.roleName}`)
-    })
-    console.log('=== END DEBUG ===')
 })
 const activeTab = ref('employeeList')
 
@@ -290,27 +278,49 @@ const exportToExcel = async (type) => {
 // Function to get employee name with status indicator
 const getEmployeeNameWithStatus = (employee) => {
     const fullName = `${employee.firstName} ${employee.lastName}`
-    const status = employee.status || 0 // Default to Active (0)
+    const status = employee.status || 'Active' // Default to Active
     
     let statusColor = ''
     let statusText = ''
     
-    switch (status) {
-        case 0: // Active
-            statusColor = '#28a745' // Green
-            statusText = 'Đang làm việc'
-            break
-        case 1: // Resigned
-            statusColor = '#000000' // Black
-            statusText = 'Nghỉ việc'
-            break
-        case 2: // MaternityLeave
-            statusColor = '#e91e63' // Pink
-            statusText = 'Nghỉ thai sản'
-            break
-        default:
-            statusColor = '#28a745' // Default to green
-            statusText = 'Đang làm việc'
+    // Handle both string and number status values
+    if (typeof status === 'string') {
+        switch (status) {
+            case 'Active':
+                statusColor = '#28a745' // Green
+                statusText = 'Đang làm việc'
+                break
+            case 'Resigned':
+                statusColor = '#000000' // Black
+                statusText = 'Nghỉ việc'
+                break
+            case 'MaternityLeave':
+                statusColor = '#e91e63' // Pink
+                statusText = 'Nghỉ thai sản'
+                break
+            default:
+                statusColor = '#28a745' // Default to green
+                statusText = 'Đang làm việc'
+        }
+    } else {
+        // Handle number status values (legacy support)
+        switch (status) {
+            case 0: // Active
+                statusColor = '#28a745' // Green
+                statusText = 'Đang làm việc'
+                break
+            case 1: // Resigned
+                statusColor = '#000000' // Black
+                statusText = 'Nghỉ việc'
+                break
+            case 2: // MaternityLeave
+                statusColor = '#e91e63' // Pink
+                statusText = 'Nghỉ thai sản'
+                break
+            default:
+                statusColor = '#28a745' // Default to green
+                statusText = 'Đang làm việc'
+        }
     }
     
     return `<span class="employee-name-with-status" title="${statusText}">

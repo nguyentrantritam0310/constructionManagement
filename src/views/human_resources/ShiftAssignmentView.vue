@@ -734,9 +734,22 @@ const shiftData = computed(() => {
     const startTimes = shift.shiftDetails.map(d => d.startTime)
     const endTimes = shift.shiftDetails.map(d => d.endTime)
 
-    // Tìm giờ vào sớm nhất (min) và giờ ra trễ nhất (max)
-    const earliestStart = startTimes.reduce((a, b) => a < b ? a : b)
-    const latestEnd = endTimes.reduce((a, b) => a > b ? a : b)
+    // Lọc bỏ các ngày nghỉ (00:00:00)
+    const validStartTimes = startTimes.filter(time => time !== '00:00:00')
+    const validEndTimes = endTimes.filter(time => time !== '00:00:00')
+
+    // Tìm giờ vào sớm nhất (min) và giờ ra trễ nhất (max) từ các ngày làm việc
+    const earliestStart = validStartTimes.length > 0 ? validStartTimes.reduce((a, b) => {
+      const timeA = new Date(`2000-01-01T${a}`)
+      const timeB = new Date(`2000-01-01T${b}`)
+      return timeA < timeB ? a : b
+    }) : '--:--'
+    
+    const latestEnd = validEndTimes.length > 0 ? validEndTimes.reduce((a, b) => {
+      const timeA = new Date(`2000-01-01T${a}`)
+      const timeB = new Date(`2000-01-01T${b}`)
+      return timeA > timeB ? a : b
+    }) : '--:--'
 
     // Tính số lượng nhân viên đã được phân cho ca này
     const employeeCount = shiftAssignments.value.filter(assignment => 
@@ -817,10 +830,10 @@ const historyData = computed(() => {
     
     return {
       stt: index + 1,
-      empId: employee?.employeeCode || employee?.employeeID || 'N/A',
+      empId: employee?.employeeCode || employee?.employeeID || employee?.id || employee?.Id || employee?.employeeId || employee?.userId || 'N/A',
       empName: employee?.employeeName || 'N/A',
-      dept: employee?.roleName || 'N/A',
-      shiftCode: shift?.code ? `CA-${shift.code}` : 'N/A',
+      dept: employee?.roleName || employee?.department || 'N/A',
+      shiftCode: shift?.code ? `CA-${shift.code}` : shift?.id ? `CA-${shift.id}` : 'N/A',
       shiftName: shift?.name || shift?.shiftName || 'N/A',
       startDate: formatDateForDisplay(startDate),
       endDate: formatDateForDisplay(endDate),
@@ -844,8 +857,7 @@ const unassignedColumns = [
   { key: 'empName', label: 'Tên Nhân viên' },
   { key: 'dept', label: 'Phòng ban' },
   { key: 'title', label: 'Chức danh' },
-  { key: 'joinDate', label: 'Ngày vào làm' },
-  { key: 'machineCode', label: 'Mã chấm công' }
+  { key: 'joinDate', label: 'Ngày vào làm' }
 ]
 const unassignedData = computed(() => {
   // Lấy danh sách nhân viên chưa được phân ca
@@ -858,12 +870,11 @@ const unassignedData = computed(() => {
     })
     .map((employee, index) => ({
       stt: index + 1,
-      empId: employee.employeeCode || employee.employeeID || 'N/A',
+      empId: employee.employeeCode || employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId || 'N/A',
       empName: employee.employeeName || 'N/A',
-      dept: employee.roleName || 'N/A',
-      title: employee.position || 'N/A',
-      joinDate: formatDateForDisplay(employee.joinDate) || 'N/A',
-      machineCode: employee.machineCode || 'N/A'
+      dept: employee.roleName || employee.department || 'N/A',
+      title: employee.position || employee.jobTitle || employee.title || 'N/A',
+      joinDate: formatDateForDisplay(employee.joinDate) || 'N/A'
     }))
 })
 const paginatedUnassignedData = computed(() => {

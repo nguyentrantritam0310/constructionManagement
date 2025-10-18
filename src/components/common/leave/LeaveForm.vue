@@ -17,7 +17,7 @@ const props = defineProps({
     currentUser: { type: Object, default: () => ({}) }
 })
 
-const emit = defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'submit', 'submit-for-approval'])
 
 // Composables
 const { employees, fetchAllEmployees } = useEmployee()
@@ -148,6 +148,7 @@ const requestedDays = computed(() => {
     return 0
 })
 
+
 const validateForm = () => {
     errors.value = {}
     
@@ -187,6 +188,50 @@ const validateForm = () => {
         if (startDate >= endDate) {
             errors.value.endDateTime = 'Ngày kết thúc phải sau ngày bắt đầu'
         }
+        
+        // Validate time range against work shift
+        if (formData.value.workShiftID) {
+            const selectedWorkShift = workshifts.value.find(shift => shift.id == formData.value.workShiftID)
+            if (selectedWorkShift && selectedWorkShift.shiftDetails) {
+                // Get the day of week for start date
+                const startDayOfWeek = startDate.getDay()
+                const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+                const startDayName = dayNames[startDayOfWeek]
+                
+                // Find shift details for the start day
+                const startDayShiftDetail = selectedWorkShift.shiftDetails.find(detail => detail.dayOfWeek === startDayName)
+                
+                if (startDayShiftDetail && startDayShiftDetail.startTime !== '00:00:00' && startDayShiftDetail.endTime !== '00:00:00') {
+                    // Extract time from datetime
+                    const startTime = startDate.toTimeString().substring(0, 8) // HH:mm:ss
+                    const endTime = endDate.toTimeString().substring(0, 8) // HH:mm:ss
+                    
+                    // Check if start time is within shift hours
+                    if (startTime < startDayShiftDetail.startTime || startTime > startDayShiftDetail.endTime) {
+                        errors.value.startDateTime = `Giờ bắt đầu phải trong khoảng ${startDayShiftDetail.startTime.substring(0, 5)} - ${startDayShiftDetail.endTime.substring(0, 5)} của ca làm việc`
+                    }
+                    
+                    // Check if end time is within shift hours
+                    if (endTime < startDayShiftDetail.startTime || endTime > startDayShiftDetail.endTime) {
+                        errors.value.endDateTime = `Giờ kết thúc phải trong khoảng ${startDayShiftDetail.startTime.substring(0, 5)} - ${startDayShiftDetail.endTime.substring(0, 5)} của ca làm việc`
+                    }
+                }
+                
+                // For multi-day leaves, also check end day
+                const endDayOfWeek = endDate.getDay()
+                const endDayName = dayNames[endDayOfWeek]
+                const endDayShiftDetail = selectedWorkShift.shiftDetails.find(detail => detail.dayOfWeek === endDayName)
+                
+                if (endDayShiftDetail && endDayShiftDetail.startTime !== '00:00:00' && endDayShiftDetail.endTime !== '00:00:00') {
+                    const endTime = endDate.toTimeString().substring(0, 8) // HH:mm:ss
+                    
+                    // Check if end time is within shift hours
+                    if (endTime < endDayShiftDetail.startTime || endTime > endDayShiftDetail.endTime) {
+                        errors.value.endDateTime = `Giờ kết thúc phải trong khoảng ${endDayShiftDetail.startTime.substring(0, 5)} - ${endDayShiftDetail.endTime.substring(0, 5)} của ca làm việc`
+                    }
+                }
+            }
+        }
     }
     
     // Validate leave days availability
@@ -225,6 +270,18 @@ const handleSubmit = () => {
 }
 
 const handleClose = () => emit('close')
+
+const handleSubmitForApproval = () => {
+    if (validateForm()) {
+        // Convert datetime-local to proper format for API
+        const submitData = {
+            ...formData.value,
+            startDateTime: new Date(formData.value.startDateTime).toISOString(),
+            endDateTime: new Date(formData.value.endDateTime).toISOString()
+        }
+        emit('submit-for-approval', submitData.voucherCode)
+    }
+}
 
 // Load data on mount
 onMounted(async () => {
@@ -419,6 +476,7 @@ watch(() => props.leave, (newLeave) => {
                 </div>
             </div>
         </div>
+        
         <div class="row g-3">
             <div class="col-md-6">
                 <FormField 
@@ -454,6 +512,16 @@ watch(() => props.leave, (newLeave) => {
             <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
             <button type="submit" class="btn btn-primary" :disabled="loading">
                 {{ loading ? 'Đang xử lý...' : (props.mode === 'update' ? 'Cập nhật' : 'Tạo mới') }}
+            </button>
+            <!-- Show "Gửi duyệt" button only for update mode and when status is "Tạo mới" (0) -->
+            <button 
+                v-if="props.mode === 'update' && (props.leave.approveStatus == 0 || props.leave.approveStatus === '0')" 
+                type="button" 
+                class="btn btn-success" 
+                @click="handleSubmitForApproval"
+                :disabled="loading"
+            >
+                {{ loading ? 'Đang xử lý...' : 'Gửi duyệt' }}
             </button>
         </div>
     </form>

@@ -34,13 +34,28 @@ const formData = ref({
 
 // Watch for changes in employee prop
 watch(() => props.employee, (newEmployee) => {
-    console.log('=== EMPLOYEE FORM WATCH DEBUG ===')
-    console.log('Employee prop:', newEmployee)
-    console.log('Employee status:', newEmployee?.status, 'Type:', typeof newEmployee?.status)
-    console.log('Form mode:', props.mode)
-    
-    if (newEmployee) {
+    if (newEmployee && props.mode === 'update') {
         // Update mode - populate form with employee data
+        // Convert string status to number for form options
+        let statusValue = '0' // Default to Active
+        if (typeof newEmployee.status === 'string') {
+            switch (newEmployee.status) {
+                case 'Active':
+                    statusValue = '0'
+                    break
+                case 'Resigned':
+                    statusValue = '1'
+                    break
+                case 'MaternityLeave':
+                    statusValue = '2'
+                    break
+                default:
+                    statusValue = '0'
+            }
+        } else {
+            statusValue = newEmployee.status?.toString() ?? '0'
+        }
+        
         formData.value = {
             id: newEmployee.id ?? newEmployee.employeeCode ?? '',
             lastName: newEmployee.lastName ?? '',
@@ -52,10 +67,9 @@ watch(() => props.employee, (newEmployee) => {
             gender: newEmployee.gender ?? '',
             roleID: newEmployee.roleID ?? newEmployee.RoleID ?? '',
             employeeCode: newEmployee.employeeCode ?? newEmployee.id ?? '',
-            status: newEmployee.status?.toString() ?? '0' // Get status from API
+            status: statusValue
         }
-        console.log('Form data updated with employee data:', formData.value)
-    } else {
+    } else if (!newEmployee && props.mode === 'create') {
         // Create mode - reset form to default values
         formData.value = {
             id: '',
@@ -70,21 +84,16 @@ watch(() => props.employee, (newEmployee) => {
             employeeCode: '',
             status: '0' // Default status for new employee
         }
-        console.log('Form data reset for create mode:', formData.value)
     }
-    
-    console.log('Form status value:', formData.value.status, 'Type:', typeof formData.value.status)
-    console.log('=== END EMPLOYEE FORM WATCH DEBUG ===')
 }, { deep: true, immediate: true })
 
 // Watch for changes in roles prop
 watch(() => props.roles, (newRoles) => {
-    console.log('Roles prop changed:', newRoles)
+    // Roles prop changed
 }, { deep: true, immediate: true })
 
 // Computed property for role options
 const roleOptions = computed(() => {
-    console.log('Roles in form:', props.roles)
     if (!props.roles || !Array.isArray(props.roles)) {
         return []
     }

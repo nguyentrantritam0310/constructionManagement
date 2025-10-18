@@ -26,12 +26,10 @@ export const contractService = {
   // Create new contract
   async createContract(contractData) {
     try {
-      console.log('Sending contract data:', contractData) // Debug log
       const response = await api.post('/Contract', contractData)
       return response.data
     } catch (error) {
       console.error('Error creating contract:', error)
-      console.error('Request data:', contractData) // Debug log
       throw error
     }
   },
@@ -39,12 +37,20 @@ export const contractService = {
   // Update contract
   async updateContract(contractData) {
     try {
-      console.log('Updating contract data:', contractData) // Debug log
+      console.log('=== UPDATE CONTRACT API CALL DEBUG ===')
+      console.log('Data being sent to API:', contractData)
+      console.log('Data keys:', Object.keys(contractData))
+      console.log('StartDate type:', typeof contractData.startDate, 'value:', contractData.startDate)
+      console.log('EndDate type:', typeof contractData.endDate, 'value:', contractData.endDate)
+      console.log('ID type:', typeof contractData.id, 'value:', contractData.id)
+      console.log('=== END UPDATE CONTRACT API CALL DEBUG ===')
+      
       const response = await api.put('/Contract', contractData)
       return response.data
     } catch (error) {
       console.error('Error updating contract:', error)
-      console.error('Update request data:', contractData) // Debug log
+      console.error('Error response:', error.response?.data)
+      console.error('Error status:', error.response?.status)
       throw error
     }
   },

@@ -65,6 +65,17 @@ const handleUpdate = async (formData) => {
   }
 }
 
+const handleSubmitForApproval = async (voucherCode) => {
+  try {
+    // Update status to "Chờ duyệt" (status = 1)
+    await updateOvertimeRequest(voucherCode, { approveStatus: 1 })
+    showUpdateForm.value = false
+    selectedItem.value = null
+  } catch (error) {
+    console.error('Error submitting for approval:', error)
+  }
+}
+
 const handleDelete = async (voucherCode) => {
   if (confirm('Bạn có chắc chắn muốn xóa đơn tăng ca này?')) {
     try {
@@ -78,6 +89,16 @@ const handleDelete = async (voucherCode) => {
 const openUpdateForm = (voucherCode) => {
   selectedItem.value = overtimeRequests.value.find(item => item.voucherCode === voucherCode)
   showUpdateForm.value = true
+}
+
+const getStatusText = (status) => {
+  const statusMap = {
+    0: 'Tạo mới',
+    1: 'Chờ duyệt', 
+    2: 'Đã duyệt',
+    3: 'Từ chối'
+  }
+  return statusMap[status] || 'Không xác định'
 }
 
 const currentPage = ref(1)
@@ -351,6 +372,7 @@ const exportToExcel = async (type) => {
       <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData">
         <template #actions="{ item }">
           <div class="d-flex justify-content-start gap-2">
+            <!-- Always show edit button for own requests or if can edit -->
             <ActionButton 
               v-if="canEdit || item.employeeID === currentUser?.id"
               type="success" 
@@ -358,6 +380,7 @@ const exportToExcel = async (type) => {
               title="Sửa" 
               @click="openUpdateForm(item.voucherCode)" 
             />
+            <!-- Always show delete button for own requests or if can edit -->
             <ActionButton 
               v-if="canEdit || item.employeeID === currentUser?.id"
               type="danger" 
@@ -365,6 +388,15 @@ const exportToExcel = async (type) => {
               title="Xóa" 
               @click="handleDelete(item.voucherCode)" 
             />
+            <!-- Always show status -->
+            <span class="badge" :class="{
+              'bg-secondary': item.approveStatus == 0 || item.approveStatus === '0',
+              'bg-warning': item.approveStatus == 1 || item.approveStatus === '1',
+              'bg-success': item.approveStatus == 2 || item.approveStatus === '2',
+              'bg-danger': item.approveStatus == 3 || item.approveStatus === '3'
+            }">
+              {{ getStatusText(item.approveStatus) }}
+            </span>
           </div>
         </template>
         <template #approveStatus="{ item }">
@@ -389,7 +421,13 @@ const exportToExcel = async (type) => {
     <OvertimeForm mode="create" @submit="handleCreate" @close="showCreateForm = false" />
   </ModalDialog>
   <ModalDialog v-model:show="showUpdateForm" title="Sửa đơn tăng ca" size="lg">
-    <OvertimeForm mode="update" :overtime="selectedItem" @submit="handleUpdate" @close="showUpdateForm = false" />
+    <OvertimeForm 
+      mode="update" 
+      :overtime="selectedItem" 
+      @submit="handleUpdate" 
+      @close="showUpdateForm = false"
+      @submit-for-approval="handleSubmitForApproval"
+    />
   </ModalDialog>
 
   <!-- Import Excel Modal -->

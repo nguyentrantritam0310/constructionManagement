@@ -10,7 +10,7 @@ const props = defineProps({
   overtime: { type: Object, default: () => ({}) }
 })
 
-const emit = defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'submit', 'submit-for-approval'])
 
 // Composables
 const { employees, fetchAllEmployees } = useEmployee()
@@ -105,6 +105,18 @@ const handleSubmit = () => {
 }
 
 const handleClose = () => emit('close')
+
+const handleSubmitForApproval = () => {
+  if (validateForm()) {
+    // Convert datetime-local to proper format for API
+    const submitData = {
+      ...formData.value,
+      startDateTime: new Date(formData.value.startDateTime).toISOString(),
+      endDateTime: new Date(formData.value.endDateTime).toISOString()
+    }
+    emit('submit-for-approval', submitData.voucherCode)
+  }
+}
 
 // Load data on mount
 onMounted(async () => {
@@ -249,6 +261,16 @@ watch(() => props.overtime, (newOvertime) => {
       <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
       <button type="submit" class="btn btn-primary" :disabled="loading">
         {{ loading ? 'Đang xử lý...' : (props.mode === 'update' ? 'Cập nhật' : 'Tạo mới') }}
+      </button>
+      <!-- Show "Gửi duyệt" button only for update mode and when status is "Tạo mới" (0) -->
+      <button 
+        v-if="props.mode === 'update' && (props.overtime.approveStatus == 0 || props.overtime.approveStatus === '0')" 
+        type="button" 
+        class="btn btn-success" 
+        @click="handleSubmitForApproval"
+        :disabled="loading"
+      >
+        {{ loading ? 'Đang xử lý...' : 'Gửi duyệt' }}
       </button>
     </div>
   </form>

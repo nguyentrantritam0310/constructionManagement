@@ -17,9 +17,7 @@ export function useEmployee() {
       loading.value = true
       error.value = null
       const employeesData = await employeeService.getAllEmployees()
-      console.log('Raw employees data:', employeesData)
       employees.value = employeesData
-      console.log('Employees set to:', employees.value)
     } catch (err) {
       error.value = err.response?.data?.message || 'Có lỗi xảy ra khi tải danh sách nhân viên'
       console.error('Error fetching employees:', err)
@@ -34,9 +32,7 @@ export function useEmployee() {
       loading.value = true
       error.value = null
       const rolesData = await employeeService.getAllRoles()
-      console.log('Raw roles data:', rolesData)
       roles.value = rolesData
-      console.log('Roles set to:', roles.value)
     } catch (err) {
       error.value = err.response?.data?.message || 'Có lỗi xảy ra khi tải danh sách chức danh'
       console.error('Error fetching roles:', err)
@@ -83,6 +79,7 @@ export function useEmployee() {
     try {
       loading.value = true
       error.value = null
+      
       const result = await employeeService.updateEmployee(employeeData)
       await fetchAllEmployees() // Refresh the list
       
@@ -132,6 +129,26 @@ export function useEmployee() {
 
   // Format employee data for form submission
   const formatEmployeeForSubmit = (employeeData) => {
+    // Convert status to appropriate format for backend
+    let statusValue = 0 // Default to Active
+    if (typeof employeeData.status === 'string') {
+      switch (employeeData.status) {
+        case 'Active':
+          statusValue = 0
+          break
+        case 'Resigned':
+          statusValue = 1
+          break
+        case 'MaternityLeave':
+          statusValue = 2
+          break
+        default:
+          statusValue = 0
+      }
+    } else {
+      statusValue = parseInt(employeeData.status) || 0
+    }
+    
     const formattedData = {
       employeeCode: employeeData.employeeCode || employeeData.id, // Use ID as fallback
       firstName: employeeData.firstName,
@@ -143,7 +160,7 @@ export function useEmployee() {
       gender: employeeData.gender,
       roleID: parseInt(employeeData.roleID),
       password: employeeData.password || '123456789', // Default password if not provided
-      status: parseInt(employeeData.status) || 0
+      status: statusValue
     }
     
     // Include ID for update operations
