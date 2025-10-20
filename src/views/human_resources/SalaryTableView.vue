@@ -3,13 +3,15 @@ import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import TimeFilter from '../../components/common/TimeFilter.vue'
-import ActionButton from '../../components/common/ActionButton.vue'
+import ModalDialog from '../../components/common/ModalDialog.vue'
 import { useSalary } from '../../composables/useSalary.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
+import { useAuth } from '../../composables/useAuth.js'
 
 const activeTab = ref('salary')
 const tabs = [
   { key: 'salary', label: 'Quản lý bảng lương' },
+  { key: 'personalSalary', label: 'Bảng lương cá nhân' },
   { key: 'insurance', label: 'Bảo hiểm theo tháng' },
   { key: 'tax', label: 'Thuế TNCN' },
   { key: 'taxFinalization', label: 'Quyết toán thuế TNCN' }
@@ -30,6 +32,27 @@ const {
 } = useSalary()
 
 const { showMessage } = useGlobalMessage()
+const { currentUser } = useAuth()
+
+// Computed property for personal salary data
+const personalSalaryData = computed(() => {
+  if (!currentUser.value || !salaryTableData.value) return []
+  
+  // Filter salary data for current user only
+  const userSalaryData = salaryTableData.value.filter(item => {
+    return item.empId === currentUser.value.id || 
+           item.empId === String(currentUser.value.id) ||
+           String(item.empId) === currentUser.value.id
+  })
+  
+  console.log('Personal salary data:', {
+    currentUser: currentUser.value,
+    userSalaryData: userSalaryData,
+    totalSalaryData: salaryTableData.value.length
+  })
+  
+  return userSalaryData
+})
 
 // Định dạng tiền
 function formatMoney(value) {
@@ -66,6 +89,37 @@ const handleExportToExcel = async (type) => {
   }
 }
 
+// Year navigation methods for tax finalization tab
+const goToPreviousYear = () => {
+  selectedYear.value--
+  handleTimeChange(selectedYear.value, selectedMonth.value)
+}
+
+const goToNextYear = () => {
+  selectedYear.value++
+  handleTimeChange(selectedYear.value, selectedMonth.value)
+}
+
+const goToCurrentYear = () => {
+  const now = new Date()
+  selectedYear.value = now.getFullYear()
+  handleTimeChange(selectedYear.value, selectedMonth.value)
+}
+
+// Overtime detail modal
+const showOvertimeModal = ref(false)
+const selectedOvertimeEmployee = ref(null)
+
+const openOvertimeModal = (employee) => {
+  selectedOvertimeEmployee.value = employee
+  showOvertimeModal.value = true
+}
+
+const closeOvertimeModal = () => {
+  showOvertimeModal.value = false
+  selectedOvertimeEmployee.value = null
+}
+
 // Cột bảng lương
 const salaryColumns = [
   { key: 'empId', label: 'Mã nhân viên' },
@@ -78,11 +132,13 @@ const salaryColumns = [
   { key: 'standardDays', label: 'Tổng ngày công chuẩn' },
   { key: 'totalDays', label: 'Tổng ngày công' },
   { key: 'salaryByDays', label: 'Lương theo ngày công' },
-  { key: 'unpaidLeaveDays', label: 'Tổng nghỉ không lương' },
   { key: 'paidLeaveDays', label: 'Tổng nghỉ có lương' },
   { key: 'leaveSalary', label: 'Tổng lương phép' },
   { key: 'actualSalary', label: 'Tổng lương thực tế' },
-  { key: 'otDays', label: 'Công tăng ca' },
+  { key: 'otHours', label: 'Số giờ tăng ca' },
+  { key: 'otDays', label: 'Số ngày tăng ca' },
+  { key: 'otHoursWithCoeff', label: 'Số giờ tăng ca có hệ số' },
+  { key: 'otDaysWithCoeff', label: 'Số ngày tăng ca có hệ số' },
   { key: 'otSalary', label: 'Lương tăng ca' },
   { key: 'mealAllowance', label: 'Phụ cấp ăn ca' },
   { key: 'fuelAllowance', label: 'Phụ cấp xăng xe' },
@@ -131,8 +187,6 @@ const insuranceColumns = [
   { key: 'empId', label: 'Mã nhân viên' },
   { key: 'empName', label: 'Tên nhân viên' },
   { key: 'title', label: 'Chức danh' },
-  { key: 'insuranceBookNo', label: 'Số sổ BH' },
-  { key: 'insuranceCode', label: 'Mã số BH' },
   { key: 'insuranceSalary', label: 'Lương đóng BH' },
   // Nhóm Người lao động
   { key: 'bhxhEmp', label: 'BHXH NV đóng (8%)', group: 'Người lao động' },
@@ -152,7 +206,6 @@ const insuranceColumns = [
 const taxColumns = [
   { key: 'empId', label: 'Mã nhân viên' },
   { key: 'empName', label: 'Nhân viên' },
-  { key: 'taxCode', label: 'Mã số thuế' },
   { key: 'dependents', label: 'Số người phụ thuộc' },
   { key: 'totalDeduction', label: 'Tổng số tiền giảm trừ' },
   { key: 'insuranceEmployee', label: 'BH NV đóng' },
@@ -228,20 +281,57 @@ const paginatedTaxFinalizationData = computed(() => {
 
 <template>
   <div class="container-fluid py-4">
-    <!-- Time Filter - Always visible -->
+    <!-- Time Filter - Different filters based on active tab -->
     <div class="row mb-3">
       <div class="col-md-6">
+        <!-- Month filter for salary, personalSalary, insurance, and tax tabs -->
         <TimeFilter 
+          v-if="activeTab === 'salary' || activeTab === 'personalSalary' || activeTab === 'insurance' || activeTab === 'tax'"
           :year="selectedYear" 
           :month="selectedMonth" 
           @update:year="selectedYear = $event"
           @update:month="selectedMonth = $event"
           @change="handleTimeChange"
         />
+        <!-- Year filter for tax finalization tab -->
+        <div v-else-if="activeTab === 'taxFinalization'" class="year-filter">
+          <div class="d-flex align-items-center gap-3 py-3 border-bottom">
+            <div class="d-flex align-items-center gap-2">
+              <button 
+                class="btn btn-outline-secondary btn-sm" 
+                @click="goToPreviousYear"
+                title="Năm trước"
+                :disabled="loading"
+              >
+                <i class="fas fa-chevron-left"></i>
+              </button>
+              <div class="text-center px-3">
+                <h6 class="mb-0 fw-semibold text-dark">Năm {{ selectedYear }}</h6>
+              </div>
+              <button 
+                class="btn btn-outline-secondary btn-sm" 
+                @click="goToNextYear"
+                title="Năm sau"
+                :disabled="loading"
+              >
+                <i class="fas fa-chevron-right"></i>
+              </button>
+            </div>
+            <button 
+              class="btn btn-outline-primary btn-sm" 
+              @click="goToCurrentYear"
+              title="Năm hiện tại"
+              :disabled="loading"
+            >
+              <i class="fas fa-calendar-day"></i>
+            </button>
+          </div>
+        </div>
       </div>
       <div class="col-md-6 text-end">
         <div class="d-flex gap-2 justify-content-end">
           <ActionButton 
+            v-if="activeTab === 'salary'"
             type="warning" 
             icon="fas fa-calculator me-2" 
             @click="handleRecalculateSalaries"
@@ -252,7 +342,7 @@ const paginatedTaxFinalizationData = computed(() => {
           <ActionButton 
             type="success" 
             icon="fas fa-file-export me-2" 
-            @click="handleExportToExcel('salary')"
+            @click="handleExportToExcel(activeTab)"
             :disabled="loading"
           >
             Xuất Excel
@@ -385,6 +475,24 @@ const paginatedTaxFinalizationData = computed(() => {
           <template #netSalary="{ item }">
             <span class="money money-net">{{ formatMoney(item.netSalary) }}</span>
           </template>
+          <template #otHours="{ item }">
+            <span class="overtime-hours">{{ item.otHours }} giờ</span>
+          </template>
+          <template #otDays="{ item }">
+            <span 
+              class="overtime-days-link" 
+              @click="openOvertimeModal(item)"
+              :title="`Xem chi tiết tăng ca của ${item.empName}`"
+            >
+              {{ item.otDays }} ngày
+            </span>
+          </template>
+          <template #otHoursWithCoeff="{ item }">
+            <span class="overtime-hours-coeff">{{ item.otHoursWithCoeff }} giờ</span>
+          </template>
+          <template #otDaysWithCoeff="{ item }">
+            <span class="overtime-days-coeff">{{ item.otDaysWithCoeff }} ngày</span>
+          </template>
         </DataTable>
         <Pagination
           :totalItems="salaryTableData.length"
@@ -394,6 +502,306 @@ const paginatedTaxFinalizationData = computed(() => {
         />
       </div>
     </div>
+    
+    <!-- Personal Salary Tab -->
+    <div v-else-if="activeTab === 'personalSalary'">
+      <!-- Header Section -->
+      <div class="personal-salary-header mb-4">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body py-4">
+            <div class="row align-items-center">
+              <div class="col-lg-8">
+                <div class="d-flex align-items-center">
+                  <div class="personal-icon-wrapper me-3">
+                    <i class="fas fa-user-circle"></i>
+                  </div>
+                  <div class="flex-grow-1">
+                    <h4 class="mb-1 text-primary fw-bold">
+                      <i class="fas fa-money-bill-wave me-2"></i>
+                      Bảng lương cá nhân
+                    </h4>
+                    <p class="mb-0 text-muted">
+                      <i class="fas fa-calendar-alt me-1"></i>
+                      Tháng {{ selectedMonth }}/{{ selectedYear }}
+                    </p>
+                    <div v-if="currentUser" class="employee-info-compact mt-2">
+                      <div class="info-item">
+                        <span class="info-label">Mã NV:</span>
+                        <span class="info-value">{{ currentUser.id }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">Tên:</span>
+                        <span class="info-value">{{ currentUser.firstName }} {{ currentUser.lastName }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="text-end">
+                  <div class="net-salary-display">
+                    <div class="net-salary-label">Thực lãnh</div>
+                    <div class="net-salary-amount">
+                      {{ personalSalaryData.length > 0 ? formatMoney(personalSalaryData[0].netSalary) : '0 ₫' }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Show message if no personal salary data -->
+      <div v-if="personalSalaryData.length === 0" class="text-center py-5">
+        <div class="no-salary-message">
+          <i class="fas fa-user-times fa-4x text-muted mb-4"></i>
+          <h5 class="text-muted mb-3">Không có dữ liệu lương</h5>
+          <p class="text-muted">Không tìm thấy dữ liệu lương cho tháng {{ selectedMonth }}/{{ selectedYear }}</p>
+        </div>
+      </div>
+
+      <!-- Personal Salary Cards -->
+      <div v-else class="personal-salary-content">
+        <div class="row g-4">
+          <!-- Basic Salary Information -->
+          <div class="col-lg-6">
+            <div class="salary-card">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-file-invoice-dollar me-2"></i>
+                  Thông tin lương cơ bản
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="salary-item">
+                  <span class="salary-label">Lương hợp đồng:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].contractSalary) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Lương bảo hiểm:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].insuranceSalary) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Tổng lương theo hợp đồng:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].totalContractSalary) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Tổng ngày công chuẩn:</span>
+                  <span class="salary-value">{{ personalSalaryData[0].standardDays }} ngày</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Tổng ngày công:</span>
+                  <span class="salary-value">{{ personalSalaryData[0].totalDays }} ngày</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Lương theo ngày công:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].salaryByDays) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Overtime Information -->
+          <div class="col-lg-6">
+            <div class="salary-card">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-business-time me-2"></i>
+                  Thông tin tăng ca
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="salary-item">
+                  <span class="salary-label">Số giờ tăng ca:</span>
+                  <span class="salary-value">{{ personalSalaryData[0].otHours }} giờ</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Số ngày tăng ca:</span>
+                  <span class="salary-value overtime-link" @click="openOvertimeModal(personalSalaryData[0])">
+                    {{ personalSalaryData[0].otDays }} ngày
+                  </span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Số giờ có hệ số:</span>
+                  <span class="salary-value">{{ personalSalaryData[0].otHoursWithCoeff }} giờ</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Số ngày có hệ số:</span>
+                  <span class="salary-value">{{ personalSalaryData[0].otDaysWithCoeff }} ngày</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Lương tăng ca:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].otSalary) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Tổng lương thực tế:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].actualSalary) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Leave Information -->
+          <div class="col-lg-6">
+            <div class="salary-card leave-card">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-calendar-check me-2"></i>
+                  Thông tin nghỉ phép
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="salary-item">
+                  <span class="salary-label">Tổng nghỉ có lương:</span>
+                  <span class="salary-value">{{ personalSalaryData[0].paidLeaveDays }} ngày</span>
+                </div>
+                <div class="salary-item total-item">
+                  <span class="salary-label">Tổng lương phép:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].leaveSalary) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Allowances -->
+          <div class="col-lg-6">
+            <div class="salary-card">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-plus-circle me-2"></i>
+                  Các khoản phụ cấp
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="salary-item">
+                  <span class="salary-label">Phụ cấp ăn ca:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].mealAllowance) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Phụ cấp xăng xe:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].fuelAllowance) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Phụ cấp trách nhiệm:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].responsibilityAllowance) }}</span>
+                </div>
+                <div class="salary-item total-item">
+                  <span class="salary-label">Tổng các khoản hỗ trợ:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].totalSupport) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Deductions -->
+          <div class="col-lg-6">
+            <div class="salary-card">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-minus-circle me-2"></i>
+                  Các khoản trừ
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="salary-item">
+                  <span class="salary-label">Bảo hiểm NV đóng:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].insuranceEmployee) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Đoàn phí:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].unionFee) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Giảm trừ bản thân:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].personalDeduction) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Số người phụ thuộc:</span>
+                  <span class="salary-value">{{ personalSalaryData[0].dependents }} người</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Giảm trừ người phụ thuộc:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].dependentDeduction) }}</span>
+                </div>
+                <div class="salary-item total-item">
+                  <span class="salary-label">Tổng các khoản trừ:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].totalDeduction) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tax Information -->
+          <div class="col-lg-6">
+            <div class="salary-card">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-calculator me-2"></i>
+                  Thông tin thuế
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="salary-item">
+                  <span class="salary-label">Tổng thu nhập:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].totalIncome) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Tổng thu nhập chịu thuế:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].taxableIncome) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Khen thưởng:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].bonus) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Thu nhập khác:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].otherIncome) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Tổng thu nhập tính thuế PIT:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].pitIncome) }}</span>
+                </div>
+                <div class="salary-item total-item">
+                  <span class="salary-label">Thuế TNCN:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].pitTax) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Final Summary -->
+          <div class="col-lg-6">
+            <div class="salary-card final-summary-card">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-trophy me-2"></i>
+                  Tổng kết
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="final-summary">
+                  <div class="summary-row">
+                    <span class="summary-label">Tổng thu nhập:</span>
+                    <span class="summary-value income">{{ formatMoney(personalSalaryData[0].totalIncome) }}</span>
+                  </div>
+                  <div class="summary-row">
+                    <span class="summary-label">Tổng các khoản trừ:</span>
+                    <span class="summary-value deduction">{{ formatMoney(personalSalaryData[0].totalDeduction) }}</span>
+                  </div>
+                  <div class="summary-divider"></div>
+                  <div class="summary-row final-row">
+                    <span class="summary-label">Thực lãnh:</span>
+                    <span class="summary-value net-salary">{{ formatMoney(personalSalaryData[0].netSalary) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
     <!-- Insurance Tab -->
     <div v-else-if="activeTab === 'insurance'">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -412,8 +820,6 @@ const paginatedTaxFinalizationData = computed(() => {
               <th rowspan="2">Mã nhân viên</th>
               <th rowspan="2">Tên nhân viên</th>
               <th rowspan="2">Chức danh</th>
-              <th rowspan="2">Số sổ BH</th>
-              <th rowspan="2">Mã số BH</th>
               <th rowspan="2">Lương đóng BH</th>
               <th colspan="4" class="group-header">Người lao động</th>
               <th colspan="4" class="group-header">Doanh nghiệp</th>
@@ -436,8 +842,6 @@ const paginatedTaxFinalizationData = computed(() => {
               <td>{{ item.empId }}</td>
               <td>{{ item.empName }}</td>
               <td>{{ item.title }}</td>
-              <td>{{ item.insuranceBookNo || '--' }}</td>
-              <td>{{ item.insuranceCode || '--' }}</td>
               <td><span class="money">{{ formatMoney(item.insuranceSalary) }}</span></td>
               <td data-group="nl"><span class="money">{{ formatMoney(item.bhxhEmp) }}</span></td>
               <td data-group="nl"><span class="money">{{ formatMoney(item.bhytEmp) }}</span></td>
@@ -565,6 +969,96 @@ const paginatedTaxFinalizationData = computed(() => {
     />
     </div>
   </div>
+
+  <!-- Overtime Detail Modal -->
+  <ModalDialog :show="showOvertimeModal" title="Chi tiết tăng ca" size="lg" @update:show="closeOvertimeModal">
+    <div v-if="selectedOvertimeEmployee" class="p-4">
+      <!-- Employee Info -->
+      <div class="modal-emp-header mb-4">
+        <div class="modal-emp-info">
+          <div class="emp-name fw-bold h5">{{ selectedOvertimeEmployee.empName }}</div>
+          <div class="emp-id text-muted">Mã NV: {{ selectedOvertimeEmployee.empId }}</div>
+          <div class="emp-pos text-muted">Chức vụ: {{ selectedOvertimeEmployee.title }}</div>
+        </div>
+        <div class="modal-emp-date">
+          <span class="fw-bold">Tháng: </span>
+          <span>{{ selectedMonth }}/{{ selectedYear }}</span>
+        </div>
+      </div>
+
+      <!-- Overtime Summary -->
+      <div class="overtime-summary-card">
+        <h6 class="fw-bold mb-3">Tổng hợp tăng ca tháng</h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Số giờ tăng ca:</span>
+              <span class="summary-value">{{ selectedOvertimeEmployee.otHours }} giờ</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Số ngày tăng ca:</span>
+              <span class="summary-value">{{ selectedOvertimeEmployee.otDays }} ngày</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Số giờ có hệ số:</span>
+              <span class="summary-value">{{ selectedOvertimeEmployee.otHoursWithCoeff }} giờ</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Số ngày có hệ số:</span>
+              <span class="summary-value">{{ selectedOvertimeEmployee.otDaysWithCoeff }} ngày</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Lương tăng ca:</span>
+              <span class="summary-value">{{ formatMoney(selectedOvertimeEmployee.otSalary) }}</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Lương hợp đồng:</span>
+              <span class="summary-value">{{ formatMoney(selectedOvertimeEmployee.contractSalary) }}</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Tổng ngày công chuẩn:</span>
+              <span class="summary-value">{{ selectedOvertimeEmployee.standardDays }} ngày</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calculation Formula -->
+      <div class="calculation-formula mt-4">
+        <h6 class="fw-bold mb-3">Công thức tính lương tăng ca</h6>
+        <div class="alert alert-info">
+          <div class="formula-text">
+            <strong>Lương tăng ca = Công tăng ca × Lương hợp đồng × Hệ số / Tổng ngày công chuẩn</strong>
+          </div>
+          <div class="formula-breakdown mt-2">
+            <small class="text-muted">
+              = {{ selectedOvertimeEmployee.otDays }} × {{ formatMoney(selectedOvertimeEmployee.contractSalary) }} × Hệ số / {{ selectedOvertimeEmployee.standardDays }}
+            </small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Note -->
+      <div class="mt-3">
+        <small class="text-muted">
+          <i class="fas fa-info-circle me-1"></i>
+          Hệ số tăng ca được tính từ các đơn tăng ca đã được duyệt trong tháng {{ selectedMonth }}/{{ selectedYear }}
+        </small>
+      </div>
+    </div>
+  </ModalDialog>
 </template>
 
 <style scoped>
@@ -717,6 +1211,624 @@ const paginatedTaxFinalizationData = computed(() => {
   padding: 0;
   margin-bottom: 0;
   overflow-x: auto;
+}
+
+/* Year filter styling */
+.year-filter {
+  background: #fafbfc;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.year-filter .btn {
+  transition: all 0.2s ease;
+}
+
+.year-filter .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.year-filter .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Overtime modal styling */
+.overtime-days-link {
+  color: #0d6efd;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.overtime-days-link:hover {
+  color: #0b5ed7;
+  text-decoration: none;
+}
+
+.overtime-hours,
+.overtime-hours-coeff,
+.overtime-days-coeff {
+  font-weight: 600;
+  color: #495057;
+  background: #f8f9fa;
+  border-radius: 4px;
+  padding: 2px 8px;
+  display: inline-block;
+  font-size: 0.95rem;
+  border: 1px solid #e9ecef;
+}
+
+.overtime-hours-coeff {
+  color: #198754;
+  background: #d1e7dd;
+  border-color: #badbcc;
+}
+
+.overtime-days-coeff {
+  color: #0f5132;
+  background: #d1e7dd;
+  border-color: #badbcc;
+}
+
+.modal-emp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.modal-emp-info .emp-name {
+  color: #0d6efd;
+  margin-bottom: 0.25rem;
+}
+
+.modal-emp-info .emp-id,
+.modal-emp-info .emp-pos {
+  font-size: 0.9rem;
+}
+
+.modal-emp-date {
+  text-align: right;
+}
+
+.overtime-summary-card {
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.summary-label {
+  font-weight: 600;
+  color: #495057;
+}
+
+.summary-value {
+  font-weight: 700;
+  color: #0d6efd;
+}
+
+.calculation-formula .alert {
+  border-left: 4px solid #0d6efd;
+}
+
+.formula-text {
+  font-size: 1.1rem;
+}
+
+.formula-breakdown {
+  font-family: 'Courier New', monospace;
+}
+
+/* Personal salary tab styling */
+.employee-info-compact {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.info-label {
+  font-weight: 600;
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+.info-value {
+  font-weight: 700;
+  color: #0d6efd;
+  font-size: 0.9rem;
+}
+
+.no-salary-message {
+  padding: 2rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 2px dashed #dee2e6;
+}
+
+.no-salary-message i {
+  opacity: 0.5;
+}
+
+/* Personal Salary Card Layout */
+.personal-salary-header {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(52, 152, 219, 0.3);
+  position: relative;
+}
+
+.personal-salary-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Leave Card with System Blue Theme */
+.leave-card {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: white;
+  border: 1px solid #2980b9;
+  position: relative;
+  overflow: hidden;
+}
+
+.leave-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  animation: shimmer 4s infinite;
+}
+
+.leave-card .card-header {
+  background: rgba(255, 255, 255, 0.15);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  z-index: 2;
+}
+
+.leave-card .card-header h6 {
+  color: white;
+  font-weight: 700;
+}
+
+.leave-card .card-header h6 i {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.leave-card .card-body {
+  background: rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 2;
+}
+
+.leave-card .salary-label {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+}
+
+.leave-card .salary-value {
+  color: white;
+  font-weight: 700;
+}
+
+.leave-card .salary-item.total-item {
+  background: rgba(255, 255, 255, 0.15);
+  border-top: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+}
+
+.leave-card .salary-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.personal-salary-header .card {
+  background: transparent;
+  border: none;
+  color: white;
+}
+
+.personal-salary-header .card-body {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.personal-icon-wrapper {
+  width: 70px;
+  height: 70px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: white;
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.personal-icon-wrapper:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.personal-salary-header .info-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.personal-salary-header .info-value {
+  color: white;
+}
+
+.net-salary-display {
+  text-align: center;
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.net-salary-display:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.net-salary-label {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.net-salary-amount {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(45deg, #fff, #e8f4fd);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.salary-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.salary-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #3498db, #2980b9);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s ease;
+}
+
+.salary-card:hover::before {
+  transform: scaleX(1);
+}
+
+.salary-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+  border-color: rgba(52, 152, 219, 0.2);
+}
+
+.salary-card .card-header {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 2px solid #dee2e6;
+  border-radius: 16px 16px 0 0 !important;
+  padding: 1.25rem 1.5rem;
+  position: relative;
+}
+
+.salary-card .card-header::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #3498db, #2980b9);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.salary-card:hover .card-header::after {
+  opacity: 1;
+}
+
+.salary-card .card-header h6 {
+  color: #2c3e50;
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+}
+
+.salary-card .card-header h6 i {
+  margin-right: 0.75rem;
+  color: #3498db;
+  font-size: 1.2rem;
+}
+
+.salary-card .card-body {
+  padding: 1.5rem;
+  position: relative;
+}
+
+.salary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.salary-item:hover {
+  background: rgba(52, 152, 219, 0.02);
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  margin: 0 -0.5rem;
+  border-radius: 8px;
+}
+
+.salary-item:last-child {
+  border-bottom: none;
+}
+
+.salary-item.total-item {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-top: 2px solid #dee2e6;
+  margin-top: 1rem;
+  padding: 1.25rem 1rem;
+  border-radius: 12px;
+  font-weight: 700;
+  position: relative;
+}
+
+.salary-item.total-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #3498db, #2980b9);
+}
+
+.salary-label {
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.95rem;
+  transition: color 0.2s ease;
+}
+
+.salary-value {
+  font-weight: 700;
+  color: #2c3e50;
+  font-size: 0.95rem;
+  transition: color 0.2s ease;
+}
+
+.salary-item:hover .salary-label {
+  color: #3498db;
+}
+
+.salary-item:hover .salary-value {
+  color: #2980b9;
+}
+
+.salary-value.overtime-link {
+  color: #3498db;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.salary-value.overtime-link:hover {
+  color: #2980b9;
+  text-decoration: none;
+}
+
+.final-summary-card {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.final-summary-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  animation: shimmer 5s infinite;
+}
+
+.final-summary-card .card-header {
+  background: rgba(255, 255, 255, 0.15);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  z-index: 2;
+}
+
+.final-summary-card .card-header h6 {
+  color: white;
+  font-weight: 700;
+}
+
+.final-summary-card .card-header h6 i {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.final-summary-card .card-body {
+  background: rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 2;
+}
+
+.final-summary {
+  padding: 0.5rem 0;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.summary-label {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
+}
+
+.summary-value {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.summary-value.income {
+  color: #90ee90;
+}
+
+.summary-value.deduction {
+  color: #ffb6c1;
+}
+
+.summary-value.net-salary {
+  color: white;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.summary-divider {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.3);
+  margin: 0.75rem 0;
+  border-radius: 1px;
+}
+
+.final-row {
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 -1.25rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0 0 12px 12px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .personal-salary-header .row {
+    text-align: center;
+  }
+  
+  .net-salary-display {
+    margin-top: 1rem;
+  }
+  
+  .salary-card {
+    margin-bottom: 1rem;
+  }
+  
+  .salary-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .salary-value {
+    font-weight: 700;
+  }
+}
+
+/* Card Loading Animation */
+.personal-salary-content .row > div {
+  animation: slideInUp 0.6s ease-out forwards;
+  opacity: 0;
+  transform: translateY(30px);
+}
+
+.personal-salary-content .row > div:nth-child(1) { animation-delay: 0.1s; }
+.personal-salary-content .row > div:nth-child(2) { animation-delay: 0.2s; }
+.personal-salary-content .row > div:nth-child(3) { animation-delay: 0.3s; }
+.personal-salary-content .row > div:nth-child(4) { animation-delay: 0.4s; }
+.personal-salary-content .row > div:nth-child(5) { animation-delay: 0.5s; }
+.personal-salary-content .row > div:nth-child(6) { animation-delay: 0.6s; }
+
+@keyframes slideInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 </style>

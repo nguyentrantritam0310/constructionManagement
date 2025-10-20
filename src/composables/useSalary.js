@@ -6,6 +6,7 @@ import { useAttendance } from './useAttendance.js'
 import { useShiftAssignment } from './useShiftAssignment.js'
 import { useFamilyRelation } from './useFamilyRelation.js'
 import { useLeaveRequest } from './useLeaveRequest.js'
+import { useOvertimeRequest } from './useOvertimeRequest.js'
 
 export function useSalary() {
   // State
@@ -25,6 +26,7 @@ export function useSalary() {
   const { shiftAssignments, fetchAllShiftAssignments } = useShiftAssignment()
   const { familyRelations, fetchAllFamilyRelations } = useFamilyRelation()
   const { leaveRequests, fetchLeaveRequests } = useLeaveRequest()
+  const { overtimeRequests, fetchOvertimeRequests } = useOvertimeRequest()
 
   // Computed properties
   const salaryTableData = computed(() => {
@@ -55,8 +57,16 @@ export function useSalary() {
       
       const standardDays = assignedDays || 0 // Ngày công chuẩn = số ngày được phân ca
       
-      // Tính tổng ngày công = tổng ngày đi làm từ tab dữ liệu chấm công
-      const totalDays = attendanceData.filter(att => att.checkInTime && att.checkOutTime).length
+      // Tính tổng ngày công = tổng ngày đi làm từ tab dữ liệu chấm công chi tiết
+      // Đếm số ngày có dữ liệu chấm công hợp lệ (có checkIn và checkOut)
+      const totalDays = attendanceData.filter(att => {
+        // Kiểm tra có dữ liệu chấm công hợp lệ
+        const hasValidCheckIn = att.checkInTime && att.checkInTime.trim() !== ''
+        const hasValidCheckOut = att.checkOutTime && att.checkOutTime.trim() !== ''
+        
+        // Chỉ tính những ngày có cả check-in và check-out
+        return hasValidCheckIn && hasValidCheckOut
+      }).length
       
       // Tính tổng nghỉ có lương = tổng nghỉ phép từ leave requests
       const paidLeaveDays = leaveRequests.value.filter(leave => {
@@ -70,6 +80,42 @@ export function useSalary() {
                leave.leaveTypeName && leave.leaveTypeName.toLowerCase().includes('phép')
       }).length
       
+      // Tính công tăng ca và lương tăng ca
+      // Lọc các đơn tăng ca đã duyệt trong tháng
+      const approvedOvertimeForMonth = (overtimeRequests?.value || []).filter(ot => {
+        if (!ot || !ot.startDateTime) return false
+        const start = new Date(ot.startDateTime)
+        const isSameMonth = (start.getFullYear() === selectedYear.value) && (start.getMonth() + 1 === selectedMonth.value)
+        const isApproved = ot.approveStatus === 'Đã duyệt' || ot.approveStatus === 'Approved' || ot.approveStatus === 2
+        const employeeMatch = ot.employeeID === employee.id || String(ot.employeeID) === String(employee.id)
+        return isSameMonth && isApproved && employeeMatch
+      })
+
+      // Tính tổng số giờ tăng ca và các chỉ số chi tiết
+      let totalOvertimeHours = 0 // tổng giờ tăng ca
+      let totalOvertimeDayUnits = 0 // tổng ngày quy đổi (8h = 1 ngày)
+      let totalOvertimeHoursWithCoeff = 0 // tổng giờ có hệ số
+      let totalOvertimeDaysWithCoeff = 0 // tổng ngày có hệ số
+      
+      approvedOvertimeForMonth.forEach(ot => {
+        const start = new Date(ot.startDateTime)
+        const end = new Date(ot.endDateTime)
+        const hours = Math.max(0, (end - start) / (1000 * 60 * 60))
+        const dayUnits = hours / 8
+        const coeff = Number(ot.coefficient) || 1
+        
+        totalOvertimeHours += hours
+        totalOvertimeDayUnits += dayUnits
+        totalOvertimeHoursWithCoeff += hours * coeff
+        totalOvertimeDaysWithCoeff += dayUnits * coeff
+      })
+
+      const otDays = Math.round(totalOvertimeDayUnits * 100) / 100
+      const otHours = Math.round(totalOvertimeHours * 100) / 100
+      const otHoursWithCoeff = Math.round(totalOvertimeHoursWithCoeff * 100) / 100
+      const otDaysWithCoeff = Math.round(totalOvertimeDaysWithCoeff * 100) / 100
+      const otSalary = standardDays > 0 ? (contractSalary * totalOvertimeDaysWithCoeff / standardDays) : 0
+
       // Tính lương theo ngày công = lương hợp đồng * tổng ngày công / tổng ngày công chuẩn
       const salaryByDays = standardDays > 0 ? contractSalary * (totalDays / standardDays) : 0
       
@@ -79,10 +125,36 @@ export function useSalary() {
       // Tính tổng lương thực tế = lương theo ngày công + tổng lương phép
       const actualSalary = salaryByDays + leaveSalary
       
-      // Tính các khoản phụ cấp (có thể lấy từ hợp đồng hoặc cấu hình)
-      const mealAllowance = 200000 // Phụ cấp ăn ca cố định
-      const fuelAllowance = 150000 // Phụ cấp xăng xe cố định
-      const responsibilityAllowance = contract?.allowances?.find(a => a.allowanceName?.includes('trách nhiệm'))?.value || 0
+      // Tính các khoản phụ cấp từ hợp đồng
+      const mealAllowance = contract?.allowances?.find(a => 
+        a.allowanceName?.toLowerCase().includes('ăn') || 
+        a.allowanceName?.toLowerCase().includes('meal') ||
+        a.allowanceName?.toLowerCase().includes('trưa') ||
+        a.allowanceName?.toLowerCase().includes('ca')
+      )?.value || 0
+      
+      const fuelAllowance = contract?.allowances?.find(a => 
+        a.allowanceName?.toLowerCase().includes('xăng') || 
+        a.allowanceName?.toLowerCase().includes('xe') ||
+        a.allowanceName?.toLowerCase().includes('fuel') ||
+        a.allowanceName?.toLowerCase().includes('điện thoại')
+      )?.value || 0
+      
+      const responsibilityAllowance = contract?.allowances?.find(a => 
+        a.allowanceName?.toLowerCase().includes('trách nhiệm') ||
+        a.allowanceName?.toLowerCase().includes('responsibility')
+      )?.value || 0
+      
+      // Debug: Log allowance information for first employee
+      if (index === 0) {
+        console.log('=== ALLOWANCE DEBUG ===')
+        console.log('Employee:', employee.firstName, employee.lastName)
+        console.log('Contract allowances:', contract?.allowances)
+        console.log('Meal allowance:', mealAllowance)
+        console.log('Fuel allowance:', fuelAllowance)
+        console.log('Responsibility allowance:', responsibilityAllowance)
+        console.log('=== END ALLOWANCE DEBUG ===')
+      }
       
       // Tính bảo hiểm nhân viên đóng
       const insuranceEmployee = insuranceSalary * 0.105 // 10.5%
@@ -109,7 +181,7 @@ export function useSalary() {
       const personalDeduction = 11000000 // Giảm trừ bản thân
       const dependentDeduction = dependents * 4400000 // Giảm trừ người phụ thuộc
       
-      const totalIncome = actualSalary + mealAllowance + fuelAllowance + responsibilityAllowance
+      const totalIncome = actualSalary + mealAllowance + fuelAllowance + responsibilityAllowance + otSalary
       const taxableIncome = Math.max(0, totalIncome - personalDeduction - dependentDeduction - insuranceEmployee)
       
       // Tính thuế TNCN theo bậc thuế
@@ -146,12 +218,14 @@ export function useSalary() {
         standardDays,
         totalDays,
         salaryByDays,
-        unpaidLeaveDays: Math.max(0, standardDays - totalDays - paidLeaveDays),
         paidLeaveDays,
         leaveSalary,
         actualSalary,
-        otDays: 0, // Có thể tính từ dữ liệu tăng ca
-        otSalary: 0,
+        otDays,
+        otHours,
+        otHoursWithCoeff,
+        otDaysWithCoeff,
+        otSalary,
         mealAllowance,
         fuelAllowance,
         responsibilityAllowance,
@@ -240,7 +314,8 @@ export function useSalary() {
           fetchAttendance(),
           fetchAllShiftAssignments(),
           fetchAllFamilyRelations(),
-          fetchLeaveRequests()
+          fetchLeaveRequests(),
+          fetchOvertimeRequests()
         ])
       
       // Update selected period
@@ -254,6 +329,7 @@ export function useSalary() {
           shiftAssignments: shiftAssignments.value.length,
           familyRelations: familyRelations.value.length,
           leaveRequests: leaveRequests.value.length,
+          overtimeRequests: overtimeRequests.value.length,
           year,
           month
         })

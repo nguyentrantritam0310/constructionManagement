@@ -1187,6 +1187,22 @@ const overtimeColumns = computed(() => [
   ...overtimeHeaders.value.map((day, idx) => ({ key: `day_${idx}`, label: day, class: 'text-center col-day' }))
 ]);
 
+// Helper function to compare dates without timezone issues
+function isSameDate(date1, date2) {
+  const d1 = new Date(date1);
+  const d2 = new Date(date2);
+  
+  return d1.getFullYear() === d2.getFullYear() &&
+         d1.getMonth() === d2.getMonth() &&
+         d1.getDate() === d2.getDate();
+}
+
+// Helper function to format date for comparison
+function formatDateForComparison(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // Tạo dữ liệu tăng ca thực tế cho từng nhân viên, từng ngày từ API
 function generateOvertimeForEmployee(employeeId) {
   console.log('=== OVERTIME DEBUG ===');
@@ -1212,13 +1228,20 @@ function generateOvertimeForEmployee(employeeId) {
       targetEmployeeIDType: typeof employeeId
     });
 
-    // So sánh cả string và number
-    const employeeMatch = request.employeeID === employeeId ||
-      request.employeeID === String(employeeId) ||
-      String(request.employeeID) === employeeId;
+    // So sánh cả string và number, và normalize IDs
+    const requestEmployeeId = String(request.employeeID).trim();
+    const targetEmployeeId = String(employeeId).trim();
+    
+    const employeeMatch = requestEmployeeId === targetEmployeeId ||
+      requestEmployeeId === String(targetEmployeeId) ||
+      String(requestEmployeeId) === targetEmployeeId;
 
-    return employeeMatch &&
-      (request.approveStatus === 'Đã duyệt' || request.approveStatus === 'Approved'); // Hỗ trợ cả tiếng Việt và tiếng Anh
+    const isApproved = request.approveStatus === 'Đã duyệt' || 
+                      request.approveStatus === 'Approved' || 
+                      request.approveStatus === 2 ||
+                      request.approveStatus === '2';
+
+    return employeeMatch && isApproved;
   });
 
   console.log('Filtered employee overtime requests:', employeeOvertimeRequests);
@@ -1226,13 +1249,24 @@ function generateOvertimeForEmployee(employeeId) {
   return overtimeHeaders.value.map((day, dayIdx) => {
     // Tạo ngày hiện tại để so sánh
     const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, dayIdx + 1);
-    const dateStr = currentDate.toISOString().split('T')[0];
+    const dateStr = formatDateForComparison(currentDate);
+
+    console.log(`Processing day ${dayIdx}: ${day} -> ${dateStr}`);
 
     // Tìm yêu cầu tăng ca trong ngày này
     const dayOvertimeRequest = employeeOvertimeRequests.find(request => {
-      const requestDate = new Date(request.startDateTime).toISOString().split('T')[0];
-      console.log('Comparing dates:', { requestDate, dateStr, match: requestDate === dateStr });
-      return requestDate === dateStr;
+      const requestDateStr = formatDateForComparison(request.startDateTime);
+      
+      console.log('Comparing dates:', { 
+        requestDateStr, 
+        dateStr, 
+        match: requestDateStr === dateStr,
+        originalRequestDate: request.startDateTime,
+        originalCurrentDate: currentDate.toISOString(),
+        dayHeader: day,
+        isSameDateCheck: isSameDate(request.startDateTime, currentDate)
+      });
+      return requestDateStr === dateStr;
     });
 
     if (dayOvertimeRequest) {
@@ -1241,7 +1275,7 @@ function generateOvertimeForEmployee(employeeId) {
       // Tính số giờ tăng ca
       const startTime = new Date(dayOvertimeRequest.startDateTime);
       const endTime = new Date(dayOvertimeRequest.endDateTime);
-      const hours = Math.ceil((endTime - startTime) / (1000 * 60 * 60)); // Chuyển đổi sang giờ
+      const hours = Math.max(0, (endTime - startTime) / (1000 * 60 * 60)); // Chuyển đổi sang giờ
 
       // Xác định loại tăng ca - sử dụng tên thay vì ID
       let type = '';
@@ -1370,11 +1404,11 @@ function getTotalOvertimeDays(employee) {
   overtimeHeaders.value.forEach((_, idx) => {
     const dayData = employee[`day_${idx}`];
     if (dayData && dayData.hours > 0) {
-      totalDays++;
+      totalDays += dayData.hours / 8; // Convert hours to days (8 hours = 1 day)
     }
   });
 
-  return totalDays;
+  return Math.round(totalDays * 100) / 100;
 }
 
 function getTotalOvertimeHoursWithCoefficient(employee) {
@@ -1383,8 +1417,9 @@ function getTotalOvertimeHoursWithCoefficient(employee) {
   let totalHours = 0;
   overtimeHeaders.value.forEach((_, idx) => {
     const dayData = employee[`day_${idx}`];
-    if (dayData && dayData.hours > 0 && dayData.request?.coefficient) {
-      totalHours += dayData.hours * dayData.request.coefficient;
+    if (dayData && dayData.hours > 0) {
+      const coefficient = dayData.request?.coefficient || 1; // Default to 1 if no coefficient
+      totalHours += dayData.hours * coefficient;
     }
   });
 
@@ -1397,8 +1432,9 @@ function getTotalOvertimeDaysWithCoefficient(employee) {
   let totalDays = 0;
   overtimeHeaders.value.forEach((_, idx) => {
     const dayData = employee[`day_${idx}`];
-    if (dayData && dayData.hours > 0 && dayData.request?.coefficient) {
-      totalDays += (dayData.hours / 8) * dayData.request.coefficient;
+    if (dayData && dayData.hours > 0) {
+      const coefficient = dayData.request?.coefficient || 1; // Default to 1 if no coefficient
+      totalDays += (dayData.hours / 8) * coefficient;
     }
   });
 
@@ -1421,8 +1457,9 @@ function getDayOvertimeDays(employee, dayIdx) {
 function getDayOvertimeHoursWithCoefficient(employee, dayIdx) {
   if (!employee || dayIdx === null) return 0;
   const dayData = employee[`day_${dayIdx}`];
-  if (dayData && dayData.hours > 0 && dayData.request?.coefficient) {
-    return Math.round((dayData.hours * dayData.request.coefficient) * 100) / 100;
+  if (dayData && dayData.hours > 0) {
+    const coefficient = dayData.request?.coefficient || 1; // Default to 1 if no coefficient
+    return Math.round((dayData.hours * coefficient) * 100) / 100;
   }
   return 0;
 }
@@ -1430,8 +1467,9 @@ function getDayOvertimeHoursWithCoefficient(employee, dayIdx) {
 function getDayOvertimeDaysWithCoefficient(employee, dayIdx) {
   if (!employee || dayIdx === null) return 0;
   const dayData = employee[`day_${dayIdx}`];
-  if (dayData && dayData.hours > 0 && dayData.request?.coefficient) {
-    return Math.round(((dayData.hours / 8) * dayData.request.coefficient) * 100) / 100;
+  if (dayData && dayData.hours > 0) {
+    const coefficient = dayData.request?.coefficient || 1; // Default to 1 if no coefficient
+    return Math.round(((dayData.hours / 8) * coefficient) * 100) / 100;
   }
   return 0;
 }
