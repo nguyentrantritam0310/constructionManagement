@@ -3,11 +3,12 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
-import TimeFilter from '../../components/common/TimeFilter.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import { useSalary } from '../../composables/useSalary.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
 import { useAuth } from '../../composables/useAuth.js'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
 
 const activeTab = ref('salary')
 const tabs = [
@@ -23,6 +24,7 @@ const {
   salaryTableData,
   insuranceTableData,
   taxTableData,
+  taxFinalizationData,
   loading,
   error,
   selectedYear,
@@ -133,6 +135,34 @@ const goToCurrentYear = () => {
   handleTimeChange(selectedYear.value, selectedMonth.value)
 }
 
+// Month navigation methods for other tabs
+const goToPreviousMonth = () => {
+  if (selectedMonth.value === 1) {
+    selectedMonth.value = 12
+    selectedYear.value--
+  } else {
+    selectedMonth.value--
+  }
+  handleTimeChange(selectedYear.value, selectedMonth.value)
+}
+
+const goToNextMonth = () => {
+  if (selectedMonth.value === 12) {
+    selectedMonth.value = 1
+    selectedYear.value++
+  } else {
+    selectedMonth.value++
+  }
+  handleTimeChange(selectedYear.value, selectedMonth.value)
+}
+
+const goToCurrentMonth = () => {
+  const now = new Date()
+  selectedMonth.value = now.getMonth() + 1
+  selectedYear.value = now.getFullYear()
+  handleTimeChange(selectedYear.value, selectedMonth.value)
+}
+
 // Overtime detail modal
 const showOvertimeModal = ref(false)
 const selectedOvertimeEmployee = ref(null)
@@ -162,9 +192,7 @@ const salaryColumns = [
   { key: 'paidLeaveDays', label: 'Tổng nghỉ có lương' },
   { key: 'leaveSalary', label: 'Tổng lương phép' },
   { key: 'actualSalary', label: 'Tổng lương thực tế' },
-  { key: 'otHours', label: 'Số giờ tăng ca' },
   { key: 'otDays', label: 'Số ngày tăng ca' },
-  { key: 'otHoursWithCoeff', label: 'Số giờ tăng ca có hệ số' },
   { key: 'otDaysWithCoeff', label: 'Số ngày tăng ca có hệ số' },
   { key: 'otSalary', label: 'Lương tăng ca' },
   { key: 'mealAllowance', label: 'Phụ cấp ăn ca' },
@@ -173,6 +201,7 @@ const salaryColumns = [
   { key: 'totalSupport', label: 'Tổng các khoản hỗ trợ' },
   { key: 'insuranceEmployee', label: 'Bảo hiểm NV đóng' },
   { key: 'unionFee', label: 'Đoàn phí' },
+  { key: 'adjustmentDeductions', label: 'Các khoản trừ khác' },
   { key: 'totalIncome', label: 'Tổng thu nhập' },
   { key: 'taxableIncome', label: 'Tổng thu nhập chịu thuế' },
   { key: 'personalDeduction', label: 'Giảm trừ bản thân' },
@@ -251,8 +280,6 @@ const taxFinalizationGroups = [
 const taxFinalizationColumns = [
   { key: 'empId', label: 'Mã nhân viên', group: 'Quyết toán thuế' },
   { key: 'empName', label: 'Tên nhân viên', group: 'Quyết toán thuế' },
-  { key: 'taxCode', label: 'Mã số thuế', group: 'Quyết toán thuế' },
-  { key: 'idCard', label: 'Số CMND', group: 'Quyết toán thuế' },
   { key: 'year_totalDeduction', label: 'Tổng số tiền giảm trừ', group: 'Quyết toán thuế' },
   { key: 'year_insuranceEmployee', label: 'BH NV đóng', group: 'Quyết toán thuế' },
   { key: 'year_totalIncome', label: 'Tổng thu nhập', group: 'Quyết toán thuế' },
@@ -267,117 +294,498 @@ const taxFinalizationColumns = [
   ]).flat()
 ]
 
-const taxFinalizationData = Array.from({ length: 15 }, (_, i) => {
-  const year_totalDeduction = 22000000 + (i % 3) * 4400000
-  const year_insuranceEmployee = 4200000 + i * 100000
-  const year_totalIncome = 44375000 + i * 1000000
-  const year_taxableIncome = 37500000 + i * 900000
-  const year_pitTax = 6125000 + i * 200000
-  const year_dependents = i % 3
-  const months = {}
-  for (let m = 1; m <= 12; m++) {
-    months[`m${m}_totalDeduction`] = m < 3 ? year_totalDeduction : 0
-    months[`m${m}_insuranceEmployee`] = m < 3 ? year_insuranceEmployee : 0
-    months[`m${m}_income`] = m < 3 ? year_totalIncome : 0
-    months[`m${m}_taxableIncome`] = m < 3 ? year_taxableIncome : 0
-    months[`m${m}_pitTax`] = m < 3 ? year_pitTax : 0
-    months[`m${m}_dependents`] = m < 3 ? year_dependents : 0
+// Sử dụng dữ liệu thật từ useSalary thay vì dữ liệu giả
+const taxFinalizationTableData = computed(() => {
+  // Lấy dữ liệu quyết toán thuế từ useSalary
+  const taxData = taxFinalizationData.value
+  
+  if (!taxData || !taxData.employeeDetails) {
+    return []
   }
-  return {
-    empId: `NV${String(1001 + i)}`,
-    empName: `Nhân viên ${i + 1}`,
-    taxCode: `TAX${1001 + i}`,
-    idCard: `0${i + 1}1234567`,
-    year_totalDeduction,
-    year_insuranceEmployee,
-    year_totalIncome,
-    year_taxableIncome,
-    year_pitTax,
-    year_dependents,
-    ...months
-  }
+  
+  // Tạo dữ liệu quyết toán thuế từ dữ liệu thật
+  return taxData.employeeDetails.map(emp => {
+    const months = {}
+    for (let m = 1; m <= 12; m++) {
+      if (m === selectedMonth.value) {
+        // Tháng được chọn: sử dụng dữ liệu thật
+        months[`m${m}_totalDeduction`] = emp.personalDeduction + emp.dependentDeduction
+        months[`m${m}_insuranceEmployee`] = emp.insuranceEmployee
+        months[`m${m}_income`] = emp.totalIncome
+        months[`m${m}_taxableIncome`] = emp.taxableIncome
+        months[`m${m}_pitTax`] = emp.pitTax
+        months[`m${m}_dependents`] = Math.floor(emp.dependentDeduction / 4400000)
+      } else {
+        // Các tháng khác: = 0 (chưa có dữ liệu)
+        months[`m${m}_totalDeduction`] = 0
+        months[`m${m}_insuranceEmployee`] = 0
+        months[`m${m}_income`] = 0
+        months[`m${m}_taxableIncome`] = 0
+        months[`m${m}_pitTax`] = 0
+        months[`m${m}_dependents`] = 0
+      }
+    }
+    
+    return {
+      empId: emp.empId,
+      empName: emp.empName,
+      // Dữ liệu tổng hợp năm (hiện tại chỉ có tháng được chọn)
+      year_totalDeduction: emp.personalDeduction + emp.dependentDeduction,
+      year_insuranceEmployee: emp.insuranceEmployee,
+      year_totalIncome: emp.totalIncome,
+      year_taxableIncome: emp.taxableIncome,
+      year_pitTax: emp.pitTax,
+      year_dependents: Math.floor(emp.dependentDeduction / 4400000),
+      ...months
+    }
+  })
 })
 
 const taxFinalizationCurrentPage = ref(1)
 const taxFinalizationItemsPerPage = ref(8)
 const paginatedTaxFinalizationData = computed(() => {
   const start = (taxFinalizationCurrentPage.value - 1) * taxFinalizationItemsPerPage.value
-  return taxFinalizationData.slice(start, start + taxFinalizationItemsPerPage.value)
+  return taxFinalizationTableData.value.slice(start, start + taxFinalizationItemsPerPage.value)
 })
+
+// Export Excel function for tax finalization
+const exportTaxFinalizationToExcel = async () => {
+  try {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Quyết toán thuế TNCN')
+
+    // Add title
+    worksheet.mergeCells('A1:Z1')
+    const titleCell = worksheet.getCell('A1')
+    titleCell.value = `BẢNG QUYẾT TOÁN THUẾ THU NHẬP CÁ NHÂN NĂM ${selectedYear.value}`
+    titleCell.font = { size: 16, bold: true }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF2C3E50' }
+    }
+    titleCell.font = { color: { argb: 'FFFFFFFF' }, size: 16, bold: true }
+
+    // Add headers
+    const headers = [
+      'Mã NV', 'Tên nhân viên',
+      'Tổng số NPT', 'Tổng số tiền giảm trừ', 'Tổng BH NV đóng', 'Tổng thu nhập', 'Tổng thu nhập chịu thuế', 'Thuế TNCN'
+    ]
+    
+    // Add month headers
+    for (let m = 1; m <= 12; m++) {
+      headers.push(`T${m}_NPT`, `T${m}_Giảm trừ`, `T${m}_BH NV`, `T${m}_Thu nhập`, `T${m}_Chịu thuế`, `T${m}_Thuế`)
+    }
+
+    // Set headers
+    worksheet.addRow(headers)
+    const headerRow = worksheet.getRow(2)
+    headerRow.font = { bold: true }
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE9ECEF' }
+    }
+
+    // Add data rows
+    taxFinalizationTableData.value.forEach(emp => {
+      const row = [
+        emp.empId,
+        emp.empName,
+        emp.year_dependents,
+        emp.year_totalDeduction,
+        emp.year_insuranceEmployee,
+        emp.year_totalIncome,
+        emp.year_taxableIncome,
+        emp.year_pitTax
+      ]
+      
+      // Add monthly data
+      for (let m = 1; m <= 12; m++) {
+        row.push(
+          emp[`m${m}_dependents`],
+          emp[`m${m}_totalDeduction`],
+          emp[`m${m}_insuranceEmployee`],
+          emp[`m${m}_income`],
+          emp[`m${m}_taxableIncome`],
+          emp[`m${m}_pitTax`]
+        )
+      }
+      
+      worksheet.addRow(row)
+    })
+
+    // Auto-fit columns
+    worksheet.columns.forEach(column => {
+      column.width = 15
+    })
+
+    // Generate buffer and download
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    saveAs(blob, `Quyet_toan_thue_TNCN_${selectedYear.value}.xlsx`)
+    
+    showMessage('Xuất Excel thành công!', 'success')
+  } catch (error) {
+    console.error('Error exporting Excel:', error)
+    showMessage('Có lỗi khi xuất Excel!', 'error')
+  }
+}
+
+// Print report functions for other tabs
+const printSalaryReport = () => {
+  try {
+    const printWindow = window.open('', '_blank')
+    const currentDate = new Date().toLocaleDateString('vi-VN')
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Báo cáo bảng lương tháng ${selectedMonth.value}/${selectedYear.value}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
+          .subtitle { font-size: 14px; color: #666; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }
+          th { background-color: #f5f5f5; font-weight: bold; }
+          .footer { margin-top: 30px; text-align: right; font-size: 12px; color: #666; }
+          @media print { body { margin: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">BẢNG LƯƠNG THÁNG ${selectedMonth.value}/${selectedYear.value}</div>
+        </div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Mã NV</th>
+              <th>Tên nhân viên</th>
+              <th>Lương hợp đồng</th>
+              <th>Tổng ngày công</th>
+              <th>Tổng nghỉ có lương</th>
+              <th>Lương thực tế</th>
+              <th>Tổng thu nhập</th>
+              <th>Tổng các khoản trừ</th>
+              <th>Thực lãnh</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${salaryTableData.value.map(emp => `
+              <tr>
+                <td>${emp.empId}</td>
+                <td>${emp.empName}</td>
+                <td>${formatMoney(emp.contractSalary)}</td>
+                <td>${emp.totalDays}</td>
+                <td>${emp.paidLeaveDays}</td>
+                <td>${formatMoney(emp.actualSalary)}</td>
+                <td>${formatMoney(emp.totalIncome)}</td>
+                <td>${formatMoney(emp.totalDeduction)}</td>
+                <td>${formatMoney(emp.netSalary)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        <div class="footer">
+          <div>Ngày in: ${currentDate}</div>
+        </div>
+      </body>
+      </html>
+    `)
+    
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+    
+    showMessage('Đã mở cửa sổ in!', 'success')
+  } catch (error) {
+    console.error('Error printing report:', error)
+    showMessage('Có lỗi khi in báo cáo!', 'error')
+  }
+}
+
+const printInsuranceReport = () => {
+  try {
+    const printWindow = window.open('', '_blank')
+    const currentDate = new Date().toLocaleDateString('vi-VN')
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Báo cáo bảo hiểm tháng ${selectedMonth.value}/${selectedYear.value}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }
+          th { background-color: #f5f5f5; font-weight: bold; }
+          .footer { margin-top: 30px; text-align: right; font-size: 12px; color: #666; }
+          @media print { body { margin: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">BẢO HIỂM THEO THÁNG ${selectedMonth.value}/${selectedYear.value}</div>
+        </div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Mã NV</th>
+              <th>Tên nhân viên</th>
+              <th>Lương cơ bản</th>
+              <th>BHXH NV</th>
+              <th>BHYT NV</th>
+              <th>BHTN NV</th>
+              <th>Tổng BH NV</th>
+              <th>BHXH CT</th>
+              <th>BHYT CT</th>
+              <th>BHTN CT</th>
+              <th>Tổng BH CT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${insuranceTableData.value.map(emp => `
+              <tr>
+                <td>${emp.empId}</td>
+                <td>${emp.empName}</td>
+                <td>${formatMoney(emp.basicSalary)}</td>
+                <td>${formatMoney(emp.socialInsuranceEmployee)}</td>
+                <td>${formatMoney(emp.healthInsuranceEmployee)}</td>
+                <td>${formatMoney(emp.unemploymentInsuranceEmployee)}</td>
+                <td>${formatMoney(emp.totalInsuranceEmployee)}</td>
+                <td>${formatMoney(emp.socialInsuranceCompany)}</td>
+                <td>${formatMoney(emp.healthInsuranceCompany)}</td>
+                <td>${formatMoney(emp.unemploymentInsuranceCompany)}</td>
+                <td>${formatMoney(emp.totalInsuranceCompany)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        <div class="footer">
+          <div>Ngày in: ${currentDate}</div>
+        </div>
+      </body>
+      </html>
+    `)
+    
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+    
+    showMessage('Đã mở cửa sổ in!', 'success')
+  } catch (error) {
+    console.error('Error printing report:', error)
+    showMessage('Có lỗi khi in báo cáo!', 'error')
+  }
+}
+
+const printTaxReport = () => {
+  try {
+    const printWindow = window.open('', '_blank')
+    const currentDate = new Date().toLocaleDateString('vi-VN')
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Báo cáo thuế TNCN tháng ${selectedMonth.value}/${selectedYear.value}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }
+          th { background-color: #f5f5f5; font-weight: bold; }
+          .footer { margin-top: 30px; text-align: right; font-size: 12px; color: #666; }
+          @media print { body { margin: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">THUẾ TNCN THÁNG ${selectedMonth.value}/${selectedYear.value}</div>
+        </div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Mã NV</th>
+              <th>Tên nhân viên</th>
+              <th>Tổng thu nhập</th>
+              <th>Tổng thu nhập chịu thuế</th>
+              <th>Tổng thu nhập tính thuế</th>
+              <th>Thuế TNCN</th>
+              <th>Số người phụ thuộc</th>
+              <th>Giảm trừ bản thân</th>
+              <th>Giảm trừ người phụ thuộc</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${taxTableData.value.map(emp => `
+              <tr>
+                <td>${emp.empId}</td>
+                <td>${emp.empName}</td>
+                <td>${formatMoney(emp.totalIncome)}</td>
+                <td>${formatMoney(emp.taxableIncome)}</td>
+                <td>${formatMoney(emp.pitIncome)}</td>
+                <td>${formatMoney(emp.pitTax)}</td>
+                <td>${emp.dependents}</td>
+                <td>${formatMoney(emp.personalDeduction)}</td>
+                <td>${formatMoney(emp.dependentDeduction)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        <div class="footer">
+          <div>Ngày in: ${currentDate}</div>
+        </div>
+      </body>
+      </html>
+    `)
+    
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+    
+    showMessage('Đã mở cửa sổ in!', 'success')
+  } catch (error) {
+    console.error('Error printing report:', error)
+    showMessage('Có lỗi khi in báo cáo!', 'error')
+  }
+}
+
+// Print report function for tax finalization
+const printTaxFinalizationReport = () => {
+  try {
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank')
+    
+    const taxData = taxFinalizationData.value
+    const currentDate = new Date().toLocaleDateString('vi-VN')
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Báo cáo quyết toán thuế TNCN ${selectedYear.value}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
+          .subtitle { font-size: 14px; color: #666; }
+          .summary { margin-bottom: 20px; }
+          .summary-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+          .summary-label { font-weight: bold; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }
+          th { background-color: #f5f5f5; font-weight: bold; }
+          .footer { margin-top: 30px; text-align: right; font-size: 12px; color: #666; }
+          @media print { body { margin: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">BẢNG QUYẾT TOÁN THUẾ THU NHẬP CÁ NHÂN</div>
+          <div class="subtitle">Năm ${selectedYear.value}</div>
+        </div>
+        
+        <div class="summary">
+          <div class="summary-row">
+            <span class="summary-label">Tổng số nhân viên:</span>
+            <span>${taxData?.totalEmployees || 0}</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Tổng thu nhập:</span>
+            <span>${formatMoney(taxData?.totalIncome || 0)}</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Tổng thuế TNCN:</span>
+            <span>${formatMoney(taxData?.totalPitTax || 0)}</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Tổng bảo hiểm nhân viên:</span>
+            <span>${formatMoney(taxData?.totalInsuranceEmployee || 0)}</span>
+          </div>
+        </div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">Mã NV</th>
+              <th rowspan="2">Tên nhân viên</th>
+              <th colspan="6">Quyết toán thuế</th>
+              ${Array.from({length: 12}, (_, i) => `<th colspan="6">Tháng ${i+1}</th>`).join('')}
+            </tr>
+            <tr>
+              <th>Tổng số NPT</th>
+              <th>Tổng số tiền giảm trừ</th>
+              <th>Tổng BH NV đóng</th>
+              <th>Tổng thu nhập</th>
+              <th>Tổng thu nhập chịu thuế</th>
+              <th>Thuế TNCN</th>
+              ${Array.from({length: 12}, () => 
+                '<th>Tổng số NPT</th><th>Tổng số tiền giảm trừ</th><th>Tổng BH NV đóng</th><th>Tổng thu nhập</th><th>Tổng thu nhập chịu thuế</th><th>Thuế TNCN</th>'
+              ).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${taxFinalizationTableData.value.map(emp => `
+              <tr>
+                <td>${emp.empId}</td>
+                <td>${emp.empName}</td>
+                <td>${emp.year_dependents}</td>
+                <td>${formatMoney(emp.year_totalDeduction)}</td>
+                <td>${formatMoney(emp.year_insuranceEmployee)}</td>
+                <td>${formatMoney(emp.year_totalIncome)}</td>
+                <td>${formatMoney(emp.year_taxableIncome)}</td>
+                <td>${formatMoney(emp.year_pitTax)}</td>
+                ${Array.from({length: 12}, (_, i) => {
+                  const m = i + 1
+                  return `
+                    <td>${emp[`m${m}_dependents`]}</td>
+                    <td>${formatMoney(emp[`m${m}_totalDeduction`])}</td>
+                    <td>${formatMoney(emp[`m${m}_insuranceEmployee`])}</td>
+                    <td>${formatMoney(emp[`m${m}_income`])}</td>
+                    <td>${formatMoney(emp[`m${m}_taxableIncome`])}</td>
+                    <td>${formatMoney(emp[`m${m}_pitTax`])}</td>
+                  `
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        <div class="footer">
+          <div>Ngày in: ${currentDate}</div>
+        </div>
+      </body>
+      </html>
+    `)
+    
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+    
+    showMessage('Đã mở cửa sổ in!', 'success')
+  } catch (error) {
+    console.error('Error printing report:', error)
+    showMessage('Có lỗi khi in báo cáo!', 'error')
+  }
+}
 </script>
 
 <template>
   <div class="container-fluid py-4">
-    <!-- Time Filter - Different filters based on active tab -->
-    <div class="row mb-3">
-      <div class="col-md-6">
-        <!-- Month filter for salary, personalSalary, insurance, and tax tabs -->
-        <TimeFilter 
-          v-if="activeTab === 'salary' || activeTab === 'personalSalary' || activeTab === 'insurance' || activeTab === 'tax'"
-          :year="selectedYear" 
-          :month="selectedMonth" 
-          @update:year="selectedYear = $event"
-          @update:month="selectedMonth = $event"
-          @change="handleTimeChange"
-        />
-        <!-- Year filter for tax finalization tab -->
-        <div v-else-if="activeTab === 'taxFinalization'" class="year-filter">
-          <div class="d-flex align-items-center gap-3 py-3 border-bottom">
-            <div class="d-flex align-items-center gap-2">
-              <button 
-                class="btn btn-outline-secondary btn-sm" 
-                @click="goToPreviousYear"
-                title="Năm trước"
-                :disabled="loading"
-              >
-                <i class="fas fa-chevron-left"></i>
-              </button>
-              <div class="text-center px-3">
-                <h6 class="mb-0 fw-semibold text-dark">Năm {{ selectedYear }}</h6>
-              </div>
-              <button 
-                class="btn btn-outline-secondary btn-sm" 
-                @click="goToNextYear"
-                title="Năm sau"
-                :disabled="loading"
-              >
-                <i class="fas fa-chevron-right"></i>
-              </button>
-            </div>
-            <button 
-              class="btn btn-outline-primary btn-sm" 
-              @click="goToCurrentYear"
-              title="Năm hiện tại"
-              :disabled="loading"
-            >
-              <i class="fas fa-calendar-day"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-6 text-end">
-        <div class="d-flex gap-2 justify-content-end">
-          <ActionButton 
-            v-if="activeTab === 'salary'"
-            type="warning" 
-            icon="fas fa-calculator me-2" 
-            @click="handleRecalculateSalaries"
-            :disabled="loading"
-          >
-            Tính lại lương
-          </ActionButton>
-          <ActionButton 
-            type="success" 
-            icon="fas fa-file-export me-2" 
-            @click="handleExportToExcel(activeTab)"
-            :disabled="loading"
-          >
-            Xuất Excel
-          </ActionButton>
-        </div>
-      </div>
-    </div>
-
     <!-- Loading State -->
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">
@@ -419,17 +827,68 @@ const paginatedTaxFinalizationData = computed(() => {
 
     <!-- Salary Tab -->
     <div v-if="activeTab === 'salary'">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h4 class="salary-title mb-0">Quản lý bảng lương</h4>
-          <p class="text-muted mb-0">Tháng {{ selectedMonth }}/{{ selectedYear }}</p>
+      <!-- Header Section -->
+      <div class="salary-header mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-md-6">
+            <div class="time-filter-compact">
+              <div class="d-flex align-items-center gap-3">
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToPreviousMonth"
+                  title="Tháng trước"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="text-center px-3">
+                  <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                </div>
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToNextMonth"
+                  title="Tháng sau"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-chevron-right"></i>
+                </button>
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToCurrentMonth"
+                  title="Tháng hiện tại"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-calendar-day"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="header-actions d-flex gap-2 justify-content-end">
+              <button class="btn btn-outline-light btn-sm" @click="handleRecalculateSalaries" :disabled="loading">
+                <i class="fas fa-calculator me-1"></i>
+                Tính lại lương
+              </button>
+              <button class="btn btn-outline-light btn-sm" @click="handleExportToExcel('salary')" :disabled="loading">
+                <i class="fas fa-download me-1"></i>
+                Xuất Excel
+              </button>
+              <button class="btn btn-outline-light btn-sm" @click="printSalaryReport">
+                <i class="fas fa-print me-1"></i>
+                In báo cáo
+              </button>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
         <div class="text-muted">
           <small>Tổng số nhân viên: {{ salaryTableData.length }}</small>
         </div>
       </div>
       <div class="table-responsive salary-table">
-        <DataTable :columns="salaryColumns" :data="paginatedSalaryData">
+          <DataTable :columns="salaryColumns" :data="paginatedSalaryData">
           <template #contractSalary="{ item }">
             <span class="money">{{ formatMoney(item.contractSalary) }}</span>
           </template>
@@ -472,6 +931,9 @@ const paginatedTaxFinalizationData = computed(() => {
           <template #unionFee="{ item }">
             <span class="money">{{ formatMoney(item.unionFee) }}</span>
           </template>
+          <template #adjustmentDeductions="{ item }">
+            <span class="money">{{ formatMoney(item.adjustmentDeductions) }}</span>
+          </template>
           <template #totalIncome="{ item }">
             <span class="money">{{ formatMoney(item.totalIncome) }}</span>
           </template>
@@ -502,9 +964,6 @@ const paginatedTaxFinalizationData = computed(() => {
           <template #netSalary="{ item }">
             <span class="money money-net">{{ formatMoney(item.netSalary) }}</span>
           </template>
-          <template #otHours="{ item }">
-            <span class="overtime-hours">{{ item.otHours }} giờ</span>
-          </template>
           <template #otDays="{ item }">
             <span 
               class="overtime-days-link" 
@@ -513,9 +972,6 @@ const paginatedTaxFinalizationData = computed(() => {
             >
               {{ item.otDays }} ngày
             </span>
-          </template>
-          <template #otHoursWithCoeff="{ item }">
-            <span class="overtime-hours-coeff">{{ item.otHoursWithCoeff }} giờ</span>
           </template>
           <template #otDaysWithCoeff="{ item }">
             <span class="overtime-days-coeff">{{ item.otDaysWithCoeff }} ngày</span>
@@ -535,7 +991,7 @@ const paginatedTaxFinalizationData = computed(() => {
       <!-- Header Section -->
       <div class="personal-salary-header mb-4">
         <div class="card border-0 shadow-sm">
-          <div class="card-body py-4">
+          <div class="card-body py-3">
             <div class="row align-items-center">
               <div class="col-lg-8">
                 <div class="d-flex align-items-center">
@@ -543,15 +999,15 @@ const paginatedTaxFinalizationData = computed(() => {
                     <i class="fas fa-user-circle"></i>
                   </div>
                   <div class="flex-grow-1">
-                    <h4 class="mb-1 text-primary fw-bold">
+                    <h5 class="mb-1 text-primary fw-bold">
                       <i class="fas fa-money-bill-wave me-2"></i>
                       Bảng lương cá nhân
-                    </h4>
-                    <p class="mb-0 text-muted">
+                    </h5>
+                    <p class="mb-0 text-muted small">
                       <i class="fas fa-calendar-alt me-1"></i>
                       Tháng {{ selectedMonth }}/{{ selectedYear }}
                     </p>
-                    <div v-if="currentUser" class="employee-info-compact mt-2">
+                    <div v-if="currentUser" class="employee-info-compact mt-1">
                       <div class="info-item">
                         <span class="info-label">Mã NV:</span>
                         <span class="info-value">{{ currentUser.id }}</span>
@@ -640,18 +1096,10 @@ const paginatedTaxFinalizationData = computed(() => {
               </div>
               <div class="card-body">
                 <div class="salary-item">
-                  <span class="salary-label">Số giờ tăng ca:</span>
-                  <span class="salary-value">{{ personalSalaryData[0].otHours }} giờ</span>
-                </div>
-                <div class="salary-item">
                   <span class="salary-label">Số ngày tăng ca:</span>
                   <span class="salary-value overtime-link" @click="openOvertimeModal(personalSalaryData[0])">
                     {{ personalSalaryData[0].otDays }} ngày
                   </span>
-                </div>
-                <div class="salary-item">
-                  <span class="salary-label">Số giờ có hệ số:</span>
-                  <span class="salary-value">{{ personalSalaryData[0].otHoursWithCoeff }} giờ</span>
                 </div>
                 <div class="salary-item">
                   <span class="salary-label">Số ngày có hệ số:</span>
@@ -738,6 +1186,10 @@ const paginatedTaxFinalizationData = computed(() => {
                 <div class="salary-item">
                   <span class="salary-label">Đoàn phí:</span>
                   <span class="salary-value">{{ formatMoney(personalSalaryData[0].unionFee) }}</span>
+                </div>
+                <div class="salary-item">
+                  <span class="salary-label">Các khoản trừ khác:</span>
+                  <span class="salary-value">{{ formatMoney(personalSalaryData[0].adjustmentDeductions) }}</span>
                 </div>
                 <div class="salary-item">
                   <span class="salary-label">Giảm trừ bản thân:</span>
@@ -831,11 +1283,58 @@ const paginatedTaxFinalizationData = computed(() => {
     
     <!-- Insurance Tab -->
     <div v-else-if="activeTab === 'insurance'">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h4 class="salary-title mb-0">Bảo hiểm theo tháng</h4>
-          <p class="text-muted mb-0">Tháng {{ selectedMonth }}/{{ selectedYear }}</p>
+      <!-- Header Section -->
+      <div class="insurance-header mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-md-6">
+            <div class="time-filter-compact">
+              <div class="d-flex align-items-center gap-3">
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToPreviousMonth"
+                  title="Tháng trước"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="text-center px-3">
+                  <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                </div>
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToNextMonth"
+                  title="Tháng sau"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-chevron-right"></i>
+                </button>
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToCurrentMonth"
+                  title="Tháng hiện tại"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-calendar-day"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="header-actions d-flex gap-2 justify-content-end">
+              <button class="btn btn-outline-light btn-sm" @click="handleExportToExcel('insurance')" :disabled="loading">
+                <i class="fas fa-download me-1"></i>
+                Xuất Excel
+              </button>
+              <button class="btn btn-outline-light btn-sm" @click="printInsuranceReport">
+                <i class="fas fa-print me-1"></i>
+                In báo cáo
+              </button>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
         <div class="text-muted">
           <small>Tổng số nhân viên: {{ insuranceTableData.length }}</small>
         </div>
@@ -893,11 +1392,58 @@ const paginatedTaxFinalizationData = computed(() => {
     </div>
     <!-- Tax Tab -->
     <div v-else-if="activeTab === 'tax'">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h4 class="salary-title mb-0">Thuế TNCN</h4>
-          <p class="text-muted mb-0">Tháng {{ selectedMonth }}/{{ selectedYear }}</p>
+      <!-- Header Section -->
+      <div class="tax-header mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-md-6">
+            <div class="time-filter-compact">
+              <div class="d-flex align-items-center gap-3">
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToPreviousMonth"
+                  title="Tháng trước"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="text-center px-3">
+                  <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                </div>
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToNextMonth"
+                  title="Tháng sau"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-chevron-right"></i>
+                </button>
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToCurrentMonth"
+                  title="Tháng hiện tại"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-calendar-day"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="header-actions d-flex gap-2 justify-content-end">
+              <button class="btn btn-outline-light btn-sm" @click="handleExportToExcel('tax')" :disabled="loading">
+                <i class="fas fa-download me-1"></i>
+                Xuất Excel
+              </button>
+              <button class="btn btn-outline-light btn-sm" @click="printTaxReport">
+                <i class="fas fa-print me-1"></i>
+                In báo cáo
+              </button>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
         <div class="text-muted">
           <small>Tổng số nhân viên: {{ taxTableData.length }}</small>
         </div>
@@ -925,24 +1471,115 @@ const paginatedTaxFinalizationData = computed(() => {
         @update:currentPage="taxCurrentPage = $event"
       />
     </div>
+    <!-- Tax Finalization Tab -->
     <div v-else-if="activeTab === 'taxFinalization'">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h4 class="salary-title mb-0">Quyết toán thuế TNCN</h4>
-          <p class="text-muted mb-0">Năm {{ selectedYear }}</p>
+      <!-- Header Section -->
+      <div class="tax-finalization-header mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-md-6">
+            <div class="year-filter-compact">
+              <div class="d-flex align-items-center gap-3">
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToPreviousYear"
+                  title="Năm trước"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="text-center px-3">
+                  <h6 class="mb-0 fw-semibold text-white">Năm {{ selectedYear }}</h6>
+                </div>
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToNextYear"
+                  title="Năm sau"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-chevron-right"></i>
+                </button>
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="goToCurrentYear"
+                  title="Năm hiện tại"
+                  :disabled="loading"
+                >
+                  <i class="fas fa-calendar-day"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="header-actions d-flex gap-2 justify-content-end">
+              <button class="btn btn-outline-light btn-sm" @click="exportTaxFinalizationToExcel">
+                <i class="fas fa-download me-1"></i>
+                Xuất Excel
+              </button>
+              <button class="btn btn-outline-light btn-sm" @click="printTaxFinalizationReport">
+                <i class="fas fa-print me-1"></i>
+                In báo cáo
+              </button>
+            </div>
+          </div>
         </div>
-        <button class="btn btn-primary" style="min-width:120px">
-          <i class="fas fa-plus me-2"></i>Thêm
-        </button>
       </div>
-      <div class="table-responsive salary-table">
-        <table class="table">
+
+      <!-- Summary Cards -->
+      <div class="row g-3 mb-4" v-if="taxFinalizationData && taxFinalizationData.totalEmployees > 0">
+        <div class="col-md-3">
+          <div class="summary-card">
+            <div class="summary-icon">
+              <i class="fas fa-users"></i>
+            </div>
+            <div class="summary-content">
+              <div class="summary-label">Tổng nhân viên</div>
+              <div class="summary-value">{{ taxFinalizationData.totalEmployees }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="summary-card">
+            <div class="summary-icon">
+              <i class="fas fa-money-bill-wave"></i>
+            </div>
+            <div class="summary-content">
+              <div class="summary-label">Tổng thu nhập</div>
+              <div class="summary-value">{{ formatMoney(taxFinalizationData.totalIncome) }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="summary-card">
+            <div class="summary-icon">
+              <i class="fas fa-percentage"></i>
+            </div>
+            <div class="summary-content">
+              <div class="summary-label">Tổng thuế TNCN</div>
+              <div class="summary-value">{{ formatMoney(taxFinalizationData.totalPitTax) }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="summary-card">
+            <div class="summary-icon">
+              <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="summary-content">
+              <div class="summary-label">Tổng BH NV</div>
+              <div class="summary-value">{{ formatMoney(taxFinalizationData.totalInsuranceEmployee) }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Table Section -->
+      <div class="tax-table-container">
+        <div class="table-responsive">
+          <table class="table tax-finalization-table">
           <thead>
             <tr>
               <th rowspan="2">Mã nhân viên</th>
               <th rowspan="2">Tên nhân viên</th>
-              <th rowspan="2">Mã số thuế</th>
-              <th rowspan="2">Số CMND</th>
               <th colspan="6" class="group-header">Quyết toán thuế</th>
               <th v-for="m in 12" :colspan="6" class="group-header">Tháng {{ m }}</th>
             </tr>
@@ -967,8 +1604,6 @@ const paginatedTaxFinalizationData = computed(() => {
             <tr v-for="item in paginatedTaxFinalizationData" :key="item.empId">
               <td>{{ item.empId }}</td>
               <td>{{ item.empName }}</td>
-              <td>{{ item.taxCode }}</td>
-              <td>{{ item.idCard }}</td>
               <td data-group="qt">{{ item.year_dependents }}</td>
               <td data-group="qt"><span class="money">{{ formatMoney(item.year_totalDeduction) }}</span></td>
               <td data-group="qt"><span class="money">{{ formatMoney(item.year_insuranceEmployee) }}</span></td>
@@ -987,13 +1622,18 @@ const paginatedTaxFinalizationData = computed(() => {
             </tr>
           </tbody>
         </table>
-    </div>
-    <Pagination
-      :totalItems="taxFinalizationData.length"
-      :itemsPerPage="taxFinalizationItemsPerPage"
-      :currentPage="taxFinalizationCurrentPage"
-      @update:currentPage="taxFinalizationCurrentPage = $event"
-    />
+        </div>
+        
+        <!-- Pagination -->
+        <div class="tax-pagination mt-3">
+          <Pagination
+            :totalItems="taxFinalizationTableData.length"
+            :itemsPerPage="taxFinalizationItemsPerPage"
+            :currentPage="taxFinalizationCurrentPage"
+            @update:currentPage="taxFinalizationCurrentPage = $event"
+          />
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1019,20 +1659,8 @@ const paginatedTaxFinalizationData = computed(() => {
         <div class="row g-3">
           <div class="col-md-6">
             <div class="summary-item">
-              <span class="summary-label">Số giờ tăng ca:</span>
-              <span class="summary-value">{{ selectedOvertimeEmployee.otHours }} giờ</span>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="summary-item">
               <span class="summary-label">Số ngày tăng ca:</span>
               <span class="summary-value">{{ selectedOvertimeEmployee.otDays }} ngày</span>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="summary-item">
-              <span class="summary-label">Số giờ có hệ số:</span>
-              <span class="summary-value">{{ selectedOvertimeEmployee.otHoursWithCoeff }} giờ</span>
             </div>
           </div>
           <div class="col-md-6">
@@ -1470,14 +2098,14 @@ const paginatedTaxFinalizationData = computed(() => {
 }
 
 .personal-icon-wrapper {
-  width: 70px;
-  height: 70px;
+  width: 50px;
+  height: 50px;
   background: rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 20px;
   color: white;
   backdrop-filter: blur(10px);
   border: 2px solid rgba(255, 255, 255, 0.3);
@@ -1502,9 +2130,9 @@ const paginatedTaxFinalizationData = computed(() => {
 
 .net-salary-display {
   text-align: center;
-  padding: 1.5rem;
+  padding: 1rem;
   background: rgba(255, 255, 255, 0.15);
-  border-radius: 16px;
+  border-radius: 12px;
   backdrop-filter: blur(10px);
   border: 2px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
@@ -1527,7 +2155,7 @@ const paginatedTaxFinalizationData = computed(() => {
 }
 
 .net-salary-amount {
-  font-size: 2.2rem;
+  font-size: 1.8rem;
   font-weight: 800;
   color: white;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -1828,6 +2456,175 @@ const paginatedTaxFinalizationData = computed(() => {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Header Styles for all tabs */
+.salary-header,
+.insurance-header,
+.tax-header,
+.tax-finalization-header {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
+}
+
+.year-filter-compact .btn {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.year-filter-compact .btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.header-actions .btn {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.header-actions .btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* Summary Cards */
+.summary-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+.summary-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  color: white;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+}
+
+.summary-content {
+  flex: 1;
+}
+
+.summary-label {
+  font-size: 0.85rem;
+  color: #6c757d;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.summary-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+/* Tax Table Container */
+.tax-table-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.tax-finalization-table {
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.tax-finalization-table th {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border: none;
+  padding: 1rem 0.75rem;
+  font-weight: 600;
+  color: #495057;
+  text-align: center;
+  vertical-align: middle;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.tax-finalization-table th.group-header {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  color: #495057;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.tax-finalization-table td {
+  padding: 0.75rem;
+  border: none;
+  border-bottom: 1px solid #f1f3f4;
+  vertical-align: middle;
+  text-align: center;
+}
+
+.tax-finalization-table tbody tr:hover {
+  background: rgba(52, 152, 219, 0.05);
+}
+
+.tax-finalization-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Pagination */
+.tax-pagination {
+  padding: 1rem 1.5rem;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .tax-finalization-header .row {
+    text-align: center;
+  }
+  
+  .header-actions {
+    justify-content: center !important;
+    margin-top: 1rem;
+  }
+  
+  .summary-card {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.75rem;
+  }
+  
+  .summary-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
   }
 }
 

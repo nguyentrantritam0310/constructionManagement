@@ -7,13 +7,13 @@ import { useShiftAssignment } from './useShiftAssignment.js'
 import { useFamilyRelation } from './useFamilyRelation.js'
 import { useLeaveRequest } from './useLeaveRequest.js'
 import { useOvertimeRequest } from './useOvertimeRequest.js'
+import { usePayrollAdjustment } from './usePayrollAdjustment.js'
 
 export function useSalary() {
   // State
   const salaryData = ref([])
   const insuranceData = ref([])
   const taxData = ref([])
-  const taxFinalizationData = ref([])
   const loading = ref(false)
   const error = ref(null)
   const selectedYear = ref(new Date().getFullYear())
@@ -27,6 +27,7 @@ export function useSalary() {
   const { familyRelations, fetchAllFamilyRelations } = useFamilyRelation()
   const { leaveRequests, fetchLeaveRequests } = useLeaveRequest()
   const { overtimeRequests, fetchOvertimeRequests } = useOvertimeRequest()
+  const { payrollAdjustments, fetchPayrollAdjustments } = usePayrollAdjustment()
 
   // Computed properties
   const salaryTableData = computed(() => {
@@ -58,18 +59,27 @@ export function useSalary() {
       const standardDays = assignedDays || 0 // Ngày công chuẩn = số ngày được phân ca
       
       // Tính tổng ngày công = tổng ngày đi làm từ tab dữ liệu chấm công chi tiết
-      // Đếm số ngày có dữ liệu chấm công hợp lệ (có checkIn và checkOut)
-      const totalDays = attendanceData.filter(att => {
+      // Đếm số ngày duy nhất có dữ liệu chấm công hợp lệ (có checkIn và checkOut)
+      const validAttendanceDays = attendanceData.filter(att => {
         // Kiểm tra có dữ liệu chấm công hợp lệ
         const hasValidCheckIn = att.checkInTime && att.checkInTime.trim() !== ''
         const hasValidCheckOut = att.checkOutTime && att.checkOutTime.trim() !== ''
         
         // Chỉ tính những ngày có cả check-in và check-out
         return hasValidCheckIn && hasValidCheckOut
-      }).length
+      })
       
-      // Tính tổng nghỉ có lương = tổng nghỉ phép từ leave requests
-      const paidLeaveDays = leaveRequests.value.filter(leave => {
+      // Lấy danh sách các ngày duy nhất (tránh đếm trùng lặp)
+      const uniqueWorkDays = new Set()
+      validAttendanceDays.forEach(att => {
+        const workDate = new Date(att.workDate || att.attendanceDate).toISOString().split('T')[0]
+        uniqueWorkDays.add(workDate)
+      })
+      
+      const totalDays = uniqueWorkDays.size
+      
+      // Tính tổng nghỉ có lương = tổng số ngày nghỉ phép từ leave requests
+      const approvedLeaveRequests = leaveRequests.value.filter(leave => {
         const leaveStartDate = new Date(leave.startDateTime)
         const leaveEndDate = new Date(leave.endDateTime)
         
@@ -78,7 +88,20 @@ export function useSalary() {
                leaveStartDate.getFullYear() === selectedYear.value &&
                (leave.approveStatus === 'Đã duyệt' || leave.approveStatus === 'Approved') &&
                leave.leaveTypeName && leave.leaveTypeName.toLowerCase().includes('phép')
-      }).length
+      })
+      
+      // Tính tổng số ngày nghỉ phép (không phải số phiếu)
+      let totalPaidLeaveDays = 0
+      approvedLeaveRequests.forEach(leave => {
+        const startDate = new Date(leave.startDateTime)
+        const endDate = new Date(leave.endDateTime)
+        
+        // Tính số ngày nghỉ trong phiếu này
+        const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
+        totalPaidLeaveDays += daysDiff
+      })
+      
+      const paidLeaveDays = totalPaidLeaveDays
       
       // Tính công tăng ca và lương tăng ca
       // Lọc các đơn tăng ca đã duyệt trong tháng
@@ -161,7 +184,10 @@ export function useSalary() {
       const unionFee = insuranceSalary * 0.01 // 1% đoàn phí
       
       // Tính số người phụ thuộc từ quan hệ gia đình
-      const currentDate = new Date()
+      // Chỉ tính những người có quan hệ trong khoảng thời gian của tháng được chọn
+      const monthStartDate = new Date(selectedYear.value, selectedMonth.value - 1, 1) // Ngày đầu tháng
+      const monthEndDate = new Date(selectedYear.value, selectedMonth.value, 0) // Ngày cuối tháng
+      
       const dependents = familyRelations.value.filter(relation => {
         // Kiểm tra quan hệ gia đình của nhân viên này
         const isEmployeeRelation = relation.employeeID === employee.id
@@ -169,43 +195,89 @@ export function useSalary() {
         // Kiểm tra thời gian hiệu lực (từ ngày bắt đầu đến ngày kết thúc)
         const startDate = new Date(relation.startDate)
         const endDate = new Date(relation.endDate)
-        const isActive = currentDate >= startDate && currentDate <= endDate
+        
+        // Kiểm tra xem quan hệ có hiệu lực trong tháng được chọn không
+        // Quan hệ phải có ít nhất 1 ngày trong tháng được chọn
+        const isActiveInMonth = (startDate <= monthEndDate) && (endDate >= monthStartDate)
         
         // Chỉ tính các mối quan hệ phụ thuộc (con, vợ/chồng, cha/mẹ)
         const isDependentRelation = ['Con', 'Vợ', 'Chồng', 'Cha', 'Mẹ'].includes(relation.relationShipName)
         
-        return isEmployeeRelation && isActive && isDependentRelation
+        return isEmployeeRelation && isActiveInMonth && isDependentRelation
       }).length
+      
+      // Tính các khoản trừ từ khoản cộng trừ
+      // Chỉ tính các khoản cộng trừ có tính chất TRỪ: Kỷ luật, Truy thu, Tạm ứng
+      // và tất cả các hạng mục thuộc các khoản này
+      const getAdjustmentDeductions = (employeeId, year, month) => {
+        // Lấy các khoản cộng trừ đã duyệt trong tháng
+        const approvedAdjustments = (payrollAdjustments?.value || []).filter(adj => {
+          if (!adj || !adj.decisionDate) return false
+          const adjDate = new Date(adj.decisionDate)
+          const adjMonth = adjDate.getMonth() + 1
+          const adjYear = adjDate.getFullYear()
+          
+          return adjYear === year && 
+                 adjMonth === month &&
+                 (adj.approveStatus === 'Đã duyệt' || adj.approveStatus === 'Approved') &&
+                 // CHỈ LẤY CÁC KHOẢN CÓ TÍNH CHẤT TRỪ:
+                 // - Kỷ luật: các hình thức kỷ luật, phạt
+                 // - Truy thu: thu hồi các khoản đã chi
+                 // - Tạm ứng: tạm ứng lương, chi phí
+                 ['Kỷ luật', 'Truy thu', 'Tạm ứng'].includes(adj.adjustmentTypeName)
+        })
+        
+        // Tính tổng giá trị các khoản trừ cho nhân viên này
+        let totalAdjustmentDeductions = 0
+        approvedAdjustments.forEach(adj => {
+          const employees = adj.Employees || adj.employees || []
+          employees.forEach(emp => {
+            if (emp.employeeID === employeeId || emp.employeeCode === employee.id) {
+              totalAdjustmentDeductions += Math.abs(emp.Value || emp.value || 0)
+            }
+          })
+        })
+        
+        return totalAdjustmentDeductions
+      }
+      
+      const adjustmentDeductions = getAdjustmentDeductions(employee.id, selectedYear.value, selectedMonth.value)
       
       // Tính thuế TNCN
       const personalDeduction = 11000000 // Giảm trừ bản thân
       const dependentDeduction = dependents * 4400000 // Giảm trừ người phụ thuộc
       
       const totalIncome = actualSalary + mealAllowance + fuelAllowance + responsibilityAllowance + otSalary
-      const taxableIncome = Math.max(0, totalIncome - personalDeduction - dependentDeduction - insuranceEmployee)
       
-      // Tính thuế TNCN theo bậc thuế
+      // THAY ĐỔI LOGIC TÍNH THUẾ:
+      // 1. Tổng thu nhập chịu thuế = Tổng thu nhập (không trừ gì)
+      const taxableIncome = totalIncome
+      
+      // 2. Tổng thu nhập tính thuế = IF(tổng thu nhập - bảo hiểm NV đóng - giảm trừ bản thân - giảm trừ người phụ thuộc > 0, ..., 0)
+      const pitIncome = Math.max(0, totalIncome - insuranceEmployee - personalDeduction - dependentDeduction)
+      
+      // 3. Tính thuế TNCN theo thuế luỹ tiến từ pitIncome
       let pitTax = 0
-      if (taxableIncome > 0) {
-        if (taxableIncome <= 5000000) {
-          pitTax = taxableIncome * 0.05
-        } else if (taxableIncome <= 10000000) {
-          pitTax = 250000 + (taxableIncome - 5000000) * 0.1
-        } else if (taxableIncome <= 18000000) {
-          pitTax = 750000 + (taxableIncome - 10000000) * 0.15
-        } else if (taxableIncome <= 32000000) {
-          pitTax = 1950000 + (taxableIncome - 18000000) * 0.2
-        } else if (taxableIncome <= 52000000) {
-          pitTax = 4750000 + (taxableIncome - 32000000) * 0.25
-        } else if (taxableIncome <= 80000000) {
-          pitTax = 9750000 + (taxableIncome - 52000000) * 0.3
+      if (pitIncome > 0) {
+        if (pitIncome <= 5000000) {
+          pitTax = pitIncome * 0.05
+        } else if (pitIncome <= 10000000) {
+          pitTax = 250000 + (pitIncome - 5000000) * 0.1
+        } else if (pitIncome <= 18000000) {
+          pitTax = 750000 + (pitIncome - 10000000) * 0.15
+        } else if (pitIncome <= 32000000) {
+          pitTax = 1950000 + (pitIncome - 18000000) * 0.2
+        } else if (pitIncome <= 52000000) {
+          pitTax = 4750000 + (pitIncome - 32000000) * 0.25
+        } else if (pitIncome <= 80000000) {
+          pitTax = 9750000 + (pitIncome - 52000000) * 0.3
         } else {
-          pitTax = 18150000 + (taxableIncome - 80000000) * 0.35
+          pitTax = 18150000 + (pitIncome - 80000000) * 0.35
         }
       }
       
-      const totalDeduction = insuranceEmployee + unionFee + pitTax
-      const netSalary = totalIncome - totalDeduction
+      const totalDeduction = insuranceEmployee + unionFee + pitTax + adjustmentDeductions
+      const netSalary = Math.max(0, totalIncome - totalDeduction) // Thực lãnh không được âm
 
       return {
         empId: employee.id,
@@ -239,8 +311,9 @@ export function useSalary() {
         dependentDeduction,
         bonus: 0, // Có thể tính từ khen thưởng
         otherIncome: 0,
-        pitIncome: taxableIncome,
+        pitIncome,
         pitTax,
+        adjustmentDeductions,
         totalDeduction,
         netSalary,
         // Thông tin bổ sung
@@ -301,6 +374,62 @@ export function useSalary() {
     }))
   })
 
+  const taxFinalizationData = computed(() => {
+    // Tính tổng hợp dữ liệu quyết toán thuế từ dữ liệu lương thật
+    const employees = salaryTableData.value
+    
+    // Tính tổng các chỉ số cho toàn bộ nhân viên
+    const totalEmployees = employees.length
+    const totalTaxableIncome = employees.reduce((sum, emp) => sum + emp.taxableIncome, 0)
+    const totalPitTax = employees.reduce((sum, emp) => sum + emp.pitTax, 0)
+    const totalPersonalDeduction = employees.reduce((sum, emp) => sum + emp.personalDeduction, 0)
+    const totalDependentDeduction = employees.reduce((sum, emp) => sum + emp.dependentDeduction, 0)
+    const totalInsuranceEmployee = employees.reduce((sum, emp) => sum + emp.insuranceEmployee, 0)
+    const totalAdjustmentDeductions = employees.reduce((sum, emp) => sum + emp.adjustmentDeductions, 0)
+    
+    // Tính tổng thu nhập chịu thuế (tổng thu nhập)
+    const totalIncome = employees.reduce((sum, emp) => sum + emp.totalIncome, 0)
+    
+    // Tính tổng thu nhập tính thuế PIT
+    const totalPitIncome = employees.reduce((sum, emp) => sum + emp.pitIncome, 0)
+    
+    // Tính tổng các khoản giảm trừ
+    const totalDeductions = totalPersonalDeduction + totalDependentDeduction + totalInsuranceEmployee
+    
+    return {
+      // Thông tin tổng hợp
+      totalEmployees,
+      totalIncome,
+      totalTaxableIncome,
+      totalPitIncome,
+      
+      // Các khoản giảm trừ
+      totalPersonalDeduction,
+      totalDependentDeduction,
+      totalInsuranceEmployee,
+      totalAdjustmentDeductions,
+      totalDeductions,
+      
+      // Thuế
+      totalPitTax,
+      
+      // Chi tiết từng nhân viên
+      employeeDetails: employees.map(emp => ({
+        empId: emp.empId,
+        empName: emp.empName,
+        totalIncome: emp.totalIncome,
+        taxableIncome: emp.taxableIncome,
+        pitIncome: emp.pitIncome,
+        personalDeduction: emp.personalDeduction,
+        dependentDeduction: emp.dependentDeduction,
+        insuranceEmployee: emp.insuranceEmployee,
+        adjustmentDeductions: emp.adjustmentDeductions,
+        pitTax: emp.pitTax,
+        netSalary: emp.netSalary
+      }))
+    }
+  })
+
   // Functions
   const fetchSalaryData = async (year = selectedYear.value, month = selectedMonth.value) => {
     loading.value = true
@@ -315,7 +444,8 @@ export function useSalary() {
           fetchAllShiftAssignments(),
           fetchAllFamilyRelations(),
           fetchLeaveRequests(),
-          fetchOvertimeRequests()
+          fetchOvertimeRequests(),
+          fetchPayrollAdjustments()
         ])
       
       // Update selected period
@@ -330,6 +460,7 @@ export function useSalary() {
           familyRelations: familyRelations.value.length,
           leaveRequests: leaveRequests.value.length,
           overtimeRequests: overtimeRequests.value.length,
+          payrollAdjustments: payrollAdjustments.value.length,
           year,
           month
         })

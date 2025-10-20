@@ -742,9 +742,9 @@ function calculateWorkHoursForDate(leaveRequest, targetDate) {
 
 // Tạo dữ liệu chấm công thực tế cho từng nhân viên, từng ngày từ API
 function generateAttendanceForEmployee(employeeId, employeeName) {
-  // LOGIC ƯU TIÊN: Dữ liệu chấm công > Phiếu nghỉ phép
-  // 1. Nếu có dữ liệu chấm công thực tế → hiển thị theo dữ liệu chấm công (bỏ qua phiếu nghỉ phép)
-  // 2. Nếu KHÔNG có dữ liệu chấm công → mới kiểm tra phiếu nghỉ phép đã duyệt
+  // LOGIC ƯU TIÊN: Phiếu nghỉ phép > Dữ liệu chấm công
+  // 1. Nếu có phiếu nghỉ phép đã duyệt → hiển thị nghỉ phép (màu xanh dương)
+  // 2. Nếu KHÔNG có phiếu nghỉ phép → mới kiểm tra dữ liệu chấm công thực tế
   
   console.log('=== ATTENDANCE DEBUG ===');
   console.log('Employee ID:', employeeId);
@@ -844,34 +844,84 @@ function generateAttendanceForEmployee(employeeId, employeeName) {
       return attendanceDate === dateStr;
     });
 
-    // Kiểm tra đơn nghỉ phép (chỉ để tham khảo, không ưu tiên khi có dữ liệu công)
-    let leaveRequest = null;
-    if (dayAttendance && dayAttendance.workShiftID) {
-      // Có dữ liệu chấm công - kiểm tra đơn nghỉ phép cho ca cụ thể
+    // ƯU TIÊN: Kiểm tra nghỉ phép trước tiên (bất kể có dữ liệu chấm công hay không)
+    let leaveRequest = checkLeaveRequestForEmployee(employeeId, currentDate);
+    
+    // Nếu có dữ liệu chấm công và chưa tìm thấy nghỉ phép tổng quát, kiểm tra cho ca cụ thể
+    if (!leaveRequest && dayAttendance && dayAttendance.workShiftID) {
       leaveRequest = hasApprovedLeaveForDate(employeeId, currentDate, dayAttendance.workShiftID);
     }
 
-    // Nếu chưa tìm thấy đơn nghỉ phép cho ca cụ thể, kiểm tra tổng quát
-    if (!leaveRequest) {
-      leaveRequest = checkLeaveRequestForEmployee(employeeId, currentDate);
+    // ƯU TIÊN: Kiểm tra nghỉ phép trước (ưu tiên cao nhất)
+    if (leaveRequest) {
+      console.log('Found leave request for day:', dayIdx, leaveRequest);
+
+      // Tính toán giờ công chính xác cho ngày này
+      const workHoursInfo = calculateWorkHoursForDate(leaveRequest, currentDate);
+      
+      if (workHoursInfo && workHoursInfo.workHours > 0) {
+        // Có giờ công (ngày đầu hoặc ngày cuối của kỳ nghỉ)
+        const workStartTime = `${Math.floor(workHoursInfo.workStartHour).toString().padStart(2, '0')}:${Math.floor((workHoursInfo.workStartHour % 1) * 60).toString().padStart(2, '0')}`;
+        const workEndTime = `${Math.floor(workHoursInfo.workEndHour).toString().padStart(2, '0')}:${Math.floor((workHoursInfo.workEndHour % 1) * 60).toString().padStart(2, '0')}`;
+        
+        const timeDisplay = `${workStartTime} ${workEndTime}`;
+        
+        // NGHỈ PHÉP LUÔN ĐƯỢC ƯU TIÊN - bất kể có giờ công hay không
+        const status = 'leave'; // Luôn là nghỉ phép khi có đơn nghỉ phép
+        
+        console.log('Leave request takes priority:', {
+          workHours: workHoursInfo.workHours,
+          workStartTime,
+          workEndTime,
+          status: 'leave (forced)',
+          isPartialDay: workHoursInfo.isPartialDay
+        });
+        
+        return { 
+          status, 
+          time: timeDisplay, 
+          type: leaveRequest.leaveTypeName, 
+          leaveRequest,
+          workHours: workHoursInfo.workHours
+        };
+      } else {
+        // Không có giờ công (ngày giữa của kỳ nghỉ hoặc nghỉ cả ngày)
+        const startTime = new Date(leaveRequest.startDateTime);
+        const endTime = new Date(leaveRequest.endDateTime);
+
+        // Format thời gian: chỉ hiển thị giờ:phút
+        const timeDisplay = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+
+        console.log('Full leave day:', {
+          timeDisplay,
+          workHours: workHoursInfo?.workHours || 0
+        });
+
+        return { 
+          status: 'leave', 
+          time: timeDisplay, 
+          type: leaveRequest.leaveTypeName, 
+          leaveRequest,
+          workHours: workHoursInfo?.workHours || 0
+        };
+      }
     }
 
-    if (dayAttendance) {
+    // Kiểm tra dữ liệu chấm công thực tế (chỉ khi KHÔNG có nghỉ phép)
+    if (!leaveRequest && dayAttendance) {
       console.log('Found attendance for day:', dayIdx, dayAttendance);
 
-      // ƯU TIÊN: Dữ liệu công luôn được ưu tiên hơn nghỉ phép
-      // Nếu có dữ liệu chấm công, bỏ qua đơn nghỉ phép và hiển thị theo dữ liệu công thực tế
-      // Logic: Nếu nhân viên có chấm công thực tế thì coi như đi làm, không quan tâm đến đơn nghỉ phép
+      // ƯU TIÊN: Nghỉ phép đã được xử lý ở trên, đây chỉ là dữ liệu chấm công thực tế
       let status = '';
       let time = '';
 
       if (dayAttendance.checkInTime && dayAttendance.checkOutTime) {
-        // Có cả giờ vào và ra - ưu tiên dữ liệu công
+        // Có cả giờ vào và ra
         const checkIn = dayAttendance.checkInTime.toString().substring(0, 5);
         const checkOut = dayAttendance.checkOutTime.toString().substring(0, 5);
         time = `${checkIn} ${checkOut}`;
 
-        // Tính giờ công thực tế (bỏ qua đơn nghỉ phép vì có dữ liệu chấm công)
+        // Tính giờ công thực tế
         const checkInTime = new Date(`2000-01-01T${dayAttendance.checkInTime}`);
         const checkOutTime = new Date(`2000-01-01T${dayAttendance.checkOutTime}`);
         const workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60);
@@ -893,79 +943,22 @@ function generateAttendanceForEmployee(employeeId, employeeName) {
         status = 'incomplete'; // Quên checkin (màu đỏ)
       } else {
         // Không có giờ chấm công nhưng có dữ liệu attendance record
-        // Trường hợp này hiếm, nhưng vẫn ưu tiên dữ liệu công
         status = 'leave'; // Coi như nghỉ vì không có giờ chấm công
         time = '';
       }
 
-      console.log('Attendance data (prioritized):', {
+      console.log('Attendance data (no leave request):', {
         status,
         time,
         attendance: dayAttendance,
-        leaveRequest: leaveRequest ? 'Ignored - attendance data takes priority' : 'None',
-        priority: 'Attendance data over leave request'
+        leaveRequest: 'None',
+        priority: 'Attendance data only'
       });
-      return { status, time, type: dayAttendance.status, attendance: dayAttendance, leaveRequest };
-    } else {
-      // KHÔNG CÓ DỮ LIỆU CHẤM CÔNG - chỉ khi này mới kiểm tra đơn nghỉ phép
-      // Ưu tiên: Dữ liệu chấm công > Phiếu nghỉ phép
-      console.log('No attendance data for day:', dayIdx, 'Checking leave request:', leaveRequest);
-      if (leaveRequest) {
-        console.log('Found leave request for day without attendance:', dayIdx, leaveRequest);
-
-        // Tính toán giờ công chính xác cho ngày này
-        const workHoursInfo = calculateWorkHoursForDate(leaveRequest, currentDate);
-        
-        if (workHoursInfo && workHoursInfo.workHours > 0) {
-          // Có giờ công (ngày đầu hoặc ngày cuối của kỳ nghỉ)
-          const workStartTime = `${Math.floor(workHoursInfo.workStartHour).toString().padStart(2, '0')}:${Math.floor((workHoursInfo.workStartHour % 1) * 60).toString().padStart(2, '0')}`;
-          const workEndTime = `${Math.floor(workHoursInfo.workEndHour).toString().padStart(2, '0')}:${Math.floor((workHoursInfo.workEndHour % 1) * 60).toString().padStart(2, '0')}`;
-          
-          const timeDisplay = `${workStartTime} ${workEndTime}`;
-          
-          // Nếu giờ công đủ (>= 8h) thì coi như đi làm, nếu không thì chưa đủ giờ
-          const status = workHoursInfo.workHours >= 8 ? 'work' : 'insufficient';
-          
-          console.log('Partial work day calculation:', {
-            workHours: workHoursInfo.workHours,
-            workStartTime,
-            workEndTime,
-            status,
-            isPartialDay: workHoursInfo.isPartialDay
-          });
-          
-          return { 
-            status, 
-            time: timeDisplay, 
-            type: leaveRequest.leaveTypeName, 
-            leaveRequest,
-            workHours: workHoursInfo.workHours
-          };
-        } else {
-          // Không có giờ công (ngày giữa của kỳ nghỉ hoặc nghỉ cả ngày)
-          const startTime = new Date(leaveRequest.startDateTime);
-          const endTime = new Date(leaveRequest.endDateTime);
-
-          // Format thời gian: chỉ hiển thị giờ:phút
-          const timeDisplay = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
-
-          console.log('Full leave day:', {
-            timeDisplay,
-            workHours: workHoursInfo?.workHours || 0
-          });
-
-          return { 
-            status: 'leave', 
-            time: timeDisplay, 
-            type: leaveRequest.leaveTypeName, 
-            leaveRequest,
-            workHours: workHoursInfo?.workHours || 0
-          };
-        }
-      } else {
-        console.log('No leave request found for day:', dayIdx);
-        return { status: '', time: '', type: '' };
-      }
+      return { status, time, type: dayAttendance.status, attendance: dayAttendance, leaveRequest: null };
+    } else if (!leaveRequest && !dayAttendance) {
+      // Không có dữ liệu chấm công và không có nghỉ phép
+      console.log('No attendance data and no leave request for day:', dayIdx);
+      return { status: 'absent', time: '', type: 'Vắng mặt', attendance: null, leaveRequest: null };
     }
   });
 }
@@ -1103,7 +1096,8 @@ const mainSummaryData = computed(() => {
       attendanceMatrix.value[idx].forEach((d, dIdx) => {
         dayData[`day_${dIdx}`] = d;
         // Hiển thị nếu có bất kỳ dữ liệu nào: chấm công, nghỉ phép, hoặc chưa đủ giờ
-        if (d.status && d.status !== '' && d.status !== null) {
+        // Loại trừ trạng thái 'absent' (vắng mặt) và trạng thái rỗng
+        if (d.status && d.status !== '' && d.status !== null && d.status !== 'absent') {
           hasAnyData = true;
           console.log(`Employee ${emp.id}, Day ${dIdx}: ${d.status}, time: ${d.time}`);
         }
@@ -1123,7 +1117,10 @@ const mainSummaryData = computed(() => {
     }
   });
 
+  console.log('=== MAIN SUMMARY FILTERING DEBUG ===');
+  console.log('Total employees:', employeesToUse.length);
   console.log('Employees with attendance displayed:', employeesWithAttendance.length);
+  console.log('Filtered employees:', employeesWithAttendance.map(emp => ({ id: emp.id, name: emp.name })));
   console.log('Final main summary data:', employeesWithAttendance);
 
   // Debug: Log attendance matrix for selected month
@@ -1899,6 +1896,92 @@ const handleWeekChanged = (weekData) => {
     loadAttendanceData()
     loadDetailData()
   }
+}
+
+// Month navigation methods
+const goToPreviousMonth = () => {
+  if (selectedMonth.value === 1) {
+    selectedMonth.value = 12
+    selectedYear.value--
+  } else {
+    selectedMonth.value--
+  }
+}
+
+const goToNextMonth = () => {
+  if (selectedMonth.value === 12) {
+    selectedMonth.value = 1
+    selectedYear.value++
+  } else {
+    selectedMonth.value++
+  }
+}
+
+const goToCurrentMonth = () => {
+  const now = new Date()
+  selectedMonth.value = now.getMonth() + 1
+  selectedYear.value = now.getFullYear()
+}
+
+// Export and print functions
+const exportSummaryToExcel = () => {
+  console.log('Exporting summary to Excel...')
+  // TODO: Implement Excel export
+}
+
+const printSummaryReport = () => {
+  console.log('Printing summary report...')
+  // TODO: Implement print report
+}
+
+const exportPersonalToExcel = () => {
+  console.log('Exporting personal to Excel...')
+  // TODO: Implement Excel export
+}
+
+const printPersonalReport = () => {
+  console.log('Printing personal report...')
+  // TODO: Implement print report
+}
+
+const exportOvertimeToExcel = () => {
+  console.log('Exporting overtime to Excel...')
+  // TODO: Implement Excel export
+}
+
+const printOvertimeReport = () => {
+  console.log('Printing overtime report...')
+  // TODO: Implement print report
+}
+
+const exportPersonalOvertimeToExcel = () => {
+  console.log('Exporting personal overtime to Excel...')
+  // TODO: Implement Excel export
+}
+
+const printPersonalOvertimeReport = () => {
+  console.log('Printing personal overtime report...')
+  // TODO: Implement print report
+}
+
+const exportDetailToExcel = () => {
+  console.log('Exporting detail to Excel...')
+  // TODO: Implement Excel export
+}
+
+const printDetailReport = () => {
+  console.log('Printing detail report...')
+  // TODO: Implement print report
+}
+
+const exportAttendanceToExcel = () => {
+  console.log('Exporting attendance to Excel...')
+  // TODO: Implement Excel export
+}
+
+const printAttendanceReport = () => {
+  console.log('Printing attendance report...')
+  // TODO: Implement print report
 }
 
 // Watch for changes in year/month filters
@@ -3267,61 +3350,54 @@ const getEmployeeFullName = (employee) => {
     <div class="card shadow-sm">
       <div class="card-body">
         <div v-if="activeTab === 'summary'">
-          <!-- Compact Header Section -->
-          <div class="summary-header-compact mb-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-body py-3">
-                <div class="row align-items-center">
-                  <div class="col-lg-8">
-                    <div class="d-flex align-items-center">
-                      <div class="summary-icon-wrapper me-3">
-                        <i class="fas fa-table"></i>
-                      </div>
-                      <div class="flex-grow-1">
-                        <h5 class="mb-1 text-primary fw-bold">
-                          <i class="fas fa-chart-bar me-2"></i>
-                          Bảng tổng hợp công
-                        </h5>
-                        <p class="mb-0 text-muted small">
-                          <i class="fas fa-info-circle me-1"></i>
-                          Tổng quan chấm công của tất cả nhân viên
-                        </p>
-                      </div>
+          <!-- Header Section -->
+          <div class="summary-header mb-4">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-6">
+                <div class="time-filter-compact">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
                     </div>
-                  </div>
-                  <div class="col-lg-4">
-                    <div class="filter-section">
-                      <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
-                        :show-refresh-button="false" />
-                    </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToCurrentMonth"
+                      title="Tháng hiện tại"
+                    >
+                      <i class="fas fa-calendar-day"></i>
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Legend -->
-          <div class="legend-section mb-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-body py-3">
-                <h6 class="card-title mb-3">
-                  <i class="fas fa-palette me-2"></i>
-                  Chú thích màu sắc
-                </h6>
-                <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center">
-                  <div class="legend-item">
+              <div class="col-md-6">
+                <div class="legend-compact d-flex flex-wrap gap-3 align-items-center justify-content-end">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#28a745"></span>
                     <span class="legend-text">Đi làm</span>
                   </div>
-                  <div class="legend-item">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#007bff"></span>
                     <span class="legend-text">Nghỉ phép</span>
                   </div>
-                  <div class="legend-item">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#ffc107"></span>
                     <span class="legend-text">Chưa đủ giờ công</span>
                   </div>
-                  <div class="legend-item">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#dc3545"></span>
                     <span class="legend-text">Quên checkin/checkout</span>
                   </div>
@@ -3589,67 +3665,54 @@ const getEmployeeFullName = (employee) => {
         
         <!-- Personal Attendance Tab -->
         <div v-else-if="activeTab === 'personal'">
-          <!-- Compact Header Section -->
-          <div class="personal-header-compact mb-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-body py-3">
-                <div class="row align-items-center">
-                  <div class="col-lg-8">
-                    <div class="d-flex align-items-center">
-                      <div class="personal-icon-wrapper me-3">
-                        <i class="fas fa-user-clock"></i>
-                      </div>
-                      <div class="flex-grow-1">
-                        <h5 class="mb-1 text-primary fw-bold">
-                          <i class="fas fa-calendar-check me-2"></i>
-                          Bảng công cá nhân
-                        </h5>
-                        <div v-if="currentUser" class="employee-info-compact">
-                          <div class="info-item">
-                            <span class="info-label">Mã NV:</span>
-                            <span class="info-value">{{ currentUser.id }}</span>
-                          </div>
-                          <div class="info-item">
-                            <span class="info-label">Tên:</span>
-                            <span class="info-value">{{ getEmployeeFullName(currentUser) || currentUser.fullName || (currentUser.firstName && currentUser.lastName ? `${currentUser.firstName} ${currentUser.lastName}` : 'N/A') }}</span>
-                          </div>
-                        </div>
-                      </div>
+          <!-- Header Section -->
+          <div class="personal-header mb-4">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-6">
+                <div class="time-filter-compact">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
                     </div>
-                  </div>
-                  <div class="col-lg-4">
-                    <div class="filter-section">
-                      <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
-                        :show-refresh-button="false" />
-                    </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToCurrentMonth"
+                      title="Tháng hiện tại"
+                    >
+                      <i class="fas fa-calendar-day"></i>
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Legend -->
-          <div class="legend-section mb-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-body">
-                <h6 class="card-title mb-3">
-                  <i class="fas fa-palette me-2"></i>
-                  Chú thích màu sắc
-                </h6>
-                <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center">
-                  <div class="legend-item">
+              <div class="col-md-6">
+                <div class="legend-compact d-flex flex-wrap gap-3 align-items-center justify-content-end">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#28a745"></span>
                     <span class="legend-text">Đi làm</span>
                   </div>
-                  <div class="legend-item">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#007bff"></span>
                     <span class="legend-text">Nghỉ phép</span>
                   </div>
-                  <div class="legend-item">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#ffc107"></span>
                     <span class="legend-text">Chưa đủ giờ công</span>
                   </div>
-                  <div class="legend-item">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#dc3545"></span>
                     <span class="legend-text">Quên checkin/checkout</span>
                   </div>
@@ -3758,63 +3821,50 @@ const getEmployeeFullName = (employee) => {
         
         <!-- Personal Overtime Tab -->
         <div v-else-if="activeTab === 'personalOvertime'">
-          <!-- Compact Header Section -->
-          <div class="personal-header-compact mb-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-body py-3">
-                <div class="row align-items-center">
-                  <div class="col-lg-8">
-                    <div class="d-flex align-items-center">
-                      <div class="personal-icon-wrapper me-3">
-                        <i class="fas fa-user-plus"></i>
-                      </div>
-                      <div class="flex-grow-1">
-                        <h5 class="mb-1 text-primary fw-bold">
-                          <i class="fas fa-business-time me-2"></i>
-                          Bảng công tăng ca cá nhân
-                        </h5>
-                        <div v-if="currentUser" class="employee-info-compact">
-                          <div class="info-item">
-                            <span class="info-label">Mã NV:</span>
-                            <span class="info-value">{{ currentUser.id }}</span>
-                          </div>
-                          <div class="info-item">
-                            <span class="info-label">Tên:</span>
-                            <span class="info-value">{{ getEmployeeFullName(currentUser) || currentUser.fullName || (currentUser.firstName && currentUser.lastName ? `${currentUser.firstName} ${currentUser.lastName}` : 'N/A') }}</span>
-                          </div>
-                        </div>
-                      </div>
+          <!-- Header Section -->
+          <div class="personal-overtime-header mb-4">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-6">
+                <div class="time-filter-compact">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
                     </div>
-                  </div>
-                  <div class="col-lg-4">
-                    <div class="filter-section">
-                      <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
-                        :show-refresh-button="false" />
-                    </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToCurrentMonth"
+                      title="Tháng hiện tại"
+                    >
+                      <i class="fas fa-calendar-day"></i>
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Legend -->
-          <div class="legend-section mb-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-body">
-                <h6 class="card-title mb-3">
-                  <i class="fas fa-palette me-2"></i>
-                  Chú thích hình thức tăng ca
-                </h6>
-                <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center">
-                  <div class="legend-item">
+              <div class="col-md-6">
+                <div class="legend-compact d-flex flex-wrap gap-3 align-items-center justify-content-end">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#28a745"></span>
                     <span class="legend-text">Tăng ca nghỉ bù</span>
                   </div>
-                  <div class="legend-item">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#9c27b0"></span>
                     <span class="legend-text">Tăng ca tính lương</span>
                   </div>
-                  <div class="legend-item">
+                  <div class="legend-item-compact">
                     <span class="legend-color" style="background:#6c757d"></span>
                     <span class="legend-text">Tăng ca thường</span>
                   </div>
@@ -3925,33 +3975,48 @@ const getEmployeeFullName = (employee) => {
         </div>
         
         <div v-else-if="activeTab === 'overtime'">
-          <!-- Compact Header Section -->
-          <div class="overtime-header-compact mb-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-body py-3">
-                <div class="row align-items-center">
-                  <div class="col-lg-8">
-                    <div class="d-flex align-items-center">
-                      <div class="overtime-icon-wrapper me-3">
-                        <i class="fas fa-business-time"></i>
-                      </div>
-                      <div class="flex-grow-1">
-                        <h5 class="mb-1 text-primary fw-bold">
-                          <i class="fas fa-clock me-2"></i>
-                          Bảng công tăng ca
-                        </h5>
-                        <p class="mb-0 text-muted small">
-                          <i class="fas fa-info-circle me-1"></i>
-                          Tổng quan tăng ca của tất cả nhân viên
-                        </p>
-                      </div>
+          <!-- Header Section -->
+          <div class="overtime-header mb-4">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-6">
+                <div class="time-filter-compact">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
                     </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToCurrentMonth"
+                      title="Tháng hiện tại"
+                    >
+                      <i class="fas fa-calendar-day"></i>
+                    </button>
                   </div>
-                  <div class="col-lg-4">
-                    <div class="filter-section">
-                      <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
-                        :show-refresh-button="true" :loading="overtimeLoading" @refresh="loadOvertimeData" />
-                    </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="legend-compact d-flex flex-wrap gap-3 align-items-center justify-content-end">
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#2196f3"></span>
+                    <span class="legend-text">Tăng ca nghỉ bù</span>
+                  </div>
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#28a745"></span>
+                    <span class="legend-text">Tăng ca tính lương</span>
                   </div>
                 </div>
               </div>
@@ -3984,10 +4049,6 @@ const getEmployeeFullName = (employee) => {
           <div v-else>
             <!-- Show table if there are employees with overtime -->
             <div v-if="overtimeData.length > 0">
-              <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center legend-row mb-2">
-                <span class="legend-item" style="background:#2196f3"></span> Tăng ca nghỉ bù
-                <span class="legend-item" style="background:#28a745"></span> Tăng ca tính lương
-              </div>
               <div class="attendance-summary-table">
                 <DataTable :columns="overtimeColumns" :data="overtimeData">
                   <template #detail="{ item }">
@@ -4125,11 +4186,53 @@ const getEmployeeFullName = (employee) => {
           </ModalDialog>
         </div>
         <div v-else-if="activeTab === 'detail'">
-          <!-- Time Filter for Detail Tab -->
-          <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" v-model:week="selectedWeek"
-            v-model:start-date="selectedStartDate" v-model:end-date="selectedEndDate" :show-week-filter="true"
-            :show-date-range="true" :show-refresh-button="true" :loading="detailLoading" @refresh="loadDetailData"
-            @week-changed="handleWeekChanged" @date-range-changed="handleDateRangeChanged" />
+          <!-- Header Section -->
+          <div class="detail-header mb-4">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-6">
+                <div class="time-filter-compact">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                    </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToCurrentMonth"
+                      title="Tháng hiện tại"
+                    >
+                      <i class="fas fa-calendar-day"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="header-actions d-flex gap-2 justify-content-end">
+                  <button class="btn btn-outline-light btn-sm" @click="exportDetailToExcel">
+                    <i class="fas fa-download me-1"></i>
+                    Xuất Excel
+                  </button>
+                  <button class="btn btn-outline-light btn-sm" @click="printDetailReport">
+                    <i class="fas fa-print me-1"></i>
+                    In báo cáo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Loading State -->
           <div v-if="detailLoading" class="text-center py-4">
@@ -4189,10 +4292,53 @@ const getEmployeeFullName = (employee) => {
           </div>
         </div>
         <div v-else-if="activeTab === 'attendance'">
-          <!-- Time Filter for Attendance Tab -->
-          <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" v-model:start-date="selectedStartDate"
-            v-model:end-date="selectedEndDate" :show-date-range="true" :show-refresh-button="true"
-            :loading="attendanceLoading" @refresh="loadAttendanceData" @date-range-changed="handleDateRangeChanged" />
+          <!-- Header Section -->
+          <div class="attendance-header mb-4">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-6">
+                <div class="time-filter-compact">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                    </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToCurrentMonth"
+                      title="Tháng hiện tại"
+                    >
+                      <i class="fas fa-calendar-day"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="header-actions d-flex gap-2 justify-content-end">
+                  <button class="btn btn-outline-light btn-sm" @click="exportAttendanceToExcel">
+                    <i class="fas fa-download me-1"></i>
+                    Xuất Excel
+                  </button>
+                  <button class="btn btn-outline-light btn-sm" @click="printAttendanceReport">
+                    <i class="fas fa-print me-1"></i>
+                    In báo cáo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Loading State -->
           <div v-if="attendanceLoading" class="text-center py-4">
@@ -5473,9 +5619,85 @@ const getEmployeeFullName = (employee) => {
   color: #9c27b0 !important;
 }
 
-/* Compact Personal Header Styles */
-.personal-header-compact {
-  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+/* Header Styles for all tabs */
+.summary-header,
+.personal-header,
+.overtime-header,
+.personal-overtime-header,
+.detail-header,
+.attendance-header {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
+}
+
+.time-filter-compact .btn {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.time-filter-compact .btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.header-actions .btn {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.header-actions .btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* Legend Compact Styles */
+.legend-compact {
+  gap: 1rem;
+}
+
+.legend-item-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.legend-item-compact:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.legend-item-compact .legend-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.legend-item-compact .legend-text {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: white;
+  white-space: nowrap;
 }
 
 .personal-header-compact .card {

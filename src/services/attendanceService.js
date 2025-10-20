@@ -5,7 +5,7 @@ const API_URL = import.meta.env.VITE_API_URL + '/api'
 export const attendanceService = {
   async getAllAttendance() {
     try {
-      const response = await axios.get(`${API_URL}/Attendance`)
+      const response = await axios.get(`${API_URL}/AttendanceData`)
       return response.data
     } catch (error) {
       throw error
@@ -14,7 +14,7 @@ export const attendanceService = {
 
   async getAttendanceByDate(date) {
     try {
-      const response = await axios.get(`${API_URL}/Attendance/by-date`, {
+      const response = await axios.get(`${API_URL}/AttendanceData/employee/date`, {
         params: { date }
       })
       return response.data
