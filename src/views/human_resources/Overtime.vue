@@ -4,6 +4,7 @@ import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
 import { useAuth } from '../../composables/useAuth'
+import { usePermissions } from '../../composables/usePermissions'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import OvertimeForm from '@/components/common/overtime/OvertimeForm.vue'
 import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
@@ -22,7 +23,18 @@ const {
 } = useOvertimeRequest()
 
 // Auth composable for role checking
-const { currentUser, canViewAll, canEdit, refreshUserInfo } = useAuth()
+const { currentUser, refreshUserInfo } = useAuth()
+
+// Permissions composable for centralized permission management
+const { 
+  canView, 
+  canCreate, 
+  canEditItem, 
+  canDeleteItem, 
+  canSubmitItem,
+  canApproveItem,
+  filterDataByPermission 
+} = usePermissions()
 
 onMounted(async () => {
   await fetchOvertimeRequests()
@@ -67,12 +79,30 @@ const handleUpdate = async (formData) => {
 
 const handleSubmitForApproval = async (voucherCode) => {
   try {
-    // Update status to "Chờ duyệt" (status = 1)
-    await updateOvertimeRequest(voucherCode, { approveStatus: 1 })
+    // Update status to "Chờ duyệt"
+    await updateOvertimeRequest(voucherCode, { approveStatus: 'Chờ duyệt' })
     showUpdateForm.value = false
     selectedItem.value = null
   } catch (error) {
     console.error('Error submitting for approval:', error)
+  }
+}
+
+const handleApprove = async (voucherCode, action) => {
+  try {
+    let newStatus
+    if (action === 'approve') {
+      newStatus = 'Đã duyệt'
+    } else if (action === 'reject') {
+      newStatus = 'Từ chối'
+    } else if (action === 'return') {
+      newStatus = 'Tạo mới'
+    }
+    
+    await updateOvertimeRequest(voucherCode, { approveStatus: newStatus })
+    console.log(`Overtime request ${action}:`, voucherCode)
+  } catch (error) {
+    console.error(`Error ${action} overtime request:`, error)
   }
 }
 
@@ -104,29 +134,19 @@ const getStatusText = (status) => {
 const currentPage = ref(1)
 const itemsPerPage = ref(8)
 
-// Filter overtime requests based on user role
+// Filter overtime requests based on centralized permissions
 const filteredOvertimeRequests = computed(() => {
-  console.log('=== OVERTIME FILTER DEBUG ===')
+  console.log('=== OVERTIME PERMISSION DEBUG ===')
   console.log('Current user:', currentUser.value)
-  console.log('Can view all:', canViewAll.value)
-  console.log('Can edit:', canEdit.value)
+  console.log('Can view overtime:', canView('overtime'))
   console.log('Overtime requests count:', overtimeRequests.value?.length || 0)
   
   if (!overtimeRequests.value || overtimeRequests.value.length === 0) return []
   
-  if (canViewAll.value) {
-    // HR staff and Director can see all overtime requests
-    console.log('User can view all - returning all requests')
-    return overtimeRequests.value
-  } else {
-    // Regular employees can only see their own overtime requests
-    console.log('User can only view own - filtering by employeeID:', currentUser.value?.id)
-    const filtered = overtimeRequests.value.filter(request => 
-      request.employeeID === currentUser.value?.id
-    )
-    console.log('Filtered requests count:', filtered.length)
-    return filtered
-  }
+  // Use centralized permission filtering
+  const filtered = filterDataByPermission('overtime', overtimeRequests.value)
+  console.log('Filtered requests count:', filtered.length)
+  return filtered
 })
 
 const paginatedOvertimeData = computed(() => {
@@ -337,7 +357,7 @@ const exportToExcel = async (type) => {
       <h4 class="adjustment-title mb-0">Danh sách đơn tăng ca</h4>
       <div class="d-flex gap-2">
         <ActionButton 
-          v-if="canEdit || !canViewAll" 
+          v-if="canCreate('overtime')" 
           type="primary" 
           icon="fas fa-plus me-2" 
           @click="showCreateForm = true"
@@ -351,7 +371,7 @@ const exportToExcel = async (type) => {
           Xuất Excel
         </ActionButton>
         <ActionButton 
-          v-if="canEdit || !canViewAll" 
+          v-if="canCreate('overtime')" 
           type="info" 
           icon="fas fa-file-import me-2" 
           @click="showImportModal = true"
@@ -372,30 +392,66 @@ const exportToExcel = async (type) => {
       <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData">
         <template #actions="{ item }">
           <div class="d-flex justify-content-start gap-2">
-            <!-- Always show edit button for own requests or if can edit -->
+            <!-- Edit button based on centralized permissions -->
             <ActionButton 
-              v-if="canEdit || item.employeeID === currentUser?.id"
-              type="success" 
+              v-if="canEditItem('overtime', item)" 
               icon="fas fa-edit" 
-              title="Sửa" 
-              @click="openUpdateForm(item.voucherCode)" 
-            />
-            <!-- Always show delete button for own requests or if can edit -->
+              type="success" 
+              @click.stop="openUpdateForm(item.voucherCode)" 
+              title="Sửa"
+            ></ActionButton>
+            <!-- Delete button based on centralized permissions -->
             <ActionButton 
-              v-if="canEdit || item.employeeID === currentUser?.id"
+              v-if="canDeleteItem('overtime', item)" 
               type="danger" 
+              @click.stop="handleDelete(item.voucherCode)" 
               icon="fas fa-trash" 
-              title="Xóa" 
-              @click="handleDelete(item.voucherCode)" 
-            />
+              title="Xóa"
+            ></ActionButton>
+            <!-- Submit for approval button -->
+            <ActionButton 
+              v-if="canSubmitItem('overtime', item)" 
+              type="primary" 
+              @click.stop="handleSubmitForApproval(item.voucherCode)" 
+              icon="fas fa-paper-plane" 
+              title="Gửi duyệt"
+            ></ActionButton>
+            <!-- Debug info -->
+            <span v-if="item.approveStatus === 'Tạo mới'" class="badge bg-info" style="font-size: 0.7rem;">
+              Debug: {{ canSubmitItem('overtime', item) ? 'Can Submit' : 'Cannot Submit' }}
+            </span>
+            <!-- Approve button -->
+            <ActionButton 
+              v-if="canApproveItem('overtime', item)" 
+              type="success" 
+              @click.stop="handleApprove(item.voucherCode, 'approve')" 
+              icon="fas fa-check" 
+              title="Duyệt"
+            ></ActionButton>
+            <!-- Reject button -->
+            <ActionButton 
+              v-if="canApproveItem('overtime', item)" 
+              type="danger" 
+              @click.stop="handleApprove(item.voucherCode, 'reject')" 
+              icon="fas fa-times" 
+              title="Từ chối"
+            ></ActionButton>
+            <!-- Return button -->
+            <ActionButton 
+              v-if="canApproveItem('overtime', item)" 
+              type="warning" 
+              @click.stop="handleApprove(item.voucherCode, 'return')" 
+              icon="fas fa-undo" 
+              title="Trả lại"
+            ></ActionButton>
             <!-- Always show status -->
             <span class="badge" :class="{
-              'bg-secondary': item.approveStatus == 0 || item.approveStatus === '0',
-              'bg-warning': item.approveStatus == 1 || item.approveStatus === '1',
-              'bg-success': item.approveStatus == 2 || item.approveStatus === '2',
-              'bg-danger': item.approveStatus == 3 || item.approveStatus === '3'
+              'bg-secondary': item.approveStatus === 'Tạo mới',
+              'bg-warning': item.approveStatus === 'Chờ duyệt',
+              'bg-success': item.approveStatus === 'Đã duyệt',
+              'bg-danger': item.approveStatus === 'Từ chối'
             }">
-              {{ getStatusText(item.approveStatus) }}
+              {{ item.approveStatus }}
             </span>
           </div>
         </template>

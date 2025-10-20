@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { usePayrollAdjustment } from '../../composables/usePayrollAdjustment'
+import { usePermissions } from '../../composables/usePermissions'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import AdjustmentForm from '@/components/common/adjustment/AdjustmentForm.vue'
 import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
@@ -20,6 +21,16 @@ const {
   updatePayrollAdjustment,
   deletePayrollAdjustment
 } = usePayrollAdjustment()
+
+// Permissions composable for centralized permission management
+const { 
+  canView, 
+  canCreate, 
+  canEditItem, 
+  canDeleteItem,
+  canSubmitItem,
+  canApproveItem
+} = usePermissions()
 
 onMounted(async () => {
   await fetchPayrollAdjustments()
@@ -76,6 +87,34 @@ const handleUpdate = async (formData) => {
     showUpdateForm.value = false
   } catch (error) {
     console.error('Error updating adjustment:', error)
+  }
+}
+
+const handleSubmitForApproval = async (voucherNo) => {
+  try {
+    // Update status to "Chờ duyệt"
+    await updatePayrollAdjustment(voucherNo, { approveStatus: 'Chờ duyệt' })
+    console.log('Adjustment submitted for approval:', voucherNo)
+  } catch (error) {
+    console.error('Error submitting for approval:', error)
+  }
+}
+
+const handleApprove = async (voucherNo, action) => {
+  try {
+    let newStatus
+    if (action === 'approve') {
+      newStatus = 'Đã duyệt'
+    } else if (action === 'reject') {
+      newStatus = 'Từ chối'
+    } else if (action === 'return') {
+      newStatus = 'Tạo mới'
+    }
+    
+    await updatePayrollAdjustment(voucherNo, { approveStatus: newStatus })
+    console.log(`Adjustment ${action}:`, voucherNo)
+  } catch (error) {
+    console.error(`Error ${action} adjustment:`, error)
   }
 }
 
@@ -394,7 +433,12 @@ const exportToExcel = async (type) => {
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="adjustment-title mb-0">Danh sách khoản cộng trừ</h4>
       <div class="d-flex gap-2">
-        <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateForm = true">
+        <ActionButton 
+          v-if="canCreate('payroll-adjustment')"
+          type="primary" 
+          icon="fas fa-plus me-2" 
+          @click="showCreateForm = true"
+        >
           Thêm
         </ActionButton>
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
@@ -418,18 +462,54 @@ const exportToExcel = async (type) => {
       <DataTable :columns="adjustmentColumns" :data="paginatedAdjustmentData">
         <template #actions="{ item }">
           <div class="d-flex justify-content-start gap-2">
+            <!-- Edit button based on centralized permissions -->
             <ActionButton 
-              type="success" 
+              v-if="canEditItem('payroll-adjustment', item)" 
               icon="fas fa-edit" 
-              title="Sửa" 
-              @click="openUpdateForm(item.voucherNo)" 
-            />
+              type="success" 
+              @click.stop="openUpdateForm(item.voucherNo)" 
+              title="Sửa"
+            ></ActionButton>
+            <!-- Delete button based on centralized permissions -->
             <ActionButton 
+              v-if="canDeleteItem('payroll-adjustment', item)" 
               type="danger" 
+              @click.stop="handleDelete(item.voucherNo)" 
               icon="fas fa-trash" 
-              title="Xóa" 
-              @click="handleDelete(item.voucherNo)" 
-            />
+              title="Xóa"
+            ></ActionButton>
+            <!-- Submit for approval button -->
+            <ActionButton 
+              v-if="canSubmitItem('payroll-adjustment', item)" 
+              type="primary" 
+              @click.stop="handleSubmitForApproval(item.voucherNo)" 
+              icon="fas fa-paper-plane" 
+              title="Gửi duyệt"
+            ></ActionButton>
+            <!-- Approve button -->
+            <ActionButton 
+              v-if="canApproveItem('payroll-adjustment', item)" 
+              type="success" 
+              @click.stop="handleApprove(item.voucherNo, 'approve')" 
+              icon="fas fa-check" 
+              title="Duyệt"
+            ></ActionButton>
+            <!-- Reject button -->
+            <ActionButton 
+              v-if="canApproveItem('payroll-adjustment', item)" 
+              type="danger" 
+              @click.stop="handleApprove(item.voucherNo, 'reject')" 
+              icon="fas fa-times" 
+              title="Từ chối"
+            ></ActionButton>
+            <!-- Return button -->
+            <ActionButton 
+              v-if="canApproveItem('payroll-adjustment', item)" 
+              type="warning" 
+              @click.stop="handleApprove(item.voucherNo, 'return')" 
+              icon="fas fa-undo" 
+              title="Trả lại"
+            ></ActionButton>
           </div>
         </template>
         <template #approveStatus="{ item }">

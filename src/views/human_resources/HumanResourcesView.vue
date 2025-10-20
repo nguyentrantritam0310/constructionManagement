@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
@@ -62,6 +63,8 @@ const handleDeleteEmployee = async (id) => {
 import { useEmployee } from '../../composables/useEmployee'
 import { useFamilyRelation } from '../../composables/useFamilyRelation'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import { useAuth } from '../../composables/useAuth'
+import { usePermissions } from '../../composables/usePermissions'
 import ActionButton from '@/components/common/ActionButton.vue'
 import UpdateButton from '@/components/common/UpdateButton.vue'
 import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
@@ -96,6 +99,13 @@ const {
 
 const { showMessage } = useGlobalMessage()
 
+// Router for navigation
+const router = useRouter()
+
+// Auth and permissions composables
+const { currentUser } = useAuth()
+const { canView, canCreate, canEditItem, canDeleteItem, filterDataByPermission } = usePermissions()
+
 onMounted(async () => {
     await Promise.all([
         fetchAllEmployees(),
@@ -105,7 +115,8 @@ onMounted(async () => {
 const activeTab = ref('employeeList')
 
 const employeesData = computed(() => {
-    return employees.value
+    const filteredEmployees = filterDataByPermission('human-resources', employees.value)
+    return filteredEmployees
         .map((employee) => ({
             ...employee,
             birthday: new Date(employee.birthday)
@@ -117,7 +128,7 @@ const employeesData = computed(() => {
 })
 
 const columns = [
-    { key: 'id', label: 'Mã nhân viên' },
+    { key: 'id', label: 'Mã nhân viên', link: true },
     { key: 'employeeName', label: 'Tên nhân viên' },
     { key: 'birthday', label: 'Ngày sinh' },
     { key: 'email', label: 'Email' },
@@ -218,6 +229,14 @@ const paginatedEmployees = computed(() => {
 
 const handlePageChange = (page) => {
     currentPage.value = page
+}
+
+// Handle cell click for navigation
+const handleCellClick = (item, column) => {
+    if (column.key === 'id' && column.link) {
+        // Navigate to employee profile
+        router.push({ name: 'employee-profile', params: { employeeId: item.id } })
+    }
 }
 
 // Excel export function
@@ -336,7 +355,12 @@ const getEmployeeNameWithStatus = (employee) => {
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h2 class="mb-0">Quản lý nhân sự</h2>
             <div class="d-flex gap-2">
-                <ActionButton type="primary" icon="fas fa-plus me-2" @click="openAddEmployeeForm">
+                <ActionButton 
+                    v-if="canCreate('human-resources')"
+                    type="primary" 
+                    icon="fas fa-plus me-2" 
+                    @click="openAddEmployeeForm"
+                >
                     Thêm
                 </ActionButton>
                 <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
@@ -378,12 +402,28 @@ const getEmployeeNameWithStatus = (employee) => {
         </div>
         
         <!-- Data Table -->
-        <DataTable v-else :columns="columns" :data="paginatedEmployees">
+        <DataTable v-else :columns="columns" :data="paginatedEmployees" @cell-click="handleCellClick">
             <template #actions="{ item }">
                 <div class="d-flex justify-content-start gap-2">
-                    <ActionButton @click.stop="openUpdateForm(item.id)" type="success" icon="fas fa-pen-to-square"></ActionButton>
-                    <ActionButton @click.stop="handleDeleteEmployee(item.id)" type="danger" icon="fas fa-trash"></ActionButton>
-                    <ActionButton @click.stop="openFamilyModal(item)" icon="fas fa-people-group"></ActionButton>
+                    <ActionButton 
+                        v-if="canEditItem('human-resources', item)"
+                        @click.stop="openUpdateForm(item.id)" 
+                        type="success" 
+                        icon="fas fa-pen-to-square"
+                        title="Sửa"
+                    ></ActionButton>
+                    <ActionButton 
+                        v-if="canDeleteItem('human-resources', item)"
+                        @click.stop="handleDeleteEmployee(item.id)" 
+                        type="danger" 
+                        icon="fas fa-trash"
+                        title="Xóa"
+                    ></ActionButton>
+                    <ActionButton 
+                        @click.stop="openFamilyModal(item)" 
+                        icon="fas fa-people-group"
+                        title="Quan hệ gia đình"
+                    ></ActionButton>
                 </div>
             </template>
         </DataTable>
@@ -415,13 +455,32 @@ const getEmployeeNameWithStatus = (employee) => {
                 ]" :data="selectedRelations">
                     <template #actions="{ item }">
                         <div class="d-flex justify-content-start gap-2">
-                            <ActionButton @click.stop="handleEditFamilyRelation(item)" type="warning" icon="fas fa-pen-to-square" size="sm"></ActionButton>
-                            <ActionButton @click.stop="handleDeleteFamilyRelation(item.id)" type="danger" icon="fas fa-trash" size="sm"></ActionButton>
+                            <ActionButton 
+                                v-if="canEditItem('human-resources', selectedEmployee)"
+                                @click.stop="handleEditFamilyRelation(item)" 
+                                type="warning" 
+                                icon="fas fa-pen-to-square" 
+                                size="sm"
+                                title="Sửa"
+                            ></ActionButton>
+                            <ActionButton 
+                                v-if="canDeleteItem('human-resources', selectedEmployee)"
+                                @click.stop="handleDeleteFamilyRelation(item.id)" 
+                                type="danger" 
+                                icon="fas fa-trash" 
+                                size="sm"
+                                title="Xóa"
+                            ></ActionButton>
                         </div>
                     </template>
                 </DataTable>
                 <div class="mt-3 text-end">
-                    <ActionButton @click="handleAddFamilyRelation" type="success" icon="fas fa-plus">
+                    <ActionButton 
+                        v-if="canCreate('human-resources')"
+                        @click="handleAddFamilyRelation" 
+                        type="success" 
+                        icon="fas fa-plus"
+                    >
                         Thêm quan hệ gia đình
                     </ActionButton>
                 </div>

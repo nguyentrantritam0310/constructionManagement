@@ -3,8 +3,14 @@ import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import LeaveForm from '../../components/common/leave/LeaveForm.vue'
+import OvertimeForm from '../../components/common/overtime/OvertimeForm.vue'
 import { useEmployee } from '../../composables/useEmployee'
 import { useLeaveRequest } from '../../composables/useLeaveRequest'
+import { useLeaveType } from '../../composables/useLeaveType'
+import { useWorkShift } from '../../composables/useWorkShift'
+import { useOvertimeType } from '../../composables/useOvertimeType'
+import { useOvertimeForm } from '../../composables/useOvertimeForm'
 import { useEmployeeRequest } from '../../composables/useEmployeeRequest'
 import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
 import { CONTRACT_APPROVE_STATUS, isApprovedStatus } from '../../constants/status.js'
@@ -12,6 +18,10 @@ import { CONTRACT_APPROVE_STATUS, isApprovedStatus } from '../../constants/statu
 // Composables
 const { employees, fetchAllEmployees, loading: employeeLoading, error: employeeError } = useEmployee()
 const { leaveRequests, fetchLeaveRequests, loading: leaveLoading, error: leaveError } = useLeaveRequest()
+const { leaveTypes, fetchLeaveTypes } = useLeaveType()
+const { workshifts, fetchWorkShifts } = useWorkShift()
+const { overtimeTypes, fetchOvertimeTypes } = useOvertimeType()
+const { overtimeForms, fetchOvertimeForms } = useOvertimeForm()
 const { employeeRequests, fetchEmployeeRequests, loading: requestLoading, error: requestError } = useEmployeeRequest()
 const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
 
@@ -66,10 +76,26 @@ const calculateTotalUsedLeave = (employeeId) => {
     return 0
   }
   
-  const employeeLeaveRequests = leaveRequests.value.filter(request => 
-    request.employeeID === employeeId && 
-    isApprovedStatus(request.approveStatus) // Backend maps enum to Vietnamese string
-  )
+  // Debug: Log all leave requests for this employee
+  const allEmployeeRequests = leaveRequests.value.filter(request => request.employeeID === employeeId)
+  console.log(`Employee ${employeeId} has ${allEmployeeRequests.length} total leave requests`)
+  console.log('All employee leave requests:', allEmployeeRequests.map(req => ({
+    voucherCode: req.voucherCode,
+    employeeID: req.employeeID,
+    approveStatus: req.approveStatus,
+    startDateTime: req.startDateTime,
+    endDateTime: req.endDateTime
+  })))
+  
+  const employeeLeaveRequests = leaveRequests.value.filter(request => {
+    const isCorrectEmployee = request.employeeID === employeeId
+    const isApproved = isApprovedStatus(request.approveStatus)
+    // Only log for this specific employee to reduce noise
+    if (isCorrectEmployee) {
+      console.log(`Request ${request.voucherCode}: employee match=${isCorrectEmployee}, approved=${isApproved}, status=${request.approveStatus}`)
+    }
+    return isCorrectEmployee && isApproved
+  })
   
   console.log(`Employee ${employeeId} has ${employeeLeaveRequests.length} approved leave requests`)
   
@@ -101,7 +127,7 @@ const getLeaveDaysByMonth = (employeeId, month) => {
     isApprovedStatus(request.approveStatus) // Backend maps enum to Vietnamese string
   )
   
-  return employeeLeaveRequests.reduce((total, request) => {
+  const monthDays = employeeLeaveRequests.reduce((total, request) => {
     const fromDate = new Date(request.startDateTime)
     const toDate = new Date(request.endDateTime)
     const requestMonth = fromDate.getMonth() + 1 // JavaScript months are 0-indexed
@@ -109,10 +135,16 @@ const getLeaveDaysByMonth = (employeeId, month) => {
     
     if (requestMonth === month && requestYear === selectedYear.value) {
       const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1
+      console.log(`Month ${month}: Leave request ${request.voucherCode}: ${days} days`)
       return total + days
     }
     return total
   }, 0)
+  
+  if (monthDays > 0) {
+    console.log(`Employee ${employeeId} - Month ${month}: ${monthDays} leave days`)
+  }
+  return monthDays
 }
 
 // Computed property for leave data based on real API data
@@ -166,7 +198,7 @@ const leaveData = computed(() => {
     
     const employeeData = {
       empId: employee.id, // Use employee ID instead of employeeCode
-      empCode: employee.employeeCode, // Keep employeeCode for display
+      empCode: employee.id, // Use employee ID for display (backend uses Id as primary key)
       empName: `${employee.firstName} ${employee.lastName}`,
       ...monthData,
       joinDate: joinDate.toLocaleDateString('vi-VN'),
@@ -223,11 +255,29 @@ const calculateTotalOTDays = (employeeId) => {
     return 0
   }
   
-  const employeeOTRequests = overtimeRequests.value.filter(request => 
-    request.employeeID === employeeId && 
-    isApprovedStatus(request.approveStatus) && // Backend maps enum to Vietnamese string
-    request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation), not "Tăng ca tính lương"
-  )
+  // Debug: Log all overtime requests for this employee
+  const allEmployeeOTRequests = overtimeRequests.value.filter(request => request.employeeID === employeeId)
+  console.log(`Employee ${employeeId} has ${allEmployeeOTRequests.length} total overtime requests`)
+  console.log('All employee overtime requests:', allEmployeeOTRequests.map(req => ({
+    voucherCode: req.voucherCode,
+    employeeID: req.employeeID,
+    approveStatus: req.approveStatus,
+    overtimeFormID: req.overtimeFormID,
+    overtimeFormName: req.overtimeFormName,
+    startDateTime: req.startDateTime,
+    endDateTime: req.endDateTime
+  })))
+  
+  const employeeOTRequests = overtimeRequests.value.filter(request => {
+    const isCorrectEmployee = request.employeeID === employeeId
+    const isApproved = isApprovedStatus(request.approveStatus)
+    const isLeaveCompensation = request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation), not "Tăng ca tính lương"
+    // Only log for this specific employee to reduce noise
+    if (isCorrectEmployee) {
+      console.log(`OT Request ${request.voucherCode}: employee match=${isCorrectEmployee}, approved=${isApproved}, leave compensation=${isLeaveCompensation}, status=${request.approveStatus}, formID=${request.overtimeFormID}`)
+    }
+    return isCorrectEmployee && isApproved && isLeaveCompensation
+  })
   
   console.log(`Employee ${employeeId} has ${employeeOTRequests.length} approved overtime leave compensation requests`)
   
@@ -384,6 +434,13 @@ const modalEmployee = ref(null)
 const modalType = ref('annual') // 'annual' hoặc 'otLeave'
 const modalField = ref('month') // 'month' hoặc 'totalUsed' hoặc 'otLeaveUsed'
 
+// ----------- Modal LeaveForm và OvertimeForm -----------
+const showLeaveFormModal = ref(false)
+const showOvertimeFormModal = ref(false)
+const selectedLeaveRequest = ref(null)
+const selectedOvertimeRequest = ref(null)
+const currentUser = ref({}) // Mock current user for forms
+
 const leaveTicketColumns = [
   { key: 'ticketId', label: 'Mã phiếu' },
   { key: 'empName', label: 'Họ tên' },
@@ -405,6 +462,66 @@ function openLeaveModal(emp, month, type = 'annual', field = 'month') {
   modalType.value = type
   modalField.value = field
   showModal.value = true
+}
+
+// Function to open LeaveForm modal when clicking on voucher code
+function openLeaveFormModal(voucherCode) {
+  console.log('Opening leave form modal for voucher code:', voucherCode)
+  console.log('Available leave requests:', leaveRequests.value)
+  
+  if (!voucherCode) {
+    console.warn('No voucher code provided')
+    return
+  }
+  
+  // Find the leave request by voucher code
+  const leaveRequest = leaveRequests.value.find(leave => leave.voucherCode === voucherCode)
+  
+  console.log('Found leave request:', leaveRequest)
+  
+  if (leaveRequest) {
+    selectedLeaveRequest.value = leaveRequest
+    showLeaveFormModal.value = true
+    console.log('Leave form modal opened successfully')
+  } else {
+    console.warn('Leave request not found for voucher code:', voucherCode)
+    console.log('Available voucher codes:', leaveRequests.value.map(lr => lr.voucherCode))
+  }
+}
+
+function closeLeaveFormModal() {
+  showLeaveFormModal.value = false
+  selectedLeaveRequest.value = null
+}
+
+// Function to open OvertimeForm modal when clicking on voucher code
+function openOvertimeFormModal(voucherCode) {
+  console.log('Opening overtime form modal for voucher code:', voucherCode)
+  console.log('Available overtime requests:', overtimeRequests.value)
+  
+  if (!voucherCode) {
+    console.warn('No voucher code provided')
+    return
+  }
+  
+  // Find the overtime request by voucher code
+  const overtimeRequest = overtimeRequests.value.find(overtime => overtime.voucherCode === voucherCode)
+  
+  console.log('Found overtime request:', overtimeRequest)
+  
+  if (overtimeRequest) {
+    selectedOvertimeRequest.value = overtimeRequest
+    showOvertimeFormModal.value = true
+    console.log('Overtime form modal opened successfully')
+  } else {
+    console.warn('Overtime request not found for voucher code:', voucherCode)
+    console.log('Available voucher codes:', overtimeRequests.value.map(or => or.voucherCode))
+  }
+}
+
+function closeOvertimeFormModal() {
+  showOvertimeFormModal.value = false
+  selectedOvertimeRequest.value = null
 }
 
 function getTickets(empId, month, type, field) {
@@ -580,6 +697,42 @@ const debugData = () => {
   
   if (employees.value?.length > 0) {
     console.log('First employee:', employees.value[0])
+    console.log('Employee ID types:', employees.value.slice(0, 3).map(emp => ({
+      id: emp.id,
+      idType: typeof emp.id,
+      employeeCode: emp.employeeCode,
+      employeeCodeType: typeof emp.employeeCode
+    })))
+    
+    // Show all employee IDs
+    console.log('=== ALL EMPLOYEE IDs ===')
+    console.log('Employee IDs:', employees.value.map(emp => emp.id))
+  }
+  
+  if (leaveRequests.value?.length > 0) {
+    // Show all leave request employee IDs
+    console.log('=== ALL LEAVE REQUEST EMPLOYEE IDs ===')
+    const leaveRequestEmployeeIds = [...new Set(leaveRequests.value.map(req => req.employeeID))]
+    console.log('Leave Request Employee IDs:', leaveRequestEmployeeIds)
+    console.log('Matching employee IDs:', leaveRequestEmployeeIds.filter(id => 
+      employees.value?.some(emp => emp.id === id)
+    ))
+    console.log('Non-matching employee IDs:', leaveRequestEmployeeIds.filter(id => 
+      !employees.value?.some(emp => emp.id === id)
+    ))
+  }
+  
+  if (overtimeRequests.value?.length > 0) {
+    // Show all overtime request employee IDs
+    console.log('=== ALL OVERTIME REQUEST EMPLOYEE IDs ===')
+    const overtimeRequestEmployeeIds = [...new Set(overtimeRequests.value.map(req => req.employeeID))]
+    console.log('Overtime Request Employee IDs:', overtimeRequestEmployeeIds)
+    console.log('Matching employee IDs:', overtimeRequestEmployeeIds.filter(id => 
+      employees.value?.some(emp => emp.id === id)
+    ))
+    console.log('Non-matching employee IDs:', overtimeRequestEmployeeIds.filter(id => 
+      !employees.value?.some(emp => emp.id === id)
+    ))
   }
   
   if (leaveRequests.value?.length > 0) {
@@ -588,13 +741,31 @@ const debugData = () => {
     console.log('Leave requests with "Nghỉ phép" type:', leaveRequests.value.filter(req => req.requestType === 'Nghỉ phép'))
     console.log('Approved leave requests (status = "Đã duyệt"):', leaveRequests.value.filter(req => req.approveStatus === 'Đã duyệt'))
     
+    // Check employee ID matching
+    console.log('=== EMPLOYEE ID MATCHING DEBUG ===')
+    if (employees.value?.length > 0 && leaveRequests.value?.length > 0) {
+      const firstEmployee = employees.value[0]
+      const matchingRequests = leaveRequests.value.filter(req => req.employeeID === firstEmployee.id)
+      console.log(`Employee ${firstEmployee.id} (${firstEmployee.firstName} ${firstEmployee.lastName})`)
+      console.log(`Has ${matchingRequests.length} leave requests`)
+      console.log('Matching requests:', matchingRequests.map(req => ({
+        voucherCode: req.voucherCode,
+        employeeID: req.employeeID,
+        employeeIDType: typeof req.employeeID,
+        approveStatus: req.approveStatus,
+        isApproved: isApprovedStatus(req.approveStatus)
+      })))
+    }
+    
     // Check specific fields
     leaveRequests.value.forEach((req, index) => {
       console.log(`Leave request ${index}:`, {
         voucherCode: req.voucherCode,
         employeeID: req.employeeID,
+        employeeIDType: typeof req.employeeID,
         requestType: req.requestType,
         approveStatus: req.approveStatus,
+        approveStatusType: typeof req.approveStatus,
         startDateTime: req.startDateTime,
         endDateTime: req.endDateTime
       })
@@ -608,13 +779,33 @@ const debugData = () => {
     console.log('Overtime leave compensation requests (overtimeFormID = 2):', overtimeRequests.value.filter(req => req.overtimeFormID === 2))
     console.log('Paid overtime requests (overtimeFormID = 1):', overtimeRequests.value.filter(req => req.overtimeFormID === 1))
     
+    // Check employee ID matching for overtime
+    console.log('=== OVERTIME EMPLOYEE ID MATCHING DEBUG ===')
+    if (employees.value?.length > 0 && overtimeRequests.value?.length > 0) {
+      const firstEmployee = employees.value[0]
+      const matchingOTRequests = overtimeRequests.value.filter(req => req.employeeID === firstEmployee.id)
+      console.log(`Employee ${firstEmployee.id} (${firstEmployee.firstName} ${firstEmployee.lastName})`)
+      console.log(`Has ${matchingOTRequests.length} overtime requests`)
+      console.log('Matching OT requests:', matchingOTRequests.map(req => ({
+        voucherCode: req.voucherCode,
+        employeeID: req.employeeID,
+        employeeIDType: typeof req.employeeID,
+        approveStatus: req.approveStatus,
+        isApproved: isApprovedStatus(req.approveStatus),
+        overtimeFormID: req.overtimeFormID,
+        overtimeFormName: req.overtimeFormName
+      })))
+    }
+    
     // Check specific fields
     overtimeRequests.value.forEach((req, index) => {
       console.log(`Overtime request ${index}:`, {
         voucherCode: req.voucherCode,
         employeeID: req.employeeID,
+        employeeIDType: typeof req.employeeID,
         requestType: req.requestType,
         approveStatus: req.approveStatus,
+        approveStatusType: typeof req.approveStatus,
         overtimeFormID: req.overtimeFormID,
         overtimeFormName: req.overtimeFormName,
         startDateTime: req.startDateTime,
@@ -655,6 +846,10 @@ onMounted(async () => {
     const results = await Promise.allSettled([
       fetchAllEmployees(),
       fetchLeaveRequests(),
+      fetchLeaveTypes(),
+      fetchWorkShifts(),
+      fetchOvertimeTypes(),
+      fetchOvertimeForms(),
       fetchEmployeeRequests(),
       fetchOvertimeRequests()
     ])
@@ -712,6 +907,10 @@ const reloadData = async () => {
     const results = await Promise.allSettled([
       fetchAllEmployees(),
       fetchLeaveRequests(),
+      fetchLeaveTypes(),
+      fetchWorkShifts(),
+      fetchOvertimeTypes(),
+      fetchOvertimeForms(),
       fetchEmployeeRequests(),
       fetchOvertimeRequests()
     ])
@@ -926,7 +1125,25 @@ const reloadData = async () => {
           :data="getTickets(modalEmployee, modalMonth, modalType, modalField)"
         >
           <template #ticketId="{ item }">
-            <span class="ticket-id">{{ item.ticketId }}</span>
+            <span 
+              v-if="modalType === 'annual'"
+              class="ticket-id voucher-code-link text-primary cursor-pointer"
+              @click="openLeaveFormModal(item.ticketId)"
+              :title="'Click để xem chi tiết phiếu nghỉ phép'"
+            >
+              <i class="fas fa-file-alt me-1"></i>
+              {{ item.ticketId }}
+            </span>
+            <span 
+              v-else-if="modalType === 'otLeave'"
+              class="ticket-id voucher-code-link text-success cursor-pointer"
+              @click="openOvertimeFormModal(item.ticketId)"
+              :title="'Click để xem chi tiết phiếu tăng ca'"
+            >
+              <i class="fas fa-clock me-1"></i>
+              {{ item.ticketId }}
+            </span>
+            <span v-else class="ticket-id">{{ item.ticketId }}</span>
           </template>
           <template #empName="{ item }">
             <span class="ticket-name">{{ item.empName }}</span>
@@ -945,6 +1162,36 @@ const reloadData = async () => {
           </template>
         </DataTable>
       </div>
+    </ModalDialog>
+    
+    <!-- ModalDialog cho LeaveForm -->
+    <ModalDialog :show="showLeaveFormModal" title="Chi tiết phiếu nghỉ phép" size="lg" scrollable
+      @update:show="showLeaveFormModal = $event">
+      <LeaveForm 
+        v-if="selectedLeaveRequest"
+        mode="update"
+        :leave="selectedLeaveRequest"
+        :employees="employees"
+        :leaveTypes="leaveTypes"
+        :workShifts="workshifts"
+        :currentUser="currentUser"
+        @close="closeLeaveFormModal"
+        @submit="closeLeaveFormModal"
+        @submit-for-approval="closeLeaveFormModal"
+      />
+    </ModalDialog>
+    
+    <!-- ModalDialog cho OvertimeForm -->
+    <ModalDialog :show="showOvertimeFormModal" title="Chi tiết phiếu tăng ca" size="lg" scrollable
+      @update:show="showOvertimeFormModal = $event">
+      <OvertimeForm 
+        v-if="selectedOvertimeRequest"
+        mode="update"
+        :overtime="selectedOvertimeRequest"
+        @close="closeOvertimeFormModal"
+        @submit="closeOvertimeFormModal"
+        @submit-for-approval="closeOvertimeFormModal"
+      />
     </ModalDialog>
   </div>
 </template>
@@ -1086,13 +1333,31 @@ const reloadData = async () => {
   color: #0d6efd;
   background: #eafbe7;
 }
+
+/* Voucher code link styling */
+.voucher-code-link {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+}
+
+.voucher-code-link:hover {
+  border-bottom-color: currentColor;
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.voucher-code-link:active {
+  transform: translateY(0);
+}
 .ticket-days {
   color: #009688;
   background: #e0f7fa;
 }
 .ticket-reason {
-  color: #ff6b6b;
-  background: #fff0f0;
+  color: #222;
+  background: #f8f9fa;
 }
 .modal-leave-table .table th {
   background: #f5f7fa;

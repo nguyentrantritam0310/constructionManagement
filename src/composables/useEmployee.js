@@ -9,7 +9,7 @@ export function useEmployee() {
   const error = ref(null)
   
   // Get auth composable for refreshing user info
-  const { refreshUserInfo } = useAuth()
+  const { refreshUserInfo, forceRefreshUserInfo } = useAuth()
 
   // Fetch all employees
   const fetchAllEmployees = async () => {
@@ -83,10 +83,10 @@ export function useEmployee() {
       const result = await employeeService.updateEmployee(employeeData)
       await fetchAllEmployees() // Refresh the list
       
-      // If updating current user's role, refresh user info
-      if (employeeData.id && employeeData.roleID) {
-        await refreshUserInfo()
-      }
+      // Always force refresh user info when updating employee data
+      console.log('Employee updated, force refreshing user info...')
+      await forceRefreshUserInfo()
+      
       return result
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.response?.data?.title || 'Có lỗi xảy ra khi cập nhật nhân viên'

@@ -3,7 +3,12 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h2 class="mb-0">Quản lý hợp đồng lao động</h2>
       <div class="d-flex gap-2" v-if="activeTab === 'allContracts'">
-        <ActionButton type="primary" icon="fas fa-plus me-2" @click="openAddContractForm">
+        <ActionButton 
+          v-if="canCreate('personnel-contract')"
+          type="primary" 
+          icon="fas fa-plus me-2" 
+          @click="openAddContractForm"
+        >
           Thêm
         </ActionButton>
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
@@ -20,15 +25,57 @@
     <TabBar :tabs="tabs" :activeTab="activeTab" @update:activeTab="activeTab = $event" />
     <div class="card shadow-sm">
       <div class="card-body p-0">
-        <DataTable :columns="columnsByTab" :data="paginatedContracts">
+        <DataTable :columns="columnsByTab" :data="paginatedContracts" @cell-click="handleCellClick">
           <template #actions="{ item }">
             <div class="d-flex justify-content-start gap-2">
               <!-- Tab: Tất cả hợp đồng -->
               <template v-if="activeTab === 'allContracts'">
-                <ActionButton type="success" icon="fas fa-pen-to-square" title="Sửa"
-                  @click.stop="openUpdateForm(item.id)" />
-                <ActionButton type="danger" icon="fas fa-trash" title="Xóa hợp đồng"
-                  @click.stop="confirmDeleteContract(item)" />
+                <ActionButton 
+                  v-if="canEditItem('personnel-contract', item)"
+                  type="success" 
+                  icon="fas fa-pen-to-square" 
+                  title="Sửa"
+                  @click.stop="openUpdateForm(item.id)" 
+                />
+                <ActionButton 
+                  v-if="canDeleteItem('personnel-contract', item)"
+                  type="danger" 
+                  icon="fas fa-trash" 
+                  title="Xóa hợp đồng"
+                  @click.stop="confirmDeleteContract(item)" 
+                />
+                <!-- Submit for approval button -->
+                <ActionButton 
+                  v-if="canSubmitItem('personnel-contract', item)" 
+                  type="primary" 
+                  @click.stop="handleSubmitForApproval(item.id)" 
+                  icon="fas fa-paper-plane" 
+                  title="Gửi duyệt"
+                ></ActionButton>
+                <!-- Approve button -->
+                <ActionButton 
+                  v-if="canApproveItem('personnel-contract', item)" 
+                  type="success" 
+                  @click.stop="handleApprove(item.id, 'approve')" 
+                  icon="fas fa-check" 
+                  title="Duyệt"
+                ></ActionButton>
+                <!-- Reject button -->
+                <ActionButton 
+                  v-if="canApproveItem('personnel-contract', item)" 
+                  type="danger" 
+                  @click.stop="handleApprove(item.id, 'reject')" 
+                  icon="fas fa-times" 
+                  title="Từ chối"
+                ></ActionButton>
+                <!-- Return button -->
+                <ActionButton 
+                  v-if="canApproveItem('personnel-contract', item)" 
+                  type="warning" 
+                  @click.stop="handleApprove(item.id, 'return')" 
+                  icon="fas fa-undo" 
+                  title="Trả lại"
+                ></ActionButton>
               </template>
 
               <!-- Tab: Chưa lên hợp đồng -->
@@ -211,6 +258,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import TabBar from '../../components/common/TabBar.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
@@ -223,6 +271,7 @@ import ActionButton from '@/components/common/ActionButton.vue'
 import { useContract } from '../../composables/useContract.js'
 import { useEmployee } from '../../composables/useEmployee.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
+import { usePermissions } from '../../composables/usePermissions.js'
 // Dữ liệu hardcode cho các loại hợp đồng, hình thức và phụ cấp
 import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
 import { CONTRACT_STATUS, CONTRACT_STATUS_LABELS, CONTRACT_APPROVE_STATUS } from '../../constants/status.js'
@@ -248,6 +297,19 @@ const {
 } = useContract()
 const { employees, fetchAllEmployees } = useEmployee()
 const { showMessage } = useGlobalMessage()
+
+// Router for navigation
+const router = useRouter()
+
+// Permissions composable for centralized permission management
+const { 
+  canView, 
+  canCreate, 
+  canEditItem, 
+  canDeleteItem,
+  canSubmitItem,
+  canApproveItem
+} = usePermissions()
 
 // Data is now fetched from API in ContractForm component
 
@@ -275,6 +337,36 @@ const updateContract = async (contractData) => {
   } catch (error) {
     console.error('Error updating contract:', error)
     throw error
+  }
+}
+
+const handleSubmitForApproval = async (contractId) => {
+  try {
+    // Update status to "Chờ duyệt"
+    await contractService.updateContract({ id: contractId, approveStatus: 'Chờ duyệt' })
+    await fetchAllContracts() // Refresh data
+    console.log('Contract submitted for approval:', contractId)
+  } catch (error) {
+    console.error('Error submitting for approval:', error)
+  }
+}
+
+const handleApprove = async (contractId, action) => {
+  try {
+    let newStatus
+    if (action === 'approve') {
+      newStatus = 'Đã duyệt'
+    } else if (action === 'reject') {
+      newStatus = 'Từ chối'
+    } else if (action === 'return') {
+      newStatus = 'Tạo mới'
+    }
+    
+    await contractService.updateContract({ id: contractId, approveStatus: newStatus })
+    await fetchAllContracts() // Refresh data
+    console.log(`Contract ${action}:`, contractId)
+  } catch (error) {
+    console.error(`Error ${action} contract:`, error)
   }
 }
 
@@ -442,7 +534,7 @@ const notCreatedContracts = computed(() => {
 const contractColumns = [
   { key: 'contractNumber', label: 'Số hợp đồng' },
   { key: 'contractTypeName', label: 'Loại hợp đồng' },
-  { key: 'id', label: 'Mã nhân viên' },
+  { key: 'id', label: 'Mã nhân viên', link: true },
   { key: 'employeeName', label: 'Tên nhân viên' },
   { key: 'approveStatus', label: 'Trạng thái duyệt' },
   { key: 'validityStatus', label: 'Hiệu lực' },
@@ -451,7 +543,7 @@ const contractColumns = [
 ]
 
 const notCreatedColumns = [
-  { key: 'id', label: 'Mã nhân viên' },
+  { key: 'id', label: 'Mã nhân viên', link: true },
   { key: 'employeeName', label: 'Tên nhân viên' },
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Số điện thoại' },
@@ -460,7 +552,7 @@ const notCreatedColumns = [
 ]
 
 const expiredColumns = [
-  { key: 'employeeID', label: 'Mã nhân viên' },
+  { key: 'employeeID', label: 'Mã nhân viên', link: true },
   { key: 'employeeName', label: 'Tên nhân viên' },
   { key: 'contractNumber', label: 'Số hợp đồng' },
   { key: 'contractTypeName', label: 'Loại hợp đồng' },
@@ -491,6 +583,15 @@ const columnsByTab = computed(() => {
 
 const handlePageChange = (page) => {
   currentPage.value = page
+}
+
+// Handle cell click for navigation
+const handleCellClick = (item, column) => {
+  if (column.link && (column.key === 'id' || column.key === 'employeeID')) {
+    // Navigate to employee profile
+    const employeeId = item.id || item.employeeID
+    router.push({ name: 'employee-profile', params: { employeeId } })
+  }
 }
 
 // Excel export function

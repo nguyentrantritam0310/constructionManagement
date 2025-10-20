@@ -78,5 +78,23 @@ export const getApprovalStatusLabel = (status) => {
 }
 
 export const isApprovedStatus = (status) => {
-  return status === CONTRACT_APPROVE_STATUS.APPROVED || status === 'Đã duyệt'
+  // Handle different status formats from API
+  if (status === null || status === undefined) {
+    return false
+  }
+  
+  // Handle string status
+  if (typeof status === 'string') {
+    return status === CONTRACT_APPROVE_STATUS.APPROVED || 
+           status === 'Đã duyệt' || 
+           status.toLowerCase() === 'approved' ||
+           status.toLowerCase() === 'đã duyệt'
+  }
+  
+  // Handle numeric status (if API returns numbers)
+  if (typeof status === 'number') {
+    return status === 1 // Assuming 1 = approved
+  }
+  
+  return false
 }

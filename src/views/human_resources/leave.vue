@@ -7,6 +7,7 @@ import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import { useLeaveRequest } from '../../composables/useLeaveRequest'
 import { useUser } from '../../composables/useUser'
 import { useAuth } from '../../composables/useAuth'
+import { usePermissions } from '../../composables/usePermissions'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import LeaveForm from '@/components/common/leave/LeaveForm.vue'
@@ -28,7 +29,18 @@ const {
 const { users, fetchUsers } = useUser()
 
 // Auth composable for role checking
-const { currentUser, canViewAll, canEdit, refreshUserInfo } = useAuth()
+const { currentUser, refreshUserInfo } = useAuth()
+
+// Permissions composable for centralized permission management
+const { 
+  canView, 
+  canCreate, 
+  canEditItem, 
+  canDeleteItem, 
+  canSubmitItem,
+  canApproveItem,
+  filterDataByPermission 
+} = usePermissions()
 
 // Leave types will be loaded from API in LeaveForm component
 
@@ -58,29 +70,19 @@ const currentPage = ref(1)
 const itemsPerPage = ref(8)
 
 // Computed
-// Filter leave requests based on user role
+// Filter leave requests based on centralized permissions
 const filteredLeaveRequests = computed(() => {
-  console.log('=== LEAVE FILTER DEBUG ===')
+  console.log('=== LEAVE PERMISSION DEBUG ===')
   console.log('Current user:', currentUser.value)
-  console.log('Can view all:', canViewAll.value)
-  console.log('Can edit:', canEdit.value)
+  console.log('Can view leave:', canView('leave'))
   console.log('Leave requests count:', leaveRequests.value?.length || 0)
   
   if (!leaveRequests.value || leaveRequests.value.length === 0) return []
   
-  if (canViewAll.value) {
-    // HR staff and Director can see all leave requests
-    console.log('User can view all - returning all requests')
-    return leaveRequests.value
-  } else {
-    // Regular employees can only see their own leave requests
-    console.log('User can only view own - filtering by employeeID:', currentUser.value?.id)
-    const filtered = leaveRequests.value.filter(request => 
-      request.employeeID === currentUser.value?.id
-    )
-    console.log('Filtered requests count:', filtered.length)
-    return filtered
-  }
+  // Use centralized permission filtering
+  const filtered = filterDataByPermission('leave', leaveRequests.value)
+  console.log('Filtered requests count:', filtered.length)
+  return filtered
 })
 
 const paginatedLeaveData = computed(() => {
@@ -110,12 +112,30 @@ const handleUpdate = async (formData) => {
 
 const handleSubmitForApproval = async (voucherCode) => {
   try {
-    // Update status to "Chờ duyệt" (status = 1)
-    await updateLeaveRequest(voucherCode, { approveStatus: 1 })
+    // Update status to "Chờ duyệt"
+    await updateLeaveRequest(voucherCode, { approveStatus: 'Chờ duyệt' })
     showUpdateForm.value = false
     selectedItem.value = null
   } catch (error) {
     console.error('Error submitting for approval:', error)
+  }
+}
+
+const handleApprove = async (voucherCode, action) => {
+  try {
+    let newStatus
+    if (action === 'approve') {
+      newStatus = 'Đã duyệt'
+    } else if (action === 'reject') {
+      newStatus = 'Từ chối'
+    } else if (action === 'return') {
+      newStatus = 'Tạo mới'
+    }
+    
+    await updateLeaveRequest(voucherCode, { approveStatus: newStatus })
+    console.log(`Leave request ${action}:`, voucherCode)
+  } catch (error) {
+    console.error(`Error ${action} leave request:`, error)
   }
 }
 
@@ -353,15 +373,36 @@ onMounted(async () => {
     fetchUsers()
   ])
 })
+
+// Handle refresh content event from MainLayout
+const handleRefreshContent = async () => {
+  await Promise.all([
+    fetchLeaveRequests(),
+    fetchUsers()
+  ])
+}
+
+// Expose function to parent component
+defineExpose({
+  handleRefreshContent
+})
 </script>
 
 <template>
-  <div class="container-fluid py-4">
+  <!-- Kiểm tra quyền xem trước khi hiển thị trang -->
+  <div v-if="!canView('leave')" class="container-fluid py-4">
+    <div class="alert alert-danger text-center">
+      <i class="fas fa-exclamation-triangle me-2"></i>
+      Bạn không có quyền truy cập trang này.
+    </div>
+  </div>
+  
+  <div v-else class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="adjustment-title mb-0">Danh sách đơn nghỉ phép</h4>
       <div class="d-flex gap-2">
         <ActionButton 
-          v-if="canEdit || !canViewAll" 
+          v-if="canCreate('leave')" 
           type="primary" 
           icon="fas fa-plus me-2" 
           @click="showCreateForm = true"
@@ -375,7 +416,7 @@ onMounted(async () => {
           Xuất Excel
         </ActionButton>
         <ActionButton 
-          v-if="canEdit || !canViewAll" 
+          v-if="canCreate('leave')" 
           type="info" 
           icon="fas fa-file-import me-2" 
           @click="showImportModal = true"
@@ -405,21 +446,53 @@ onMounted(async () => {
       <DataTable :columns="leaveColumns" :data="paginatedLeaveData">
         <template #actions="{ item }">
           <div class="d-flex justify-content-start gap-2">
-            <!-- Always show edit button for own requests or if can edit -->
+            <!-- Edit button based on centralized permissions -->
             <ActionButton 
-              v-if="canEdit || item.employeeID === currentUser?.id" 
+              v-if="canEditItem('leave', item)" 
               icon="fas fa-edit" 
               type="success" 
               @click.stop="openUpdateForm(item.voucherCode)" 
               title="Sửa"
             ></ActionButton>
-            <!-- Always show delete button for own requests or if can edit -->
+            <!-- Delete button based on centralized permissions -->
             <ActionButton 
-              v-if="canEdit || item.employeeID === currentUser?.id" 
+              v-if="canDeleteItem('leave', item)" 
               type="danger" 
               @click.stop="openDeleteDialog(item.voucherCode)" 
               icon="fas fa-trash" 
               title="Xóa"
+            ></ActionButton>
+            <!-- Submit for approval button -->
+            <ActionButton 
+              v-if="canSubmitItem('leave', item)" 
+              type="primary" 
+              @click.stop="handleSubmitForApproval(item.voucherCode)" 
+              icon="fas fa-paper-plane" 
+              title="Gửi duyệt"
+            ></ActionButton>
+            <!-- Approve button -->
+            <ActionButton 
+              v-if="canApproveItem('leave', item)" 
+              type="success" 
+              @click.stop="handleApprove(item.voucherCode, 'approve')" 
+              icon="fas fa-check" 
+              title="Duyệt"
+            ></ActionButton>
+            <!-- Reject button -->
+            <ActionButton 
+              v-if="canApproveItem('leave', item)" 
+              type="danger" 
+              @click.stop="handleApprove(item.voucherCode, 'reject')" 
+              icon="fas fa-times" 
+              title="Từ chối"
+            ></ActionButton>
+            <!-- Return button -->
+            <ActionButton 
+              v-if="canApproveItem('leave', item)" 
+              type="warning" 
+              @click.stop="handleApprove(item.voucherCode, 'return')" 
+              icon="fas fa-undo" 
+              title="Trả lại"
             ></ActionButton>
             <!-- Always show status -->
             <span class="badge" :class="{

@@ -232,7 +232,104 @@ export function useAuth() {
     try {
       console.log('Refreshing user info...')
       
-      // First try to refresh token if we have a refresh token
+      // Always try to get fresh user info from API first
+      try {
+        const response = await axios.get('/Auth/me')
+        const userData = response.data
+        
+        // Update currentUser with fresh data from API
+        currentUser.value = {
+          id: userData.id,
+          email: userData.email,
+          fullName: userData.fullName,
+          role: userData.role
+        }
+        
+        console.log('User info refreshed from API:', currentUser.value)
+        
+        // Try to refresh token to get updated JWT with new role
+        if (refreshToken.value) {
+          try {
+            const tokenResponse = await axios.post('/Auth/refresh-token', {
+              token: token.value,
+              refreshToken: refreshToken.value
+            })
+            
+            if (tokenResponse.data.token) {
+              const newToken = tokenResponse.data.token
+              token.value = newToken
+              localStorage.setItem('token', newToken)
+              
+              // Update currentUser from new token as well
+              const tokenUser = getUserFromToken(newToken)
+              if (tokenUser) {
+                currentUser.value = tokenUser
+                console.log('Token refreshed and user updated:', currentUser.value)
+              }
+            }
+          } catch (tokenError) {
+            console.log('Token refresh failed, but user info updated from API')
+          }
+        }
+        
+        return true
+      } catch (apiError) {
+        console.log('API call failed, trying token refresh...')
+        
+        // Fallback: try token refresh
+        if (refreshToken.value) {
+          try {
+            const tokenResponse = await axios.post('/Auth/refresh-token', {
+              token: token.value,
+              refreshToken: refreshToken.value
+            })
+            
+            if (tokenResponse.data.token) {
+              const newToken = tokenResponse.data.token
+              token.value = newToken
+              localStorage.setItem('token', newToken)
+              
+              // Update currentUser from new token
+              currentUser.value = getUserFromToken(newToken)
+              console.log('Token refreshed successfully:', currentUser.value)
+              return true
+            }
+          } catch (tokenError) {
+            console.log('Token refresh also failed')
+          }
+        }
+        
+        console.log('Using cached user info:', currentUser.value)
+        return false
+      }
+    } catch (error) {
+      console.error('Error refreshing user info:', error)
+      return false
+    }
+  }
+
+  // Force refresh user info - bypass cache and get fresh data
+  const forceRefreshUserInfo = async () => {
+    if (!token.value) return false
+    
+    try {
+      console.log('Force refreshing user info...')
+      
+      // Always get fresh data from API
+      const response = await axios.get('/Auth/me')
+      const userData = response.data
+      
+      // Update currentUser with fresh data from API
+      currentUser.value = {
+        id: userData.id,
+        email: userData.email,
+        fullName: userData.fullName,
+        role: userData.role
+      }
+      
+      console.log('User info force refreshed from API:', currentUser.value)
+      
+      // Force refresh token to get updated JWT
       if (refreshToken.value) {
         try {
           const tokenResponse = await axios.post('/Auth/refresh-token', {
@@ -245,28 +342,21 @@ export function useAuth() {
             token.value = newToken
             localStorage.setItem('token', newToken)
             
-            // Update currentUser from new token
-            currentUser.value = getUserFromToken(newToken)
-            console.log('Token refreshed successfully:', currentUser.value)
-            return true
+            // Update currentUser from new token as well
+            const tokenUser = getUserFromToken(newToken)
+            if (tokenUser) {
+              currentUser.value = tokenUser
+              console.log('Token force refreshed and user updated:', currentUser.value)
+            }
           }
         } catch (tokenError) {
-          console.log('Token refresh failed, trying direct API call...')
+          console.log('Token refresh failed, but user info updated from API')
         }
       }
       
-      // Fallback: try to get user info directly from API
-      try {
-        const response = await axios.get('/Auth/me')
-        currentUser.value = response.data
-        console.log('User info refreshed from API:', currentUser.value)
-        return true
-      } catch (apiError) {
-        console.log('API call failed, using cached user info:', currentUser.value)
-        return false
-      }
+      return true
     } catch (error) {
-      console.error('Error refreshing user info:', error)
+      console.error('Error force refreshing user info:', error)
       return false
     }
   }
@@ -286,6 +376,7 @@ export function useAuth() {
     logout,
     register,
     checkAuth,
-    refreshUserInfo
+    refreshUserInfo,
+    forceRefreshUserInfo
   }
 }

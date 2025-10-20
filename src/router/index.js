@@ -179,6 +179,23 @@ const router = createRouter({
       path: '/Overtime',
       component: () => import('../views/human_resources/Overtime.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/permission-management',
+      component: () => import('../views/system/PermissionManagementView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: () => import('../views/ProfileView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/profile/:employeeId',
+      name: 'employee-profile',
+      component: () => import('../views/ProfileView.vue'),
+      meta: { requiresAuth: true }
     }
 
   ]

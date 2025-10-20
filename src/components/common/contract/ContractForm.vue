@@ -37,7 +37,7 @@ const formData = ref({
   endDate: formatDateForInput(props.contract?.endDate),
   contractSalary: props.contract?.contractSalary ?? '',
   insuranceSalary: props.contract?.insuranceSalary ?? '',
-  approveStatus: props.contract?.approveStatus ?? CONTRACT_APPROVE_STATUS.CREATED,
+  approveStatus: props.contract?.approveStatus ?? 'Tạo mới',
   validityPeriod: props.contract?.validityPeriod ?? '', // Thêm trường hiệu lực
   allowances: (props.contract?.allowances || []).map(a => ({
     allowanceID: a.allowanceID || a.allowance?.id || '',
@@ -47,10 +47,10 @@ const formData = ref({
 
 
 const approveStatusOptions = [
-  { value: CONTRACT_APPROVE_STATUS.CREATED, text: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.CREATED] },
-  { value: CONTRACT_APPROVE_STATUS.PENDING, text: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.PENDING] },
-  { value: CONTRACT_APPROVE_STATUS.APPROVED, text: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.APPROVED] },
-  { value: CONTRACT_APPROVE_STATUS.REJECTED, text: CONTRACT_APPROVE_STATUS_LABELS[CONTRACT_APPROVE_STATUS.REJECTED] }
+  { value: 'Tạo mới', text: 'Tạo mới' },
+  { value: 'Chờ duyệt', text: 'Chờ duyệt' },
+  { value: 'Đã duyệt', text: 'Đã duyệt' },
+  { value: 'Từ chối', text: 'Từ chối' }
 ]
 
 const validityOptions = [
@@ -80,21 +80,32 @@ const isProbationContract = computed(() => {
 // Watch for changes in contract prop
 watch(() => props.contract, (newContract) => {
   if (newContract) {
-    // Convert approveStatus from string to int if needed
-    let approveStatusValue = CONTRACT_APPROVE_STATUS.CREATED
+    // Use Vietnamese string status directly
+    let approveStatusValue = 'Tạo mới'
     if (newContract.approveStatus) {
-      // If it's already a number, use it; if it's a string, convert it
-      if (typeof newContract.approveStatus === 'number') {
-        approveStatusValue = newContract.approveStatus
-      } else if (typeof newContract.approveStatus === 'string') {
-        // Convert string back to enum value
+      // Handle different status formats
+      if (typeof newContract.approveStatus === 'string') {
+        // Map English to Vietnamese if needed
         const statusMap = {
-          'Tạo mới': CONTRACT_APPROVE_STATUS.CREATED,
-          'Chờ duyệt': CONTRACT_APPROVE_STATUS.PENDING,
-          'Đã duyệt': CONTRACT_APPROVE_STATUS.APPROVED,
-          'Từ chối': CONTRACT_APPROVE_STATUS.REJECTED
+          'Created': 'Tạo mới',
+          'Pending': 'Chờ duyệt', 
+          'Approved': 'Đã duyệt',
+          'Rejected': 'Từ chối',
+          'Tạo mới': 'Tạo mới',
+          'Chờ duyệt': 'Chờ duyệt',
+          'Đã duyệt': 'Đã duyệt',
+          'Từ chối': 'Từ chối'
         }
-        approveStatusValue = statusMap[newContract.approveStatus] || CONTRACT_APPROVE_STATUS.CREATED
+        approveStatusValue = statusMap[newContract.approveStatus] || 'Tạo mới'
+      } else if (typeof newContract.approveStatus === 'number') {
+        // Convert number to Vietnamese string
+        const numberStatusMap = {
+          0: 'Tạo mới',
+          1: 'Chờ duyệt',
+          2: 'Đã duyệt',
+          3: 'Từ chối'
+        }
+        approveStatusValue = numberStatusMap[newContract.approveStatus] || 'Tạo mới'
       }
     }
 
@@ -244,10 +255,9 @@ const handleSubmit = () => {
     }
   }
 
-  // Format data for API submission - convert approveStatus to int for enum
+  // Format data for API submission - keep Vietnamese string status
   const submitData = {
-    ...formData.value,
-    approveStatus: parseInt(formData.value.approveStatus) || 0 // Convert string to int for enum, default to 0
+    ...formData.value
   }
 
   // Remove ValidityPeriod from submit data as it's not in the backend entity
@@ -256,8 +266,7 @@ const handleSubmit = () => {
   console.log('=== CONTRACT FORM SUBMIT DEBUG ===')
   console.log('Form mode:', props.mode)
   console.log('Form data:', formData.value)
-  console.log('ApproveStatus before parse:', formData.value.approveStatus, 'Type:', typeof formData.value.approveStatus)
-  console.log('ApproveStatus after parse:', submitData.approveStatus, 'Type:', typeof submitData.approveStatus)
+  console.log('ApproveStatus:', formData.value.approveStatus, 'Type:', typeof formData.value.approveStatus)
   console.log('Submit data:', submitData)
   console.log('Submit data keys:', Object.keys(submitData))
   console.log('Submit data values:', Object.values(submitData))
@@ -330,7 +339,7 @@ watch(() => props.mode, (newMode) => {
       endDate: '',
       contractSalary: '',
       insuranceSalary: '',
-      approveStatus: CONTRACT_APPROVE_STATUS.CREATED,
+      approveStatus: 'Tạo mới',
       validityPeriod: '',
       allowances: []
     }

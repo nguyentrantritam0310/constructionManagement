@@ -2,11 +2,14 @@
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
+import LeaveForm from '../../components/common/leave/LeaveForm.vue'
 
 const showEmployeeModal = ref(false)
 const showDayModal = ref(false)
+const showLeaveFormModal = ref(false)
 const selectedEmployee = ref(null)
 const selectedDateIdx = ref(null)
+const selectedLeaveRequest = ref(null)
 const dayModalLoading = ref(false)
 const dayModalError = ref(null)
 
@@ -33,6 +36,36 @@ async function openDayModal(emp, dayIdx) {
 }
 function closeDayModal() {
   showDayModal.value = false
+}
+
+// Function to open LeaveForm modal when clicking on voucher code
+function openLeaveFormModal(voucherCode) {
+  console.log('Opening leave form modal for voucher code:', voucherCode)
+  console.log('Available leave requests:', leaveRequests.value)
+  
+  if (!voucherCode) {
+    console.warn('No voucher code provided')
+    return
+  }
+  
+  // Find the leave request by voucher code
+  const leaveRequest = leaveRequests.value.find(leave => leave.voucherCode === voucherCode)
+  
+  console.log('Found leave request:', leaveRequest)
+  
+  if (leaveRequest) {
+    selectedLeaveRequest.value = leaveRequest
+    showLeaveFormModal.value = true
+    console.log('Leave form modal opened successfully')
+  } else {
+    console.warn('Leave request not found for voucher code:', voucherCode)
+    console.log('Available voucher codes:', leaveRequests.value.map(lr => lr.voucherCode))
+  }
+}
+
+function closeLeaveFormModal() {
+  showLeaveFormModal.value = false
+  selectedLeaveRequest.value = null
 }
 // Cấu hình cột cho DataTable
 const attendanceColumns = [
@@ -139,7 +172,10 @@ import { useAttendance } from '../../composables/useAttendance'
 import { useWorkShift } from '../../composables/useWorkShift'
 import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
 import { useLeaveRequest } from '../../composables/useLeaveRequest'
+import { useLeaveType } from '../../composables/useLeaveType'
 import { useShiftAssignment } from '../../composables/useShiftAssignment'
+import { useAuth } from '../../composables/useAuth'
+import { usePermissions } from '../../composables/usePermissions'
 
 const { showMessage } = useGlobalMessage()
 
@@ -149,7 +185,10 @@ const { attendanceList, fetchAttendance } = useAttendance()
 const { workshifts, fetchWorkShifts } = useWorkShift()
 const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
 const { leaveRequests, fetchLeaveRequests, loading: leaveLoading, error: leaveError } = useLeaveRequest()
+const { leaveTypes, fetchLeaveTypes } = useLeaveType()
 const { shiftAssignments, fetchAllShiftAssignments } = useShiftAssignment()
+const { currentUser, isDirector, isHRManager, isHREmployee } = useAuth()
+const { canView } = usePermissions()
 
 // Components
 const components = {
@@ -159,14 +198,45 @@ const components = {
 const activeTab = ref('summary')
 const showMoreTabs = ref(false) // Control visibility of the "More" dropdown
 
-const tabs = [
-  { key: 'summary', label: 'Bảng tổng hợp công', icon: 'fas fa-table' },
-  { key: 'overtime', label: 'Bảng công tăng ca', icon: 'fas fa-business-time' },
-  { key: 'detail', label: 'Bảng công chi tiết', icon: 'fas fa-list-alt' },
-  { key: 'attendance', label: 'Dữ liệu chấm công', icon: 'fas fa-fingerprint' },
-  { key: 'closeHistory', label: 'Lịch sử chốt công', icon: 'fas fa-history' },
-  { key: 'feedbackHistory', label: 'Lịch sử phản ánh', icon: 'fas fa-comment-dots' }
+const allTabs = [
+  { key: 'summary', label: 'Bảng tổng hợp công', icon: 'fas fa-table', restricted: true },
+  { key: 'personal', label: 'Bảng công cá nhân', icon: 'fas fa-user-clock', restricted: false },
+  { key: 'overtime', label: 'Bảng công tăng ca', icon: 'fas fa-business-time', restricted: true },
+  { key: 'personalOvertime', label: 'Bảng công tăng ca cá nhân', icon: 'fas fa-user-plus', restricted: false },
+  { key: 'detail', label: 'Bảng công chi tiết', icon: 'fas fa-list-alt', restricted: false, personalOnly: true },
+  { key: 'attendance', label: 'Dữ liệu chấm công', icon: 'fas fa-fingerprint', restricted: false, personalOnly: true },
+  { key: 'closeHistory', label: 'Lịch sử chốt công', icon: 'fas fa-history', restricted: true },
+  { key: 'feedbackHistory', label: 'Lịch sử phản ánh', icon: 'fas fa-comment-dots', restricted: true }
 ]
+
+// Computed property to filter tabs based on user permissions
+const tabs = computed(() => {
+  return allTabs.filter(tab => {
+    // If tab is not restricted, show it to everyone
+    if (!tab.restricted) return true
+    
+    // If tab is restricted, check permissions based on tab type
+    if (tab.key === 'summary' || tab.key === 'overtime' || tab.key === 'closeHistory' || tab.key === 'feedbackHistory') {
+      return canView('attendance-summary')
+    }
+    
+    // For other restricted tabs, use existing logic as fallback
+    const hasHRPermission = isDirector.value || isHRManager.value || isHREmployee.value
+    return hasHRPermission
+  })
+})
+
+// Watch for changes in tabs and adjust activeTab if needed
+watch(tabs, (newTabs) => {
+  const availableTabKeys = newTabs.map(tab => tab.key)
+  
+  // If current active tab is not available, switch to first available tab
+  if (!availableTabKeys.includes(activeTab.value)) {
+    if (availableTabKeys.length > 0) {
+      activeTab.value = availableTabKeys[0]
+    }
+  }
+}, { immediate: true })
 
 // Time filter controls for all tabs
 const currentMonth = ref(new Date())
@@ -181,9 +251,9 @@ const currentPage = ref(1)
 const pageSize = ref(5)
 
 // Limit the number of visible tabs
-const visibleTabsCount = 6
-const visibleTabs = computed(() => tabs.slice(0, visibleTabsCount))
-const hiddenTabs = computed(() => tabs.slice(visibleTabsCount))
+const visibleTabsCount = computed(() => Math.min(6, tabs.value.length))
+const visibleTabs = computed(() => tabs.value.slice(0, visibleTabsCount.value))
+const hiddenTabs = computed(() => tabs.value.slice(visibleTabsCount.value))
 
 const selectTab = async (tabKey) => {
   activeTab.value = tabKey
@@ -195,6 +265,26 @@ const selectTab = async (tabKey) => {
       loadAttendanceDataForSummary(),
       fetchLeaveRequests()
     ])
+  }
+  
+  // Load data for personal tab
+  if (tabKey === 'personal') {
+    console.log('Loading data for personal tab...')
+    await Promise.all([
+      loadAttendanceData(),
+      fetchLeaveRequests()
+    ])
+    console.log('Personal tab data loaded. Attendance count:', attendanceList.value?.length || 0)
+  }
+  
+  // Load data for personal overtime tab
+  if (tabKey === 'personalOvertime') {
+    console.log('Loading data for personal overtime tab...')
+    await Promise.all([
+      loadOvertimeData(),
+      fetchOvertimeRequests()
+    ])
+    console.log('Personal overtime tab data loaded. Overtime count:', overtimeRequests.value?.length || 0)
   }
 }
 
@@ -574,14 +664,96 @@ function checkLeaveRequestForEmployee(employeeId, date) {
   return result;
 }
 
+// Function to calculate work hours for a specific date within a leave period
+function calculateWorkHoursForDate(leaveRequest, targetDate) {
+  if (!leaveRequest) return null;
+
+  const leaveStart = new Date(leaveRequest.startDateTime);
+  const leaveEnd = new Date(leaveRequest.endDateTime);
+  const target = new Date(targetDate);
+  
+  // Set target date to start of day for comparison
+  target.setHours(0, 0, 0, 0);
+  
+  // Get work shift details (assuming 8:00-17:00 as default)
+  const workShiftStart = 8; // 8:00 AM
+  const workShiftEnd = 17;   // 5:00 PM
+  
+  // Check if target date is within leave period
+  const leaveStartDate = new Date(leaveStart);
+  leaveStartDate.setHours(0, 0, 0, 0);
+  const leaveEndDate = new Date(leaveEnd);
+  leaveEndDate.setHours(0, 0, 0, 0);
+  
+  if (target < leaveStartDate || target > leaveEndDate) {
+    return null; // Not in leave period
+  }
+  
+  // Calculate work hours for this specific date
+  let workStartHour = workShiftStart;
+  let workEndHour = workShiftEnd;
+  
+  // If this is the first day of leave
+  if (target.getTime() === leaveStartDate.getTime()) {
+    // Ngày đầu: từ giờ nghỉ đến cuối ca (10h-17h)
+    workStartHour = leaveStart.getHours() + (leaveStart.getMinutes() / 60);
+    workEndHour = workShiftEnd;
+  }
+  // If this is the last day of leave
+  else if (target.getTime() === leaveEndDate.getTime()) {
+    // Ngày cuối: từ đầu ca đến giờ nghỉ (8h-16h)
+    workStartHour = workShiftStart;
+    workEndHour = leaveEnd.getHours() + (leaveEnd.getMinutes() / 60);
+  }
+  // If this is a middle day (full work day)
+  else {
+    // Các ngày giữa: full ca làm việc (8h-17h)
+    workStartHour = workShiftStart;
+    workEndHour = workShiftEnd;
+  }
+  
+  const workHours = Math.max(0, workEndHour - workStartHour);
+  
+  console.log(`Work hours calculation for ${targetDate.toDateString()}:`, {
+    leaveStart: leaveStart.toLocaleString(),
+    leaveEnd: leaveEnd.toLocaleString(),
+    workStartHour,
+    workEndHour,
+    workHours,
+    isFirstDay: target.getTime() === leaveStartDate.getTime(),
+    isLastDay: target.getTime() === leaveEndDate.getTime()
+  });
+  
+  return {
+    workHours,
+    workStartHour,
+    workEndHour,
+    isPartialDay: workHours > 0 && workHours < (workShiftEnd - workShiftStart)
+  };
+}
+
 // Tạo dữ liệu chấm công thực tế cho từng nhân viên, từng ngày từ API
 function generateAttendanceForEmployee(employeeId, employeeName) {
+  // LOGIC ƯU TIÊN: Dữ liệu chấm công > Phiếu nghỉ phép
+  // 1. Nếu có dữ liệu chấm công thực tế → hiển thị theo dữ liệu chấm công (bỏ qua phiếu nghỉ phép)
+  // 2. Nếu KHÔNG có dữ liệu chấm công → mới kiểm tra phiếu nghỉ phép đã duyệt
+  
   console.log('=== ATTENDANCE DEBUG ===');
   console.log('Employee ID:', employeeId);
   console.log('Employee Name:', employeeName);
-  console.log('Attendance data:', attendanceList.value);
+  console.log('Attendance data count:', attendanceList.value?.length || 0);
   console.log('Selected year:', selectedYear.value);
   console.log('Selected month:', selectedMonth.value);
+  
+  // Debug: Show sample attendance data structure
+  if (attendanceList.value && attendanceList.value.length > 0) {
+    console.log('Sample attendance record:', attendanceList.value[0]);
+    console.log('All employee IDs in attendance:', attendanceList.value.map(a => ({
+      employeeCode: a.employeeCode,
+      employeeID: a.employeeID,
+      employeeName: a.employeeName
+    })).slice(0, 5));
+  }
 
   if (!attendanceList.value || attendanceList.value.length === 0) {
     console.log('No attendance data found - generating empty data with leave requests');
@@ -727,22 +899,61 @@ function generateAttendanceForEmployee(employeeId, employeeName) {
       });
       return { status, time, type: dayAttendance.status, attendance: dayAttendance, leaveRequest };
     } else {
-      // Không có dữ liệu chấm công - kiểm tra đơn nghỉ phép
+      // KHÔNG CÓ DỮ LIỆU CHẤM CÔNG - chỉ khi này mới kiểm tra đơn nghỉ phép
+      // Ưu tiên: Dữ liệu chấm công > Phiếu nghỉ phép
       console.log('No attendance data for day:', dayIdx, 'Checking leave request:', leaveRequest);
       if (leaveRequest) {
         console.log('Found leave request for day without attendance:', dayIdx, leaveRequest);
 
-        // Tạo thời gian hiển thị từ startDateTime và endDateTime
-        const startTime = new Date(leaveRequest.startDateTime);
-        const endTime = new Date(leaveRequest.endDateTime);
+        // Tính toán giờ công chính xác cho ngày này
+        const workHoursInfo = calculateWorkHoursForDate(leaveRequest, currentDate);
+        
+        if (workHoursInfo && workHoursInfo.workHours > 0) {
+          // Có giờ công (ngày đầu hoặc ngày cuối của kỳ nghỉ)
+          const workStartTime = `${Math.floor(workHoursInfo.workStartHour).toString().padStart(2, '0')}:${Math.floor((workHoursInfo.workStartHour % 1) * 60).toString().padStart(2, '0')}`;
+          const workEndTime = `${Math.floor(workHoursInfo.workEndHour).toString().padStart(2, '0')}:${Math.floor((workHoursInfo.workEndHour % 1) * 60).toString().padStart(2, '0')}`;
+          
+          const timeDisplay = `${workStartTime} ${workEndTime}`;
+          
+          // Nếu giờ công đủ (>= 8h) thì coi như đi làm, nếu không thì chưa đủ giờ
+          const status = workHoursInfo.workHours >= 8 ? 'work' : 'insufficient';
+          
+          console.log('Partial work day calculation:', {
+            workHours: workHoursInfo.workHours,
+            workStartTime,
+            workEndTime,
+            status,
+            isPartialDay: workHoursInfo.isPartialDay
+          });
+          
+          return { 
+            status, 
+            time: timeDisplay, 
+            type: leaveRequest.leaveTypeName, 
+            leaveRequest,
+            workHours: workHoursInfo.workHours
+          };
+        } else {
+          // Không có giờ công (ngày giữa của kỳ nghỉ hoặc nghỉ cả ngày)
+          const startTime = new Date(leaveRequest.startDateTime);
+          const endTime = new Date(leaveRequest.endDateTime);
 
-        // Format thời gian: chỉ hiển thị giờ:phút
-        const timeDisplay = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+          // Format thời gian: chỉ hiển thị giờ:phút
+          const timeDisplay = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
 
-        // Kiểm tra xem thời gian nghỉ phép có đủ so với ca làm việc không
-        const isSufficient = isLeaveTimeSufficient(leaveRequest, leaveRequest.workShiftID);
+          console.log('Full leave day:', {
+            timeDisplay,
+            workHours: workHoursInfo?.workHours || 0
+          });
 
-        return { status: isSufficient ? 'leave' : 'insufficient', time: timeDisplay, type: leaveRequest.leaveTypeName, leaveRequest };
+          return { 
+            status: 'leave', 
+            time: timeDisplay, 
+            type: leaveRequest.leaveTypeName, 
+            leaveRequest,
+            workHours: workHoursInfo?.workHours || 0
+          };
+        }
       } else {
         console.log('No leave request found for day:', dayIdx);
         return { status: '', time: '', type: '' };
@@ -1414,6 +1625,54 @@ const loadAttendanceData = async () => {
       data = await attendanceDataService.getAttendanceDataByMonth(selectedYear.value, selectedMonth.value)
     }
 
+    // Filter data based on user role
+    const hasHRPermission = isDirector.value || isHRManager.value || isHREmployee.value
+    console.log('=== ATTENDANCE TAB DEBUG ===')
+    console.log('hasHRPermission:', hasHRPermission)
+    console.log('currentUser:', currentUser.value)
+    console.log('currentUser.id:', currentUser.value?.id)
+    console.log('Raw data before filtering:', data.length, 'records')
+    console.log('Sample data structure:', data[0])
+    
+    if (!hasHRPermission && currentUser.value) {
+      // Only show current user's data for non-HR users
+      console.log('Filtering for non-HR user...')
+      console.log('Looking for employeeID matching:', currentUser.value.id)
+      
+      // Debug: show all possible employee ID fields in data
+      console.log('Sample item keys:', Object.keys(data[0] || {}))
+      console.log('Looking for employee ID in fields:', {
+        employeeID: data[0]?.employeeID,
+        employeeCode: data[0]?.employeeCode,
+        employeeId: data[0]?.employeeId,
+        id: data[0]?.id,
+        userId: data[0]?.userId
+      })
+      
+      // Try different field names for employee ID, handle null values
+      const employeeIdField = data[0]?.employeeCode || data[0]?.employeeID || data[0]?.employeeId || data[0]?.id
+      console.log('Using field:', employeeIdField ? 'employeeCode' : 'employeeID')
+      
+      // Debug: show first few items with their employee codes
+      console.log('First 3 items employee codes:', data.slice(0, 3).map(item => ({
+        employeeCode: item.employeeCode,
+        employeeName: item.employeeName,
+        type: typeof item.employeeCode
+      })))
+      
+      data = data.filter(item => {
+        // Handle null/undefined values and try different field names
+        const itemEmployeeId = item.employeeCode || item.employeeID || item.employeeId || item.id
+        const matches = itemEmployeeId === currentUser.value.id
+        
+        // More detailed logging for debugging
+        console.log(`Item: ${item.employeeName}, employeeCode: ${item.employeeCode} (${typeof item.employeeCode}), currentUser.id: ${currentUser.value.id} (${typeof currentUser.value.id}), matches: ${matches}`)
+        
+        return matches
+      })
+      console.log('Filtered attendance data for current user:', currentUser.value.id, 'Records:', data.length)
+    }
+
     // Transform data to match the expected format
     const transformedData = []
 
@@ -1452,8 +1711,12 @@ const loadAttendanceData = async () => {
     })
 
     attendanceData.value = transformedData
+    
+    // Also set attendanceList for generateAttendanceForEmployee function
+    attendanceList.value = data
 
     console.log('Attendance data loaded:', attendanceData.value)
+    console.log('AttendanceList set for personal tab:', attendanceList.value?.length || 0)
   } catch (error) {
     console.error('Error loading attendance data:', error)
     attendanceError.value = error.message || 'Lỗi khi tải dữ liệu chấm công'
@@ -1633,6 +1896,54 @@ const loadDetailData = async () => {
     } else {
       // Default to current month
       data = await attendanceDataService.getAttendanceDataByMonth(selectedYear.value, selectedMonth.value)
+    }
+
+    // Filter data based on user role
+    const hasHRPermission = isDirector.value || isHRManager.value || isHREmployee.value
+    console.log('=== DETAIL TAB DEBUG ===')
+    console.log('hasHRPermission:', hasHRPermission)
+    console.log('currentUser:', currentUser.value)
+    console.log('currentUser.id:', currentUser.value?.id)
+    console.log('Raw data before filtering:', data.length, 'records')
+    console.log('Sample data structure:', data[0])
+    
+    if (!hasHRPermission && currentUser.value) {
+      // Only show current user's data for non-HR users
+      console.log('Filtering for non-HR user...')
+      console.log('Looking for employeeID matching:', currentUser.value.id)
+      
+      // Debug: show all possible employee ID fields in data
+      console.log('Sample item keys:', Object.keys(data[0] || {}))
+      console.log('Looking for employee ID in fields:', {
+        employeeID: data[0]?.employeeID,
+        employeeCode: data[0]?.employeeCode,
+        employeeId: data[0]?.employeeId,
+        id: data[0]?.id,
+        userId: data[0]?.userId
+      })
+      
+      // Try different field names for employee ID, handle null values
+      const employeeIdField = data[0]?.employeeCode || data[0]?.employeeID || data[0]?.employeeId || data[0]?.id
+      console.log('Using field:', employeeIdField ? 'employeeCode' : 'employeeID')
+      
+      // Debug: show first few items with their employee codes
+      console.log('First 3 items employee codes:', data.slice(0, 3).map(item => ({
+        employeeCode: item.employeeCode,
+        employeeName: item.employeeName,
+        type: typeof item.employeeCode
+      })))
+      
+      data = data.filter(item => {
+        // Handle null/undefined values and try different field names
+        const itemEmployeeId = item.employeeCode || item.employeeID || item.employeeId || item.id
+        const matches = itemEmployeeId === currentUser.value.id
+        
+        // More detailed logging for debugging
+        console.log(`Item: ${item.employeeName}, employeeCode: ${item.employeeCode} (${typeof item.employeeCode}), currentUser.id: ${currentUser.value.id} (${typeof currentUser.value.id}), matches: ${matches}`)
+        
+        return matches
+      })
+      console.log('Filtered detail data for current user:', currentUser.value.id, 'Records:', data.length)
     }
 
     // Transform data to match the expected format for detail view
@@ -2422,6 +2733,11 @@ onMounted(async () => {
   await fetchAllShiftAssignments()
   console.log('Shift assignments loaded:', shiftAssignments.value);
 
+  // Load leave types
+  console.log('Fetching leave types...');
+  await fetchLeaveTypes()
+  console.log('Leave types loaded:', leaveTypes.value);
+
   // Load leave requests
   console.log('Fetching leave requests...');
   try {
@@ -2545,6 +2861,327 @@ const paginatedFeedbackData = computed(() => {
   const start = (feedbackCurrentPage.value - 1) * feedbackItemsPerPage.value
   return feedbackData.slice(start, start + feedbackItemsPerPage.value)
 })
+
+// Personal attendance tab logic
+const personalAttendanceColumns = computed(() => {
+  const baseColumns = [
+    { key: 'date', label: 'Ngày', width: '120px' },
+    { key: 'dayOfWeek', label: 'Thứ', width: '80px' }
+  ]
+  
+  // Add 7 columns for days of week
+  const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
+  dayNames.forEach((dayName, index) => {
+    baseColumns.push({
+      key: `day_${index}`,
+      label: dayName,
+      width: '100px'
+    })
+  })
+  
+  return baseColumns
+})
+
+const personalAttendanceData = computed(() => {
+  if (!currentUser.value) return []
+  
+  const year = selectedYear.value
+  const month = selectedMonth.value - 1 // JavaScript months are 0-indexed
+  
+  // Get all days in the selected month
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  
+  // Generate attendance data for current user using the same logic as summary tab
+  console.log('=== PERSONAL TAB DEBUG ===')
+  console.log('Current user:', currentUser.value)
+  console.log('User ID:', currentUser.value.id)
+  console.log('User name:', currentUser.value.firstName + ' ' + currentUser.value.lastName)
+  
+  const userAttendanceData = generateAttendanceForEmployee(currentUser.value.id, currentUser.value.firstName + ' ' + currentUser.value.lastName)
+  
+  console.log('Generated user attendance data:', userAttendanceData)
+  console.log('First few days:', userAttendanceData?.slice(0, 5))
+  
+  // Create calendar structure - weeks as rows, days as columns
+  const weeks = []
+  const firstDayOfMonth = new Date(year, month, 1)
+  const lastDayOfMonth = new Date(year, month, daysInMonth)
+  
+  // Find the first Sunday of the calendar (might be in previous month)
+  const firstSunday = new Date(firstDayOfMonth)
+  firstSunday.setDate(firstDayOfMonth.getDate() - firstDayOfMonth.getDay())
+  
+  // Generate weeks
+  let currentDate = new Date(firstSunday)
+  while (currentDate <= lastDayOfMonth || currentDate.getDay() !== 0) {
+    const week = []
+    
+    // Generate 7 days for this week
+    for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+      const cellDate = new Date(currentDate)
+      const day = cellDate.getDate()
+      const cellMonth = cellDate.getMonth()
+      const cellYear = cellDate.getFullYear()
+      
+      // Only show days that belong to the selected month
+      const isCurrentMonth = cellMonth === month && cellYear === year
+      
+      const dayData = {
+        day: isCurrentMonth ? day : '',
+        date: isCurrentMonth ? `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}` : '',
+        fullDate: isCurrentMonth ? cellDate : null,
+        isCurrentMonth: isCurrentMonth,
+        dayOfWeek: dayOfWeek,
+        attendance: null
+      }
+      
+      // Add attendance data if it's a day in current month
+      if (isCurrentMonth) {
+        const dayIndex = day - 1 // Convert to 0-based index
+        console.log(`Day ${day} (index ${dayIndex}):`, userAttendanceData?.[dayIndex])
+        
+        if (userAttendanceData && userAttendanceData[dayIndex]) {
+          const attendanceInfo = userAttendanceData[dayIndex]
+          console.log(`Day ${day} attendance info:`, attendanceInfo)
+          
+          dayData.attendance = {
+            status: attendanceInfo.status,
+            time: attendanceInfo.time,
+            type: attendanceInfo.type,
+            class: attendanceInfo.status
+          }
+        } else {
+          console.log(`Day ${day}: No attendance data found`)
+          dayData.attendance = {
+            status: '',
+            time: '',
+            type: '',
+            class: 'empty'
+          }
+        }
+      }
+      
+      week.push(dayData)
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+    
+    weeks.push(week)
+    
+    // Break if we've passed the last day of the month and it's Sunday
+    if (currentDate > lastDayOfMonth && currentDate.getDay() === 0) {
+      break
+    }
+  }
+  
+  return weeks
+})
+
+// Personal Overtime Data
+const personalOvertimeData = computed(() => {
+  if (!currentUser.value) return []
+  
+  const year = selectedYear.value
+  const month = selectedMonth.value - 1 // JavaScript months are 0-indexed
+  
+  // Get all days in the selected month
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  
+  // Filter overtime requests for current user only
+  const userOvertimeRequests = overtimeRequests.value.filter(request => {
+    const matches = request.employeeID === currentUser.value.id
+    console.log(`Overtime request ${request.id}: employeeID=${request.employeeID}, currentUser.id=${currentUser.value.id}, matches=${matches}`)
+    return matches
+  })
+  
+  console.log('=== PERSONAL OVERTIME DEBUG ===')
+  console.log('Current user:', currentUser.value)
+  console.log('User overtime requests:', userOvertimeRequests.length)
+  console.log('Sample overtime request:', userOvertimeRequests[0])
+  console.log('Overtime requests structure:', userOvertimeRequests.map(r => ({
+    id: r.id,
+    employeeID: r.employeeID,
+    overtimeTypeName: r.overtimeTypeName,
+    approveStatus: r.approveStatus,
+    startDateTime: r.startDateTime
+  })))
+  
+  // Group overtime by date
+  const overtimeByDate = {}
+  userOvertimeRequests.forEach(request => {
+    const requestDate = new Date(request.startDateTime)
+    const dateKey = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, '0')}-${String(requestDate.getDate()).padStart(2, '0')}`
+    
+    if (!overtimeByDate[dateKey]) {
+      overtimeByDate[dateKey] = []
+    }
+    overtimeByDate[dateKey].push(request)
+  })
+  
+  // Create calendar structure - weeks as rows, days as columns
+  const weeks = []
+  const firstDayOfMonth = new Date(year, month, 1)
+  const lastDayOfMonth = new Date(year, month, daysInMonth)
+  
+  // Find the first Sunday of the calendar (might be in previous month)
+  const firstSunday = new Date(firstDayOfMonth)
+  firstSunday.setDate(firstDayOfMonth.getDate() - firstDayOfMonth.getDay())
+  
+  // Generate weeks
+  let currentDate = new Date(firstSunday)
+  while (currentDate <= lastDayOfMonth || currentDate.getDay() !== 0) {
+    const week = []
+    
+    // Generate 7 days for this week
+    for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+      const cellDate = new Date(currentDate)
+      const day = cellDate.getDate()
+      const cellMonth = cellDate.getMonth()
+      const cellYear = cellDate.getFullYear()
+      
+      // Only show days that belong to the selected month
+      const isCurrentMonth = cellMonth === month && cellYear === year
+      
+      const dayData = {
+        day: isCurrentMonth ? day : '',
+        date: isCurrentMonth ? `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}` : '',
+        fullDate: isCurrentMonth ? cellDate : null,
+        isCurrentMonth: isCurrentMonth,
+        dayOfWeek: dayOfWeek,
+        overtime: null
+      }
+      
+      // Add overtime data if it's a day in current month
+      if (isCurrentMonth) {
+        const dateKey = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        
+        if (overtimeByDate[dateKey]) {
+          const dayOvertime = overtimeByDate[dateKey]
+          const approvedOvertime = dayOvertime.filter(ot => 
+            ot.approveStatus === 'Đã duyệt' || ot.approveStatus === 'Approved' || ot.approveStatus === 2
+          )
+          
+          if (approvedOvertime.length > 0) {
+            const totalHours = approvedOvertime.reduce((total, ot) => {
+              const startTime = new Date(ot.startDateTime)
+              const endTime = new Date(ot.endDateTime)
+              const hours = (endTime - startTime) / (1000 * 60 * 60)
+              return total + hours
+            }, 0)
+            
+            // Phân loại theo hình thức tăng ca (overtimeTypeName)
+            const overtimeType = approvedOvertime[0].overtimeTypeName || ''
+            let statusClass = 'overtime'
+            
+            console.log(`Overtime type for day ${day}: "${overtimeType}"`)
+            
+            // Phân loại theo hình thức tăng ca
+            if (overtimeType.toLowerCase().includes('nghỉ bù') || overtimeType.toLowerCase().includes('compensatory') || overtimeType.toLowerCase().includes('bù')) {
+              statusClass = 'compensatory'  // Tăng ca nghỉ bù - màu xanh lá
+              console.log(`Classified as compensatory (nghỉ bù): ${statusClass}`)
+            } else if (overtimeType.toLowerCase().includes('tính lương') || overtimeType.toLowerCase().includes('paid') || overtimeType.toLowerCase().includes('lương')) {
+              statusClass = 'paid'  // Tăng ca tính lương - màu tím
+              console.log(`Classified as paid (tính lương): ${statusClass}`)
+            } else if (overtimeType.toLowerCase().includes('thường') || overtimeType.toLowerCase().includes('normal') || overtimeType.toLowerCase().includes('regular')) {
+              statusClass = 'overtime'  // Tăng ca thường - màu tím
+              console.log(`Classified as regular overtime: ${statusClass}`)
+            } else {
+              console.log(`Unknown overtime type, using default: ${statusClass}`)
+            }
+            
+            dayData.overtime = {
+              status: statusClass,
+              time: `${totalHours.toFixed(1)}h`,
+              type: approvedOvertime[0].overtimeTypeName,
+              class: statusClass,
+              requests: approvedOvertime
+            }
+          } else {
+            dayData.overtime = {
+              status: '',
+              time: '',
+              type: '',
+              class: 'empty'
+            }
+          }
+        } else {
+          dayData.overtime = {
+            status: '',
+            time: '',
+            type: '',
+            class: 'empty'
+          }
+        }
+      }
+      
+      week.push(dayData)
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+    
+    weeks.push(week)
+    
+    // Break if we've passed the last day of the month and it's Sunday
+    if (currentDate > lastDayOfMonth && currentDate.getDay() === 0) {
+      break
+    }
+  }
+  
+  return weeks
+})
+
+const getPersonalCellClass = (statusClass) => {
+  // Use the same class mapping as summary tab + overtime types
+  const classMap = {
+    'work': 'personal-cell work',
+    'leave': 'personal-cell leave',
+    'insufficient': 'personal-cell insufficient',
+    'incomplete': 'personal-cell incomplete',
+    'late': 'personal-cell late',
+    'other': 'personal-cell other',
+    'overtime': 'personal-cell overtime',
+    'compensatory': 'personal-cell compensatory',
+    'paid': 'personal-cell paid',
+    'empty': 'personal-cell empty'
+  }
+  return classMap[statusClass] || 'personal-cell empty'
+}
+
+const getPersonalCellTitle = (dayData) => {
+  if (!dayData.attendance || dayData.attendance.class === 'empty') return ''
+  
+  // Use the same status mapping as summary tab
+  const statusMap = {
+    'work': 'Đi làm',
+    'leave': 'Nghỉ phép',
+    'insufficient': 'Chưa đủ giờ công',
+    'incomplete': 'Quên checkin/checkout',
+    'late': 'Đi trễ',
+    'other': 'Khác'
+  }
+  
+  return `${dayData.attendance.time} - ${statusMap[dayData.attendance.class] || ''}`
+}
+
+const getPersonalOvertimeCellTitle = (dayData) => {
+  if (!dayData.overtime || dayData.overtime.class === 'empty') return ''
+  
+  const statusMap = {
+    'overtime': 'Tăng ca thường',
+    'compensatory': 'Tăng ca nghỉ bù',
+    'paid': 'Tăng ca tính lương'
+  }
+  
+  return `${dayData.overtime.time} - ${statusMap[dayData.overtime.class] || 'Tăng ca'}`
+}
+
+// Helper function to get employee full name (similar to ProfileView.vue)
+const getEmployeeFullName = (employee) => {
+  if (!employee) return null
+  if (employee.fullName) return employee.fullName
+  if (employee.firstName && employee.lastName) {
+    return `${employee.firstName} ${employee.lastName}`
+  }
+  return null
+}
 </script>
 
 <template>
@@ -2570,15 +3207,67 @@ const paginatedFeedbackData = computed(() => {
     <div class="card shadow-sm">
       <div class="card-body">
         <div v-if="activeTab === 'summary'">
-          <!-- Time Filter for Summary Tab -->
-          <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
-            :show-refresh-button="false" />
+          <!-- Compact Header Section -->
+          <div class="summary-header-compact mb-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body py-3">
+                <div class="row align-items-center">
+                  <div class="col-lg-8">
+                    <div class="d-flex align-items-center">
+                      <div class="summary-icon-wrapper me-3">
+                        <i class="fas fa-table"></i>
+                      </div>
+                      <div class="flex-grow-1">
+                        <h5 class="mb-1 text-primary fw-bold">
+                          <i class="fas fa-chart-bar me-2"></i>
+                          Bảng tổng hợp công
+                        </h5>
+                        <p class="mb-0 text-muted small">
+                          <i class="fas fa-info-circle me-1"></i>
+                          Tổng quan chấm công của tất cả nhân viên
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="filter-section">
+                      <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
+                        :show-refresh-button="false" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-          <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center legend-row">
-            <span class="legend-item" style="background:#28a745"></span> Đi làm
-            <span class="legend-item" style="background:#007bff"></span> Nghỉ phép
-            <span class="legend-item" style="background:#ffc107"></span> Chưa đủ giờ công
-            <span class="legend-item" style="background:#dc3545"></span> Quên checkin/checkout
+          <!-- Legend -->
+          <div class="legend-section mb-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body py-3">
+                <h6 class="card-title mb-3">
+                  <i class="fas fa-palette me-2"></i>
+                  Chú thích màu sắc
+                </h6>
+                <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center">
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#28a745"></span>
+                    <span class="legend-text">Đi làm</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#007bff"></span>
+                    <span class="legend-text">Nghỉ phép</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#ffc107"></span>
+                    <span class="legend-text">Chưa đủ giờ công</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#dc3545"></span>
+                    <span class="legend-text">Quên checkin/checkout</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="attendance-summary-table">
             <DataTable :columns="mainSummaryColumns" :data="paginatedMainSummaryData">
@@ -2769,6 +3458,24 @@ const paginatedFeedbackData = computed(() => {
                       <template #avatar="{ item }">
                         <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar" />
                       </template>
+                      <template #refCode="{ item }">
+                        <!-- Debug info -->
+
+                        
+                        <span 
+                          v-if="item.refCode && (item.location === 'Nghỉ phép' || item.shiftName?.includes('Nghỉ phép') || item.shiftName?.includes('Phép năm') || item.shiftName?.includes('Nghỉ bù'))" 
+                          class="voucher-code-link text-primary cursor-pointer"
+                          @click="openLeaveFormModal(item.refCode)"
+                          :title="'Click để xem chi tiết phiếu nghỉ phép'"
+                        >
+                          <i class="fas fa-file-alt me-1"></i>
+                          {{ item.refCode }}
+                        </span>
+                        <span v-else-if="item.refCode" class="text-muted">
+                          {{ item.refCode }}
+                        </span>
+                        <span v-else class="text-muted">--</span>
+                      </template>
                     </DataTable>
                   </div>
                   <div v-else class="text-center py-3 text-muted">
@@ -2800,12 +3507,396 @@ const paginatedFeedbackData = computed(() => {
             </ModalDialog>
 
             <!-- ModalDialog cho chi tiết từng ngày -->
+            
+            <!-- ModalDialog cho LeaveForm -->
+            <ModalDialog :show="showLeaveFormModal" title="Chi tiết phiếu nghỉ phép" size="lg" scrollable
+              @update:show="showLeaveFormModal = $event">
+              <LeaveForm 
+                v-if="selectedLeaveRequest"
+                mode="update"
+                :leave="selectedLeaveRequest"
+                :employees="employees"
+                :leaveTypes="leaveTypes"
+                :workShifts="workshifts"
+                :currentUser="currentUser"
+                @close="closeLeaveFormModal"
+                @submit="closeLeaveFormModal"
+                @submit-for-approval="closeLeaveFormModal"
+              />
+            </ModalDialog>
           </div>
         </div>
+        
+        <!-- Personal Attendance Tab -->
+        <div v-else-if="activeTab === 'personal'">
+          <!-- Compact Header Section -->
+          <div class="personal-header-compact mb-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body py-3">
+                <div class="row align-items-center">
+                  <div class="col-lg-8">
+                    <div class="d-flex align-items-center">
+                      <div class="personal-icon-wrapper me-3">
+                        <i class="fas fa-user-clock"></i>
+                      </div>
+                      <div class="flex-grow-1">
+                        <h5 class="mb-1 text-primary fw-bold">
+                          <i class="fas fa-calendar-check me-2"></i>
+                          Bảng công cá nhân
+                        </h5>
+                        <div v-if="currentUser" class="employee-info-compact">
+                          <div class="info-item">
+                            <span class="info-label">Mã NV:</span>
+                            <span class="info-value">{{ currentUser.id }}</span>
+                          </div>
+                          <div class="info-item">
+                            <span class="info-label">Tên:</span>
+                            <span class="info-value">{{ getEmployeeFullName(currentUser) || currentUser.fullName || (currentUser.firstName && currentUser.lastName ? `${currentUser.firstName} ${currentUser.lastName}` : 'N/A') }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="filter-section">
+                      <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
+                        :show-refresh-button="false" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Legend -->
+          <div class="legend-section mb-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <h6 class="card-title mb-3">
+                  <i class="fas fa-palette me-2"></i>
+                  Chú thích màu sắc
+                </h6>
+                <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center">
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#28a745"></span>
+                    <span class="legend-text">Đi làm</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#007bff"></span>
+                    <span class="legend-text">Nghỉ phép</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#ffc107"></span>
+                    <span class="legend-text">Chưa đủ giờ công</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#dc3545"></span>
+                    <span class="legend-text">Quên checkin/checkout</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Personal Attendance Calendar -->
+          <div class="personal-attendance-calendar">
+            <div class="calendar-header">
+              <div class="calendar-day-header">CN</div>
+              <div class="calendar-day-header">T2</div>
+              <div class="calendar-day-header">T3</div>
+              <div class="calendar-day-header">T4</div>
+              <div class="calendar-day-header">T5</div>
+              <div class="calendar-day-header">T6</div>
+              <div class="calendar-day-header">T7</div>
+            </div>
+            
+            <div v-for="(week, weekIndex) in personalAttendanceData" :key="weekIndex" class="calendar-week">
+              <div v-for="(day, dayIndex) in week" :key="dayIndex" class="calendar-day">
+                <div v-if="day.isCurrentMonth" 
+                     :class="getPersonalCellClass(day.attendance?.class || 'empty')"
+                     :title="getPersonalCellTitle(day)">
+                  <div class="day-number">{{ day.day }}</div>
+                  <div class="day-time">{{ day.attendance?.time || '' }}</div>
+                </div>
+                <div v-else class="calendar-day-empty"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary Statistics -->
+          <div v-if="personalAttendanceData.length > 0" class="row mt-4">
+            <div class="col-md-12">
+              <div class="card border-0 shadow-sm">
+                <div class="card-header bg-gradient-primary text-white">
+                  <h6 class="mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Thống kê tháng {{ selectedMonth }}/{{ selectedYear }}
+                  </h6>
+                </div>
+                <div class="card-body">
+                  <div class="row text-center">
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-success">
+                        <div class="stat-icon">
+                          <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'work').length }}</div>
+                        <div class="stat-label">Ngày đi làm</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-info">
+                        <div class="stat-icon">
+                          <i class="fas fa-calendar-times"></i>
+                        </div>
+                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'leave').length }}</div>
+                        <div class="stat-label">Nghỉ phép</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-warning">
+                        <div class="stat-icon">
+                          <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'insufficient').length }}</div>
+                        <div class="stat-label">Chưa đủ giờ</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-danger">
+                        <div class="stat-icon">
+                          <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'incomplete').length }}</div>
+                        <div class="stat-label">Quên checkin/checkout</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-secondary">
+                        <div class="stat-icon">
+                          <i class="fas fa-hourglass-half"></i>
+                        </div>
+                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'late').length }}</div>
+                        <div class="stat-label">Đi trễ</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-primary">
+                        <div class="stat-icon">
+                          <i class="fas fa-calendar-alt"></i>
+                        </div>
+                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth).length }}</div>
+                        <div class="stat-label">Tổng ngày</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Personal Overtime Tab -->
+        <div v-else-if="activeTab === 'personalOvertime'">
+          <!-- Compact Header Section -->
+          <div class="personal-header-compact mb-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body py-3">
+                <div class="row align-items-center">
+                  <div class="col-lg-8">
+                    <div class="d-flex align-items-center">
+                      <div class="personal-icon-wrapper me-3">
+                        <i class="fas fa-user-plus"></i>
+                      </div>
+                      <div class="flex-grow-1">
+                        <h5 class="mb-1 text-primary fw-bold">
+                          <i class="fas fa-business-time me-2"></i>
+                          Bảng công tăng ca cá nhân
+                        </h5>
+                        <div v-if="currentUser" class="employee-info-compact">
+                          <div class="info-item">
+                            <span class="info-label">Mã NV:</span>
+                            <span class="info-value">{{ currentUser.id }}</span>
+                          </div>
+                          <div class="info-item">
+                            <span class="info-label">Tên:</span>
+                            <span class="info-value">{{ getEmployeeFullName(currentUser) || currentUser.fullName || (currentUser.firstName && currentUser.lastName ? `${currentUser.firstName} ${currentUser.lastName}` : 'N/A') }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="filter-section">
+                      <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
+                        :show-refresh-button="false" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Legend -->
+          <div class="legend-section mb-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <h6 class="card-title mb-3">
+                  <i class="fas fa-palette me-2"></i>
+                  Chú thích hình thức tăng ca
+                </h6>
+                <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center">
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#28a745"></span>
+                    <span class="legend-text">Tăng ca nghỉ bù</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#9c27b0"></span>
+                    <span class="legend-text">Tăng ca tính lương</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background:#6c757d"></span>
+                    <span class="legend-text">Tăng ca thường</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Personal Overtime Calendar -->
+          <div class="personal-attendance-calendar">
+            <div class="calendar-header">
+              <div class="calendar-day-header">CN</div>
+              <div class="calendar-day-header">T2</div>
+              <div class="calendar-day-header">T3</div>
+              <div class="calendar-day-header">T4</div>
+              <div class="calendar-day-header">T5</div>
+              <div class="calendar-day-header">T6</div>
+              <div class="calendar-day-header">T7</div>
+            </div>
+            <div v-for="(week, weekIndex) in personalOvertimeData" :key="weekIndex" class="calendar-week">
+              <div v-for="(day, dayIndex) in week" :key="dayIndex" class="calendar-day">
+                <div v-if="day.isCurrentMonth"
+                     :class="getPersonalCellClass(day.overtime?.class || 'empty')"
+                     :title="getPersonalOvertimeCellTitle(day)"
+                     @click="console.log('Day clicked:', day.day, 'Class:', day.overtime?.class, 'Applied class:', getPersonalCellClass(day.overtime?.class || 'empty'))">
+                  <div class="day-number">{{ day.day }}</div>
+                  <div class="day-time">{{ day.overtime?.time || '' }}</div>
+                </div>
+                <div v-else class="calendar-day-empty"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Statistics -->
+          <div v-if="personalOvertimeData.length > 0" class="row mt-4">
+            <div class="col-md-12">
+              <div class="card border-0 shadow-sm">
+                <div class="card-header bg-gradient-purple text-white">
+                  <h6 class="mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Thống kê tăng ca tháng {{ selectedMonth }}/{{ selectedYear }}
+                  </h6>
+                </div>
+                <div class="card-body">
+                  <div class="row text-center">
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-success">
+                        <div class="stat-icon">
+                          <i class="fas fa-exchange-alt"></i>
+                        </div>
+                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth && d.overtime?.class === 'compensatory').length }}</div>
+                        <div class="stat-label">Tăng ca nghỉ bù</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-purple">
+                        <div class="stat-icon">
+                          <i class="fas fa-dollar-sign"></i>
+                        </div>
+                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth && d.overtime?.class === 'paid').length }}</div>
+                        <div class="stat-label">Tăng ca tính lương</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-secondary">
+                        <div class="stat-icon">
+                          <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth && d.overtime?.class === 'overtime').length }}</div>
+                        <div class="stat-label">Tăng ca thường</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-info">
+                        <div class="stat-icon">
+                          <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth && (d.overtime?.class === 'overtime' || d.overtime?.class === 'compensatory' || d.overtime?.class === 'paid')).length }}</div>
+                        <div class="stat-label">Tổng ngày tăng ca</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-primary">
+                        <div class="stat-icon">
+                          <i class="fas fa-calendar-alt"></i>
+                        </div>
+                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth).length }}</div>
+                        <div class="stat-label">Tổng ngày</div>
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="stat-card stat-card-warning">
+                        <div class="stat-icon">
+                          <i class="fas fa-hourglass-end"></i>
+                        </div>
+                        <div class="stat-number">{{ (personalOvertimeData.flat().filter(d => d.isCurrentMonth && (d.overtime?.class === 'overtime' || d.overtime?.class === 'compensatory' || d.overtime?.class === 'paid')).reduce((total, d) => {
+                          const hours = parseFloat(d.overtime?.time?.replace('h', '') || '0')
+                          return total + hours
+                        }, 0)).toFixed(1) }}h</div>
+                        <div class="stat-label">Tổng giờ tăng ca</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <div v-else-if="activeTab === 'overtime'">
-          <!-- Time Filter for Overtime Tab -->
-          <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
-            :show-refresh-button="true" :loading="overtimeLoading" @refresh="loadOvertimeData" />
+          <!-- Compact Header Section -->
+          <div class="overtime-header-compact mb-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body py-3">
+                <div class="row align-items-center">
+                  <div class="col-lg-8">
+                    <div class="d-flex align-items-center">
+                      <div class="overtime-icon-wrapper me-3">
+                        <i class="fas fa-business-time"></i>
+                      </div>
+                      <div class="flex-grow-1">
+                        <h5 class="mb-1 text-primary fw-bold">
+                          <i class="fas fa-clock me-2"></i>
+                          Bảng công tăng ca
+                        </h5>
+                        <p class="mb-0 text-muted small">
+                          <i class="fas fa-info-circle me-1"></i>
+                          Tổng quan tăng ca của tất cả nhân viên
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="filter-section">
+                      <TimeFilter v-model:year="selectedYear" v-model:month="selectedMonth" :show-date-range="false"
+                        :show-refresh-button="true" :loading="overtimeLoading" @refresh="loadOvertimeData" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Loading State -->
           <div v-if="overtimeLoading" class="text-center py-4">
@@ -3565,7 +4656,8 @@ const paginatedFeedbackData = computed(() => {
   margin-top: 8px;
 }
 
-.legend-item {
+/* Legacy legend items (for backward compatibility) */
+.legend-row .legend-item {
   display: inline-block;
   width: 22px;
   height: 22px;
@@ -3831,5 +4923,791 @@ const paginatedFeedbackData = computed(() => {
 
 .no-overtime-message i {
   opacity: 0.5;
+}
+
+/* Personal Attendance Calendar Styles */
+.personal-attendance-calendar {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(13, 110, 253, 0.07);
+  overflow: hidden;
+  border: 1px solid #e9ecef;
+}
+
+.calendar-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.calendar-day-header {
+  padding: 12px 8px;
+  text-align: center;
+  font-weight: 600;
+  color: #495057;
+  border-right: 1px solid #dee2e6;
+}
+
+.calendar-day-header:last-child {
+  border-right: none;
+}
+
+.calendar-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid #e9ecef;
+}
+
+.calendar-week:last-child {
+  border-bottom: none;
+}
+
+.calendar-day {
+  min-height: 80px;
+  border-right: 1px solid #e9ecef;
+  position: relative;
+}
+
+.calendar-day:last-child {
+  border-right: none;
+}
+
+.calendar-day-empty {
+  min-height: 80px;
+  background: #f8f9fa;
+}
+
+.personal-cell {
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+  padding: 8px 4px;
+}
+
+.personal-cell:hover {
+  transform: scale(1.02);
+  box-shadow: inset 0 0 0 2px rgba(13, 110, 253, 0.3);
+  z-index: 1;
+}
+
+.personal-cell.work {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  color: #155724;
+  border-color: #c3e6cb;
+}
+
+.personal-cell.leave {
+  background: linear-gradient(135deg, #d1ecf1, #bee5eb);
+  color: #0c5460;
+  border-color: #bee5eb;
+}
+
+.personal-cell.insufficient {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  color: #856404;
+  border-color: #ffeaa7;
+}
+
+.personal-cell.incomplete {
+  background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+  color: #721c24;
+  border-color: #f5c6cb;
+}
+
+.personal-cell.late {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  color: #856404;
+  border-color: #ffeaa7;
+}
+
+.personal-cell.other {
+  background: linear-gradient(135deg, #e2e3e5, #d6d8db);
+  color: #495057;
+  border-color: #d6d8db;
+}
+
+.personal-cell.overtime {
+  background: linear-gradient(135deg, #e7e3ff, #d1c4e9);
+  color: #512da8;
+  border-color: #d1c4e9;
+}
+
+.personal-cell.compensatory {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb) !important;
+  color: #155724 !important;
+  border-color: #c3e6cb !important;
+}
+
+.personal-cell.paid {
+  background: linear-gradient(135deg, #e7e3ff, #d1c4e9) !important;
+  color: #512da8 !important;
+  border-color: #d1c4e9 !important;
+}
+
+.personal-cell.empty {
+  background: #f8f9fa;
+  color: #6c757d;
+  border-color: #e9ecef;
+}
+
+.day-number {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: inherit;
+}
+
+.day-time {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  word-break: break-word;
+  opacity: 0.9;
+}
+
+.stat-item {
+  padding: 1rem;
+}
+
+.stat-number {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+/* Enhanced Personal Tab Styles */
+.personal-header {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid #dee2e6;
+}
+
+.personal-avatar {
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.5rem;
+  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+}
+
+.user-info-inline {
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.user-info-inline .text-muted {
+  font-weight: 500;
+}
+
+.user-info-card .card {
+  transition: all 0.3s ease;
+}
+
+.user-info-card .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+.user-avatar {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #6c757d, #495057);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.2rem;
+}
+
+.month-info {
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #90caf9;
+}
+
+.legend-section .card {
+  background: linear-gradient(135deg, #fff, #f8f9fa);
+}
+
+.legend-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  padding: 0.5rem 1rem !important;
+  background: white !important;
+  border-radius: 20px !important;
+  border: 1px solid #e9ecef !important;
+  transition: all 0.3s ease !important;
+}
+
+.legend-item:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+.legend-color {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  border: 2px solid white !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+.legend-text {
+  font-weight: 500 !important;
+  color: #495057 !important;
+}
+
+/* Enhanced Stat Cards */
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.3s ease;
+  border: 1px solid #e9ecef;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.stat-card-success {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border-color: #c3e6cb;
+}
+
+.stat-card-success::before {
+  background: linear-gradient(90deg, transparent, #28a745, transparent);
+}
+
+.stat-card-info {
+  background: linear-gradient(135deg, #d1ecf1, #bee5eb);
+  border-color: #bee5eb;
+}
+
+.stat-card-info::before {
+  background: linear-gradient(90deg, transparent, #17a2b8, transparent);
+}
+
+.stat-card-warning {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border-color: #ffeaa7;
+}
+
+.stat-card-warning::before {
+  background: linear-gradient(90deg, transparent, #ffc107, transparent);
+}
+
+.stat-card-danger {
+  background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+  border-color: #f5c6cb;
+}
+
+.stat-card-danger::before {
+  background: linear-gradient(90deg, transparent, #dc3545, transparent);
+}
+
+.stat-card-secondary {
+  background: linear-gradient(135deg, #e2e3e5, #d6d8db);
+  border-color: #d6d8db;
+}
+
+.stat-card-secondary::before {
+  background: linear-gradient(90deg, transparent, #6c757d, transparent);
+}
+
+.stat-card-primary {
+  background: linear-gradient(135deg, #cce5ff, #b3d9ff);
+  border-color: #b3d9ff;
+}
+
+.stat-card-primary::before {
+  background: linear-gradient(90deg, transparent, #007bff, transparent);
+}
+
+.stat-card-purple {
+  background: linear-gradient(135deg, #e7e3ff, #d1c4e9);
+  border-color: #d1c4e9;
+}
+
+.stat-card-purple::before {
+  background: linear-gradient(90deg, transparent, #9c27b0, transparent);
+}
+
+.stat-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  opacity: 0.8;
+}
+
+.stat-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+  color: #495057;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: #6c757d;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Enhanced Calendar Styles */
+.personal-attendance-calendar {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  border: 1px solid #e9ecef;
+}
+
+.calendar-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border-bottom: 2px solid #dee2e6;
+}
+
+.calendar-day-header {
+  font-weight: 700;
+  text-align: center;
+  padding: 1rem 0.5rem;
+  color: #495057;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-right: 1px solid #dee2e6;
+}
+
+.calendar-day-header:last-child {
+  border-right: none;
+}
+
+.calendar-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid #e9ecef;
+}
+
+.calendar-week:last-child {
+  border-bottom: none;
+}
+
+.calendar-day {
+  min-height: 100px;
+  border-right: 1px solid #e9ecef;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.calendar-day:hover {
+  background: rgba(0, 123, 255, 0.05);
+}
+
+.calendar-day:last-child {
+  border-right: none;
+}
+
+.calendar-day-empty {
+  min-height: 100px;
+  background: #f8f9fa;
+  border-right: 1px solid #e9ecef;
+}
+
+.personal-cell {
+  width: 100%;
+  height: 100%;
+  min-height: 100px;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  position: relative;
+}
+
+.personal-cell:hover {
+  transform: scale(1.02);
+  box-shadow: inset 0 0 0 3px rgba(0, 123, 255, 0.3);
+  z-index: 2;
+}
+
+.day-number {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  color: inherit;
+}
+
+.day-time {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  word-break: break-word;
+  opacity: 0.9;
+  max-width: 100%;
+}
+
+/* Gradient Headers - Softer versions */
+.bg-gradient-primary {
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb) !important;
+  color: #1976d2 !important;
+}
+
+.bg-gradient-purple {
+  background: linear-gradient(135deg, #f3e5f5, #e1bee7) !important;
+  color: #7b1fa2 !important;
+}
+
+.text-purple {
+  color: #9c27b0 !important;
+}
+
+/* Compact Personal Header Styles */
+.personal-header-compact {
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+}
+
+.personal-header-compact .card {
+  border: 1px solid rgba(52, 152, 219, 0.1);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+}
+
+.personal-header-compact .card-body {
+  background: transparent;
+}
+
+.personal-icon-wrapper {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+  transition: all 0.3s ease;
+}
+
+.personal-icon-wrapper i {
+  color: white;
+  font-size: 1.25rem;
+}
+
+.personal-icon-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.3);
+}
+
+.employee-info-compact {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.info-label {
+  font-size: 0.85rem;
+  color: #6c757d;
+  font-weight: 500;
+  min-width: 40px;
+}
+
+.info-value {
+  font-size: 0.9rem;
+  color: #2c3e50;
+  font-weight: 600;
+  background: rgba(52, 152, 219, 0.1);
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid rgba(52, 152, 219, 0.2);
+}
+
+.filter-section {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.filter-section .time-filter {
+  background: rgba(52, 152, 219, 0.05);
+  border-radius: 8px;
+  padding: 0.5rem;
+  border: 1px solid rgba(52, 152, 219, 0.1);
+}
+
+/* Summary Header Compact Styles */
+.summary-header-compact {
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+}
+
+.summary-header-compact .card {
+  border: 1px solid rgba(52, 152, 219, 0.1);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+}
+
+.summary-header-compact .card-body {
+  background: transparent;
+}
+
+.summary-icon-wrapper {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+  transition: all 0.3s ease;
+}
+
+.summary-icon-wrapper i {
+  color: white;
+  font-size: 1.25rem;
+}
+
+.summary-icon-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.3);
+}
+
+/* Overtime Header Compact Styles */
+.overtime-header-compact {
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+}
+
+.overtime-header-compact .card {
+  border: 1px solid rgba(52, 152, 219, 0.1);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+}
+
+.overtime-header-compact .card-body {
+  background: transparent;
+}
+
+.overtime-icon-wrapper {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+  transition: all 0.3s ease;
+}
+
+.overtime-icon-wrapper i {
+  color: white;
+  font-size: 1.25rem;
+}
+
+.overtime-icon-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.3);
+}
+
+/* Enhanced Legend Styles */
+.legend-section .card {
+  border: 1px solid rgba(52, 152, 219, 0.1);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(52, 152, 219, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(52, 152, 219, 0.1);
+  transition: all 0.3s ease;
+}
+
+.legend-item:hover {
+  background: rgba(52, 152, 219, 0.1);
+  transform: translateY(-1px);
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: inline-block;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.legend-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+/* Voucher code link styling */
+.voucher-code-link {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+}
+
+.voucher-code-link:hover {
+  color: #0056b3 !important;
+  border-bottom-color: #0056b3;
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.voucher-code-link:active {
+  transform: translateY(0);
+}
+
+/* Responsive adjustments for all compact headers */
+@media (max-width: 768px) {
+  .personal-cell {
+    height: 40px;
+    font-size: 0.75rem;
+  }
+  
+  .cell-time {
+    font-size: 0.7rem;
+  }
+  
+  /* Personal Header */
+  .personal-header-compact .card-body {
+    padding: 1rem !important;
+  }
+  
+  .employee-info-compact {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  
+  .info-item {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .personal-icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .personal-icon-wrapper i {
+    font-size: 1rem;
+  }
+  
+  /* Summary Header */
+  .summary-header-compact .card-body {
+    padding: 1rem !important;
+  }
+  
+  .summary-icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .summary-icon-wrapper i {
+    font-size: 1rem;
+  }
+  
+  /* Overtime Header */
+  .overtime-header-compact .card-body {
+    padding: 1rem !important;
+  }
+  
+  .overtime-icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .overtime-icon-wrapper i {
+    font-size: 1rem;
+  }
+  
+  /* Common responsive adjustments */
+  .filter-section {
+    justify-content: center;
+    margin-top: 1rem;
+  }
+  
+  .legend-item {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+  }
+  
+  .legend-color {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .stat-number {
+    font-size: 1.5rem;
+  }
+  
+  .stat-label {
+    font-size: 0.8rem;
+  }
 }
 </style>
