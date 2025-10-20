@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import TimeFilter from '../../components/common/TimeFilter.vue'
@@ -33,6 +34,32 @@ const {
 
 const { showMessage } = useGlobalMessage()
 const { currentUser } = useAuth()
+
+// Sync tab from query param
+const route = useRoute()
+const router = useRouter()
+const tabKeys = tabs.map(t => t.key)
+
+onMounted(() => {
+  const qTab = route.query.tab
+  if (typeof qTab === 'string' && tabKeys.includes(qTab)) {
+    activeTab.value = qTab
+  }
+})
+
+watch(() => route.query.tab, (newTab) => {
+  if (typeof newTab === 'string' && tabKeys.includes(newTab)) {
+    activeTab.value = newTab
+  }
+})
+
+// Keep URL in sync when tab changes inside this view (if you have UI changing tabs)
+const setActiveTab = (key) => {
+  if (tabKeys.includes(key)) {
+    activeTab.value = key
+    router.replace({ path: route.path, query: { ...route.query, tab: key } }).catch(() => {})
+  }
+}
 
 // Computed property for personal salary data
 const personalSalaryData = computed(() => {
@@ -384,7 +411,7 @@ const paginatedTaxFinalizationData = computed(() => {
         :key="tab.key"
         class="tab-bar-item"
         :class="{ active: activeTab === tab.key }"
-        @click="activeTab = tab.key"
+        @click="setActiveTab(tab.key)"
       >
         {{ tab.label }}
       </button>
@@ -1396,66 +1423,39 @@ const paginatedTaxFinalizationData = computed(() => {
   100% { transform: translateX(100%); }
 }
 
-/* Leave Card with System Blue Theme */
+/* Leave Card - unified light style */
 .leave-card {
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-  color: white;
-  border: 1px solid #2980b9;
+  background: #fff;
+  color: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.05);
   position: relative;
   overflow: hidden;
 }
 
-.leave-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
-  animation: shimmer 4s infinite;
-}
-
 .leave-card .card-header {
-  background: rgba(255, 255, 255, 0.15);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
-  position: relative;
-  z-index: 2;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 2px solid #dee2e6;
+  border-radius: 16px 16px 0 0 !important;
+  padding: 1.25rem 1.5rem;
 }
 
 .leave-card .card-header h6 {
-  color: white;
+  color: #2c3e50;
   font-weight: 700;
 }
 
 .leave-card .card-header h6 i {
-  color: rgba(255, 255, 255, 0.9);
+  color: #3498db;
 }
 
 .leave-card .card-body {
-  background: rgba(255, 255, 255, 0.1);
-  position: relative;
-  z-index: 2;
-}
-
-.leave-card .salary-label {
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 600;
-}
-
-.leave-card .salary-value {
-  color: white;
-  font-weight: 700;
+  background: transparent;
 }
 
 .leave-card .salary-item.total-item {
-  background: rgba(255, 255, 255, 0.15);
-  border-top: 2px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-top: 2px solid #dee2e6;
   border-radius: 12px;
-}
-
-.leave-card .salary-item:hover {
-  background: rgba(255, 255, 255, 0.1);
 }
 
 .personal-salary-header .card {

@@ -163,6 +163,7 @@ const deleteWorkHistory = ref([
   }
 ])
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import TabBar from '../../components/common/TabBar.vue'
 import TimeFilter from '../../components/common/TimeFilter.vue'
 import { attendanceDataService } from '../../services/attendanceDataService'
@@ -196,6 +197,8 @@ const components = {
 }
 
 const activeTab = ref('summary')
+const route = useRoute()
+const router = useRouter()
 const showMoreTabs = ref(false) // Control visibility of the "More" dropdown
 
 const allTabs = [
@@ -258,6 +261,11 @@ const hiddenTabs = computed(() => tabs.value.slice(visibleTabsCount.value))
 const selectTab = async (tabKey) => {
   activeTab.value = tabKey
   showMoreTabs.value = false // Close the "More" dropdown when a tab is selected
+
+  // Reflect tab change in URL so external navigations work
+  try {
+    await router.replace({ path: route.path, query: { ...route.query, tab: tabKey } })
+  } catch (e) {}
 
   // Load specific data when switching to summary tab
   if (tabKey === 'summary') {
@@ -2751,6 +2759,12 @@ const loadDayModalData = async (employee, dayIdx) => {
 // Load attendance data on component mount
 onMounted(async () => {
   console.log('=== MOUNTING COMPONENT ===');
+  // Sync tab from URL query
+  const qTab = route.query.tab
+  if (typeof qTab === 'string') {
+    const allowed = allTabs.map(t => t.key)
+    if (allowed.includes(qTab)) activeTab.value = qTab
+  }
 
   // Load employees first
   console.log('Fetching all employees...');
@@ -2884,6 +2898,14 @@ onMounted(async () => {
   loadDetailData()
   loadOvertimeData()
   // loadAttendanceDataForSummary() - removed to avoid duplicate loading
+})
+
+// Keep activeTab in sync when tab query changes while staying on the same route
+watch(() => route.query.tab, (newTab) => {
+  const allowed = allTabs.map(t => t.key)
+  if (typeof newTab === 'string' && allowed.includes(newTab)) {
+    activeTab.value = newTab
+  }
 })
 
 const closeHistoryCurrentPage = ref(1)

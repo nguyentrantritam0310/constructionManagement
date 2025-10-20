@@ -48,6 +48,18 @@
                 <i class="fas fa-user me-2"></i>
                 <span>Thông tin cá nhân</span>
               </router-link>
+              <router-link :to="{ path: '/attendance-summary', query: { tab: 'personal' } }" class="dropdown-item" active-class="" exact-active-class="router-link-active" @click="closeUserDropdown">
+                <i class="fas fa-user-clock me-2"></i>
+                <span>Bảng công cá nhân</span>
+              </router-link>
+              <router-link :to="{ path: '/attendance-summary', query: { tab: 'personalOvertime' } }" class="dropdown-item" active-class="" exact-active-class="router-link-active" @click="closeUserDropdown">
+                <i class="fas fa-business-time me-2"></i>
+                <span>Bảng công tăng ca cá nhân</span>
+              </router-link>
+              <router-link :to="{ path: '/salary-table', query: { tab: 'personalSalary' } }" class="dropdown-item" active-class="" exact-active-class="router-link-active" @click="closeUserDropdown">
+                <i class="fas fa-file-invoice-dollar me-2"></i>
+                <span>Bảng lương cá nhân</span>
+              </router-link>
               <div class="dropdown-item" @click="handleChangePassword">
                 <i class="fas fa-key me-2"></i>
                 <span>Đổi mật khẩu</span>
@@ -126,13 +138,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import Breadcrumb from './Breadcrumb.vue'
 import ChangePasswordModal from '../common/ChangePasswordModal.vue'
 import { useAuth } from '../../composables/useAuth'
 
 const { currentUser, logout, isDirector, isHRManager } = useAuth()
 const router = useRouter()
+const route = useRoute()
 
 const isSidebarOpen = ref(true)
 const isSubsystemSelectorOpen = ref(false)
