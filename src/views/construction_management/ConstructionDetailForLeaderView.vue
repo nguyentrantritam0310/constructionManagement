@@ -34,7 +34,7 @@ const selectedTask = ref(null)
 const showAssignmentModal = ref(false)
 const showTaskModal = ref(false)
 const selectedTasks = ref([])
-const { employees, loading: employeesLoading, error: employeesError, fetchEmployees } = useEmployee()
+const { employees, loading: employeesLoading, error: employeesError, fetchAllEmployees } = useEmployee()
 const selectedWorkers = ref([])
 const assignmentStartDate = ref('')
 const assignmentEndDate = ref('')
@@ -81,7 +81,7 @@ onMounted(async () => {
     await Promise.all([
       fetchConstructionDetail(constructionId),
       fetchPlans(),
-      fetchEmployees(),
+      fetchAllEmployees(),
       fetchAttendance()
     ])
     construction.value = selectedConstruction.value

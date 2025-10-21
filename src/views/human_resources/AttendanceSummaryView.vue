@@ -3,6 +3,32 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import LeaveForm from '../../components/common/leave/LeaveForm.vue'
+import FeedbackModal from '../../components/common/FeedbackModal.vue'
+import FeedbackList from '../../components/common/FeedbackList.vue'
+import { useClosing } from '../../composables/useClosing.js'
+import { useAuth } from '../../composables/useAuth.js'
+import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
+
+// Initialize closing composable
+const {
+  closingStatus,
+  loading: closingLoading,
+  error: closingError,
+  closingHistory,
+  historyLoading,
+  historyError,
+  isAnySheetClosed,
+  isAllSheetsClosed,
+  canCloseSheets,
+  fetchClosingStatus,
+  closeTimeSheet,
+  closeOvertimeSheet,
+  closeAllSheets,
+  formatClosingDate,
+  getClosingStatusText,
+  getClosingStatusColor,
+  fetchClosingHistory
+} = useClosing()
 
 const showEmployeeModal = ref(false)
 const showDayModal = ref(false)
@@ -12,6 +38,11 @@ const selectedDateIdx = ref(null)
 const selectedLeaveRequest = ref(null)
 const dayModalLoading = ref(false)
 const dayModalError = ref(null)
+
+// Feedback modals and state
+const showAttendanceFeedbackModal = ref(false)
+const showOvertimeFeedbackModal = ref(false)
+const selectedFeedbackForEdit = ref(null)
 
 function openEmployeeModal(emp) {
   selectedEmployee.value = emp
@@ -66,6 +97,106 @@ function openLeaveFormModal(voucherCode) {
 function closeLeaveFormModal() {
   showLeaveFormModal.value = false
   selectedLeaveRequest.value = null
+}
+
+// Feedback modal functions
+function openAttendanceFeedbackModal() {
+  selectedFeedbackForEdit.value = null
+  showAttendanceFeedbackModal.value = true
+}
+
+function closeAttendanceFeedbackModal() {
+  showAttendanceFeedbackModal.value = false
+  selectedFeedbackForEdit.value = null
+}
+
+function openOvertimeFeedbackModal() {
+  selectedFeedbackForEdit.value = null
+  showOvertimeFeedbackModal.value = true
+}
+
+function closeOvertimeFeedbackModal() {
+  showOvertimeFeedbackModal.value = false
+  selectedFeedbackForEdit.value = null
+}
+
+async function handleAttendanceFeedbackSubmit(feedbackData) {
+  try {
+    // Tìm timesheet ID cho tháng hiện tại
+    const timeSheetId = await findTimeSheetIdForCurrentMonth()
+    if (!timeSheetId) {
+      showMessage('Không tìm thấy bảng công cho tháng này', 'error')
+      return
+    }
+
+    const submitData = {
+      timeSheetID: timeSheetId,
+      title: feedbackData.title,
+      content: feedbackData.content
+    }
+
+    if (selectedFeedbackForEdit.value) {
+      await updateTimeSheetFeedback(selectedFeedbackForEdit.value.timeSheetID, submitData)
+    } else {
+      await createTimeSheetFeedback(submitData)
+    }
+    
+    closeAttendanceFeedbackModal()
+  } catch (error) {
+    console.error('Error handling attendance feedback:', error)
+  }
+}
+
+async function handleOvertimeFeedbackSubmit(feedbackData) {
+  try {
+    // Tìm timesheet ID cho tháng hiện tại (tăng ca cũng dùng TimeSheetFeedback)
+    const timeSheetId = await findTimeSheetIdForCurrentMonth()
+    if (!timeSheetId) {
+      showMessage('Không tìm thấy bảng công cho tháng này', 'error')
+      return
+    }
+
+    const submitData = {
+      timeSheetID: timeSheetId,
+      title: `[Tăng ca] ${feedbackData.title}`,
+      content: feedbackData.content
+    }
+
+    if (selectedFeedbackForEdit.value) {
+      await updateTimeSheetFeedback(selectedFeedbackForEdit.value.timeSheetID, submitData)
+    } else {
+      await createTimeSheetFeedback(submitData)
+    }
+    
+    closeOvertimeFeedbackModal()
+  } catch (error) {
+    console.error('Error handling overtime feedback:', error)
+  }
+}
+
+async function handleEditFeedback(feedback) {
+  selectedFeedbackForEdit.value = feedback
+  showAttendanceFeedbackModal.value = true
+}
+
+async function handleDeleteFeedback(feedback) {
+  try {
+    await deleteTimeSheetFeedback(feedback.timeSheetID)
+  } catch (error) {
+    console.error('Error deleting feedback:', error)
+  }
+}
+
+// Helper function to find timesheet ID for current month
+async function findTimeSheetIdForCurrentMonth() {
+  // Tìm timesheet cho nhân viên hiện tại trong tháng được chọn
+  const currentUser = currentUser.value
+  if (!currentUser) return null
+
+  // Giả sử có một service hoặc API để lấy timesheet ID
+  // Trong thực tế, bạn cần implement logic này dựa trên cấu trúc dữ liệu
+  // Tạm thời return một ID giả định
+  return 1 // Cần thay thế bằng logic thực tế
 }
 // Cấu hình cột cho DataTable
 const attendanceColumns = [
@@ -167,7 +298,6 @@ import { useRoute, useRouter } from 'vue-router'
 import TabBar from '../../components/common/TabBar.vue'
 import TimeFilter from '../../components/common/TimeFilter.vue'
 import { attendanceDataService } from '../../services/attendanceDataService'
-import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import { useEmployee } from '../../composables/useEmployee'
 import { useAttendance } from '../../composables/useAttendance'
 import { useWorkShift } from '../../composables/useWorkShift'
@@ -175,13 +305,20 @@ import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
 import { useLeaveRequest } from '../../composables/useLeaveRequest'
 import { useLeaveType } from '../../composables/useLeaveType'
 import { useShiftAssignment } from '../../composables/useShiftAssignment'
-import { useAuth } from '../../composables/useAuth'
 import { usePermissions } from '../../composables/usePermissions'
-
-const { showMessage } = useGlobalMessage()
+import { useTimeSheetFeedback } from '../../composables/useTimeSheetFeedback'
 
 // Initialize composables
 const { employees: allEmployees, fetchAllEmployees } = useEmployee()
+const { 
+  feedbacks: timeSheetFeedbacks, 
+  loading: timeSheetFeedbackLoading, 
+  error: timeSheetFeedbackError,
+  createFeedback: createTimeSheetFeedback,
+  updateFeedback: updateTimeSheetFeedback,
+  deleteFeedback: deleteTimeSheetFeedback,
+  fetchMyFeedbacks: fetchMyTimeSheetFeedbacks
+} = useTimeSheetFeedback()
 const { attendanceList, fetchAttendance } = useAttendance()
 const { workshifts, fetchWorkShifts } = useWorkShift()
 const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
@@ -253,6 +390,10 @@ const selectedMonth = ref(new Date().getMonth() + 1)
 const currentPage = ref(1)
 const pageSize = ref(5)
 
+// Pagination for overtime table
+const overtimeCurrentPage = ref(1)
+const overtimePageSize = ref(5)
+
 // Limit the number of visible tabs
 const visibleTabsCount = computed(() => Math.min(6, tabs.value.length))
 const visibleTabs = computed(() => tabs.value.slice(0, visibleTabsCount.value))
@@ -273,6 +414,16 @@ const selectTab = async (tabKey) => {
       loadAttendanceDataForSummary(),
       fetchLeaveRequests()
     ])
+  }
+  
+  // Load feedback data when switching to feedback history tab
+  if (tabKey === 'feedbackHistory') {
+    await fetchMyTimeSheetFeedbacks()
+  }
+  
+  // Load closing history data when switching to close history tab
+  if (tabKey === 'closeHistory') {
+    await fetchClosingHistory(selectedYear.value, selectedMonth.value)
   }
   
   // Load data for personal tab
@@ -1147,10 +1298,57 @@ const totalPages = computed(() => {
   return Math.ceil(mainSummaryData.value.length / pageSize.value);
 });
 
+// Paginated data for overtime table
+const paginatedOvertimeData = computed(() => {
+  const startIndex = (overtimeCurrentPage.value - 1) * overtimePageSize.value;
+  const endIndex = startIndex + overtimePageSize.value;
+  return overtimeData.value.slice(startIndex, endIndex);
+});
+
+// Total pages for overtime pagination
+const overtimeTotalPages = computed(() => {
+  return Math.ceil(overtimeData.value.length / overtimePageSize.value);
+});
+
 // Function to get visible page numbers for pagination
 const getVisiblePages = () => {
   const total = totalPages.value;
   const current = currentPage.value;
+  const delta = 2; // Number of pages to show on each side of current page
+
+  if (total <= 7) {
+    // Show all pages if total is small
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  const range = [];
+  const rangeWithDots = [];
+
+  for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
+    range.push(i);
+  }
+
+  if (current - delta > 2) {
+    rangeWithDots.push(1, '...');
+  } else {
+    rangeWithDots.push(1);
+  }
+
+  rangeWithDots.push(...range);
+
+  if (current + delta < total - 1) {
+    rangeWithDots.push('...', total);
+  } else {
+    rangeWithDots.push(total);
+  }
+
+  return rangeWithDots;
+};
+
+// Function to get visible page numbers for overtime pagination
+const getOvertimeVisiblePages = () => {
+  const total = overtimeTotalPages.value;
+  const current = overtimeCurrentPage.value;
   const delta = 2; // Number of pages to show on each side of current page
 
   if (total <= 7) {
@@ -1987,6 +2185,7 @@ const printAttendanceReport = () => {
 // Watch for changes in year/month filters
 watch([selectedYear, selectedMonth], async () => {
   currentPage.value = 1 // Reset to first page when changing month/year
+  overtimeCurrentPage.value = 1 // Reset overtime pagination when changing month/year
   if (activeTab.value === 'attendance') {
     selectedWeek.value = '' // Clear week filter when changing month
     loadAttendanceData()
@@ -2005,6 +2204,9 @@ watch([selectedYear, selectedMonth], async () => {
       fetchLeaveRequests()
     ])
   }
+  
+  // Fetch closing status when year/month changes
+  await fetchClosingStatus(selectedYear.value, selectedMonth.value)
 })
 
 // Load detail data from API
@@ -2839,6 +3041,60 @@ const loadDayModalData = async (employee, dayIdx) => {
   }
 }
 
+// Xử lý chốt công
+const handleCloseTimeSheet = async () => {
+  if (!currentUser.value) {
+    showMessage('Vui lòng đăng nhập để thực hiện chốt công', 'error')
+    return
+  }
+
+  const confirmed = confirm(`Bạn có chắc chắn muốn chốt bảng công tháng ${selectedMonth.value}/${selectedYear.value}?\n\nSau khi chốt, dữ liệu sẽ không thể thay đổi.`)
+  
+  if (confirmed) {
+    const success = await closeTimeSheet(selectedYear.value, selectedMonth.value)
+    if (success) {
+      // Refresh data after closing
+      await fetchAttendanceData()
+    }
+  }
+}
+
+// Xử lý chốt tăng ca
+const handleCloseOvertimeSheet = async () => {
+  if (!currentUser.value) {
+    showMessage('Vui lòng đăng nhập để thực hiện chốt tăng ca', 'error')
+    return
+  }
+
+  const confirmed = confirm(`Bạn có chắc chắn muốn chốt bảng tăng ca tháng ${selectedMonth.value}/${selectedYear.value}?\n\nSau khi chốt, dữ liệu sẽ không thể thay đổi.`)
+  
+  if (confirmed) {
+    const success = await closeOvertimeSheet(selectedYear.value, selectedMonth.value)
+    if (success) {
+      // Refresh data after closing
+      await fetchAttendanceData()
+    }
+  }
+}
+
+// Xử lý chốt tất cả bảng
+const handleCloseAllSheets = async () => {
+  if (!currentUser.value) {
+    showMessage('Vui lòng đăng nhập để thực hiện chốt bảng', 'error')
+    return
+  }
+
+  const confirmed = confirm(`Bạn có chắc chắn muốn chốt tất cả bảng (công, lương, tăng ca) tháng ${selectedMonth.value}/${selectedYear.value}?\n\nSau khi chốt, dữ liệu sẽ không thể thay đổi.`)
+  
+  if (confirmed) {
+    const success = await closeAllSheets(selectedYear.value, selectedMonth.value)
+    if (success) {
+      // Refresh data after closing
+      await fetchAttendanceData()
+    }
+  }
+}
+
 // Load attendance data on component mount
 onMounted(async () => {
   console.log('=== MOUNTING COMPONENT ===');
@@ -2848,6 +3104,9 @@ onMounted(async () => {
     const allowed = allTabs.map(t => t.key)
     if (allowed.includes(qTab)) activeTab.value = qTab
   }
+
+  // Load closing status
+  await fetchClosingStatus(selectedYear.value, selectedMonth.value)
 
   // Load employees first
   console.log('Fetching all employees...');
@@ -3353,53 +3612,85 @@ const getEmployeeFullName = (employee) => {
           <!-- Header Section -->
           <div class="summary-header mb-4">
             <div class="row g-3 align-items-center">
-              <div class="col-md-6">
-                <div class="time-filter-compact">
-                  <div class="d-flex align-items-center gap-3">
-                    <button 
-                      class="btn btn-outline-light btn-sm" 
-                      @click="goToPreviousMonth"
-                      title="Tháng trước"
-                    >
-                      <i class="fas fa-chevron-left"></i>
-                    </button>
-                    <div class="text-center px-3">
-                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+              <!-- Cột trái: Bộ lọc tháng + Chú thích màu sắc -->
+              <div class="col-md-8">
+                <div class="d-flex align-items-center gap-4">
+                  <!-- Bộ lọc tháng -->
+                  <div class="time-filter-compact">
+                    <div class="d-flex align-items-center gap-2">
+                      <button 
+                        class="btn btn-outline-light btn-sm" 
+                        @click="goToPreviousMonth"
+                        title="Tháng trước"
+                      >
+                        <i class="fas fa-chevron-left"></i>
+                      </button>
+                      <div class="text-center px-2">
+                        <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                      </div>
+                      <button 
+                        class="btn btn-outline-light btn-sm" 
+                        @click="goToNextMonth"
+                        title="Tháng sau"
+                      >
+                        <i class="fas fa-chevron-right"></i>
+                      </button>
+                      <button 
+                        class="btn btn-outline-light btn-sm" 
+                        @click="goToCurrentMonth"
+                        title="Tháng hiện tại"
+                      >
+                        <i class="fas fa-calendar-day"></i>
+                      </button>
                     </div>
-                    <button 
-                      class="btn btn-outline-light btn-sm" 
-                      @click="goToNextMonth"
-                      title="Tháng sau"
-                    >
-                      <i class="fas fa-chevron-right"></i>
-                    </button>
-                    <button 
-                      class="btn btn-outline-light btn-sm" 
-                      @click="goToCurrentMonth"
-                      title="Tháng hiện tại"
-                    >
-                      <i class="fas fa-calendar-day"></i>
-                    </button>
+                  </div>
+                  
+                  <!-- Chú thích màu sắc -->
+                  <div class="legend-compact d-flex gap-2 align-items-center">
+                    <div class="legend-item-compact">
+                      <span class="legend-color" style="background:#28a745"></span>
+                      <span class="legend-text">Đi làm</span>
+                    </div>
+                    <div class="legend-item-compact">
+                      <span class="legend-color" style="background:#007bff"></span>
+                      <span class="legend-text">Nghỉ phép</span>
+                    </div>
+                    <div class="legend-item-compact">
+                      <span class="legend-color" style="background:#ffc107"></span>
+                      <span class="legend-text">Chưa đủ giờ công</span>
+                    </div>
+                    <div class="legend-item-compact">
+                      <span class="legend-color" style="background:#dc3545"></span>
+                      <span class="legend-text">Quên checkin/checkout</span>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="col-md-6">
-                <div class="legend-compact d-flex flex-wrap gap-3 align-items-center justify-content-end">
-                  <div class="legend-item-compact">
-                    <span class="legend-color" style="background:#28a745"></span>
-                    <span class="legend-text">Đi làm</span>
-                  </div>
-                  <div class="legend-item-compact">
-                    <span class="legend-color" style="background:#007bff"></span>
-                    <span class="legend-text">Nghỉ phép</span>
-                  </div>
-                  <div class="legend-item-compact">
-                    <span class="legend-color" style="background:#ffc107"></span>
-                    <span class="legend-text">Chưa đủ giờ công</span>
-                  </div>
-                  <div class="legend-item-compact">
-                    <span class="legend-color" style="background:#dc3545"></span>
-                    <span class="legend-text">Quên checkin/checkout</span>
+              
+              <!-- Cột phải: Nút chốt công + Trạng thái chốt -->
+              <div class="col-md-4">
+                <div class="d-flex align-items-center gap-3 justify-content-end">
+                  <!-- Nút chốt công -->
+                  <button 
+                    v-if="canCloseSheets && !isAllSheetsClosed"
+                    class="btn btn-primary btn-sm" 
+                    @click="handleCloseTimeSheet" 
+                    :disabled="attendanceLoading || closingLoading"
+                    title="Chốt bảng công"
+                  >
+                    <i v-if="closingLoading" class="fas fa-spinner fa-spin me-1"></i>
+                    <i v-else class="fas fa-lock me-1"></i>
+                    Chốt công
+                  </button>
+                  
+                  <!-- Trạng thái chốt (đơn giản) -->
+                  <div class="closing-status-simple">
+                    <span :class="`status-badge-simple ${getClosingStatusColor()}`">
+                      <i v-if="isAllSheetsClosed" class="fas fa-check-circle me-1"></i>
+                      <i v-else-if="isAnySheetClosed" class="fas fa-clock me-1"></i>
+                      <i v-else class="fas fa-exclamation-triangle me-1"></i>
+                      {{ getClosingStatusText() }}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -3750,11 +4041,19 @@ const getEmployeeFullName = (employee) => {
           <div v-if="personalAttendanceData.length > 0" class="row mt-4">
             <div class="col-md-12">
               <div class="card border-0 shadow-sm">
-                <div class="card-header bg-gradient-primary text-white">
+                <div class="card-header bg-gradient-primary text-white d-flex justify-content-between align-items-center">
                   <h6 class="mb-0">
                     <i class="fas fa-chart-bar me-2"></i>
                     Thống kê tháng {{ selectedMonth }}/{{ selectedYear }}
                   </h6>
+                  <button 
+                    class="btn btn-feedback-attendance"
+                    @click="openAttendanceFeedbackModal"
+                    title="Phản ánh về bảng công"
+                  >
+                    <i class="fas fa-comment-dots me-2"></i>
+                    <span class="fw-semibold">Phản ánh công</span>
+                  </button>
                 </div>
                 <div class="card-body">
                   <div class="row text-center">
@@ -3902,11 +4201,19 @@ const getEmployeeFullName = (employee) => {
           <div v-if="personalOvertimeData.length > 0" class="row mt-4">
             <div class="col-md-12">
               <div class="card border-0 shadow-sm">
-                <div class="card-header bg-gradient-purple text-white">
+                <div class="card-header bg-gradient-purple text-white d-flex justify-content-between align-items-center">
                   <h6 class="mb-0">
                     <i class="fas fa-chart-bar me-2"></i>
                     Thống kê tăng ca tháng {{ selectedMonth }}/{{ selectedYear }}
                   </h6>
+                  <button 
+                    class="btn btn-feedback-overtime"
+                    @click="openOvertimeFeedbackModal"
+                    title="Phản ánh về công tăng ca"
+                  >
+                    <i class="fas fa-comment-dots me-2"></i>
+                    <span class="fw-semibold">Phản ánh tăng ca</span>
+                  </button>
                 </div>
                 <div class="card-body">
                   <div class="row text-center">
@@ -3978,45 +4285,77 @@ const getEmployeeFullName = (employee) => {
           <!-- Header Section -->
           <div class="overtime-header mb-4">
             <div class="row g-3 align-items-center">
-              <div class="col-md-6">
-                <div class="time-filter-compact">
-                  <div class="d-flex align-items-center gap-3">
-                    <button 
-                      class="btn btn-outline-light btn-sm" 
-                      @click="goToPreviousMonth"
-                      title="Tháng trước"
-                    >
-                      <i class="fas fa-chevron-left"></i>
-                    </button>
-                    <div class="text-center px-3">
-                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+              <!-- Cột trái: Bộ lọc tháng + Chú thích màu sắc -->
+              <div class="col-md-8">
+                <div class="d-flex align-items-center gap-4">
+                  <!-- Bộ lọc tháng -->
+                  <div class="time-filter-compact">
+                    <div class="d-flex align-items-center gap-2">
+                      <button 
+                        class="btn btn-outline-light btn-sm" 
+                        @click="goToPreviousMonth"
+                        title="Tháng trước"
+                      >
+                        <i class="fas fa-chevron-left"></i>
+                      </button>
+                      <div class="text-center px-2">
+                        <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                      </div>
+                      <button 
+                        class="btn btn-outline-light btn-sm" 
+                        @click="goToNextMonth"
+                        title="Tháng sau"
+                      >
+                        <i class="fas fa-chevron-right"></i>
+                      </button>
+                      <button 
+                        class="btn btn-outline-light btn-sm" 
+                        @click="goToCurrentMonth"
+                        title="Tháng hiện tại"
+                      >
+                        <i class="fas fa-calendar-day"></i>
+                      </button>
                     </div>
-                    <button 
-                      class="btn btn-outline-light btn-sm" 
-                      @click="goToNextMonth"
-                      title="Tháng sau"
-                    >
-                      <i class="fas fa-chevron-right"></i>
-                    </button>
-                    <button 
-                      class="btn btn-outline-light btn-sm" 
-                      @click="goToCurrentMonth"
-                      title="Tháng hiện tại"
-                    >
-                      <i class="fas fa-calendar-day"></i>
-                    </button>
+                  </div>
+                  
+                  <!-- Chú thích màu sắc -->
+                  <div class="legend-compact d-flex gap-2 align-items-center">
+                    <div class="legend-item-compact">
+                      <span class="legend-color" style="background:#2196f3"></span>
+                      <span class="legend-text">Tăng ca nghỉ bù</span>
+                    </div>
+                    <div class="legend-item-compact">
+                      <span class="legend-color" style="background:#28a745"></span>
+                      <span class="legend-text">Tăng ca tính lương</span>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="col-md-6">
-                <div class="legend-compact d-flex flex-wrap gap-3 align-items-center justify-content-end">
-                  <div class="legend-item-compact">
-                    <span class="legend-color" style="background:#2196f3"></span>
-                    <span class="legend-text">Tăng ca nghỉ bù</span>
-                  </div>
-                  <div class="legend-item-compact">
-                    <span class="legend-color" style="background:#28a745"></span>
-                    <span class="legend-text">Tăng ca tính lương</span>
+              
+              <!-- Cột phải: Nút chốt tăng ca + Trạng thái chốt -->
+              <div class="col-md-4">
+                <div class="d-flex align-items-center gap-3 justify-content-end">
+                  <!-- Nút chốt tăng ca -->
+                  <button 
+                    v-if="canCloseSheets && !closingStatus.isOvertimeSheetClosed"
+                    class="btn btn-primary btn-sm" 
+                    @click="handleCloseOvertimeSheet" 
+                    :disabled="overtimeLoading || closingLoading"
+                    title="Chốt bảng công tăng ca"
+                  >
+                    <i v-if="closingLoading" class="fas fa-spinner fa-spin me-1"></i>
+                    <i v-else class="fas fa-lock me-1"></i>
+                    Chốt tăng ca
+                  </button>
+                  
+                  <!-- Trạng thái chốt (đơn giản) -->
+                  <div class="closing-status-simple">
+                    <span :class="`status-badge-simple ${getClosingStatusColor()}`">
+                      <i v-if="isAllSheetsClosed" class="fas fa-check-circle me-1"></i>
+                      <i v-else-if="isAnySheetClosed" class="fas fa-clock me-1"></i>
+                      <i v-else class="fas fa-exclamation-triangle me-1"></i>
+                      {{ getClosingStatusText() }}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -4050,7 +4389,7 @@ const getEmployeeFullName = (employee) => {
             <!-- Show table if there are employees with overtime -->
             <div v-if="overtimeData.length > 0">
               <div class="attendance-summary-table">
-                <DataTable :columns="overtimeColumns" :data="overtimeData">
+                <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData">
                   <template #detail="{ item }">
                     <button class="btn btn-sm btn-outline-primary" @click.stop="openOvertimeModal(item)"><i
                         class="fa-solid fa-eye"></i></button>
@@ -4068,6 +4407,46 @@ const getEmployeeFullName = (employee) => {
                     </div>
                   </template>
                 </DataTable>
+              </div>
+
+              <!-- Pagination for overtime table -->
+              <div class="d-flex justify-content-between align-items-center mt-3" v-if="overtimeTotalPages > 1">
+                <div class="pagination-info">
+                  Hiển thị {{ (overtimeCurrentPage - 1) * overtimePageSize + 1 }} - {{ Math.min(overtimeCurrentPage * overtimePageSize,
+                  overtimeData.length) }}
+                  trong tổng số {{ overtimeData.length }} nhân viên
+                </div>
+                <nav aria-label="Overtime pagination">
+                  <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item" :class="{ disabled: overtimeCurrentPage === 1 }">
+                      <button class="page-link" @click="overtimeCurrentPage = 1" :disabled="overtimeCurrentPage === 1">
+                        <i class="fas fa-angle-double-left"></i>
+                      </button>
+                    </li>
+                    <li class="page-item" :class="{ disabled: overtimeCurrentPage === 1 }">
+                      <button class="page-link" @click="overtimeCurrentPage--" :disabled="overtimeCurrentPage === 1">
+                        <i class="fas fa-angle-left"></i>
+                      </button>
+                    </li>
+
+                    <!-- Page numbers -->
+                    <li v-for="page in getOvertimeVisiblePages()" :key="page" class="page-item"
+                      :class="{ active: page === overtimeCurrentPage }">
+                      <button class="page-link" @click="overtimeCurrentPage = page">{{ page }}</button>
+                    </li>
+
+                    <li class="page-item" :class="{ disabled: overtimeCurrentPage === overtimeTotalPages }">
+                      <button class="page-link" @click="overtimeCurrentPage++" :disabled="overtimeCurrentPage === overtimeTotalPages">
+                        <i class="fas fa-angle-right"></i>
+                      </button>
+                    </li>
+                    <li class="page-item" :class="{ disabled: overtimeCurrentPage === overtimeTotalPages }">
+                      <button class="page-link" @click="overtimeCurrentPage = overtimeTotalPages" :disabled="overtimeCurrentPage === overtimeTotalPages">
+                        <i class="fas fa-angle-double-right"></i>
+                      </button>
+                    </li>
+                  </ul>
+                </nav>
               </div>
             </div>
 
@@ -4364,6 +4743,23 @@ const getEmployeeFullName = (employee) => {
 
           <!-- Data Table -->
           <div v-else class="attendance-summary-table">
+            <!-- Closing Details -->
+            <div v-if="isAnySheetClosed" class="closing-details mb-3">
+              <div class="alert alert-info">
+                <div class="d-flex align-items-center">
+                  <i class="fas fa-info-circle me-2"></i>
+                  <div>
+                    <strong>Trạng thái chốt:</strong>
+                    <span v-if="closingStatus.isTimeSheetClosed">
+                      Bảng công đã chốt: {{ formatClosingDate(closingStatus.timeSheetClosedAt) }}
+                      <span v-if="closingStatus.timeSheetClosedBy"> bởi {{ closingStatus.timeSheetClosedBy }}</span>
+                    </span>
+                    <span v-else>Bảng công chưa chốt</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <DataTable :columns="attendanceDataColumns" :data="paginatedAttendanceData">
               <template #avatar="{ item }">
                 <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar" />
@@ -4382,39 +4778,292 @@ const getEmployeeFullName = (employee) => {
           </div>
         </div>
         <div v-else-if="activeTab === 'closeHistory'">
-          <div class="attendance-summary-table">
-            <DataTable :columns="closeHistoryColumns" :data="paginatedCloseHistoryData">
-              <template #active="{ item }">
-                <label class="switch">
-                  <input type="checkbox" v-model="item.active" @change="toggleCloseActive(item)" />
-                  <span class="slider"></span>
-                </label>
-              </template>
-            </DataTable>
-            <Pagination
-              :totalItems="Array.isArray(closeHistoryData) ? closeHistoryData.length : closeHistoryData.value.length"
-              :itemsPerPage="closeHistoryItemsPerPage" :currentPage="closeHistoryCurrentPage"
-              @update:currentPage="closeHistoryCurrentPage = $event" />
+          <!-- Header Section -->
+          <div class="closing-history-header mb-4">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-6">
+                <div class="time-filter-compact">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                    </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6 text-end">
+                <button 
+                  class="btn btn-outline-light btn-sm"
+                  @click="fetchClosingHistory(selectedYear, selectedMonth)"
+                  :disabled="historyLoading"
+                >
+                  <i v-if="historyLoading" class="fas fa-spinner fa-spin me-1"></i>
+                  <i v-else class="fas fa-sync-alt me-1"></i>
+                  Làm mới
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div v-if="historyLoading" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Đang tải...</span>
+            </div>
+            <p class="mt-3 text-muted">Đang tải lịch sử chốt công...</p>
+          </div>
+
+          <!-- Error State -->
+          <div v-else-if="historyError" class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            {{ historyError }}
+          </div>
+
+          <!-- History Content -->
+          <div v-else-if="closingHistory" class="closing-history-content">
+            <!-- Summary Cards -->
+            <div class="row mb-4">
+              <div class="col-md-4">
+                <div class="summary-card timesheet-card">
+                  <div class="card-icon">
+                    <i class="fas fa-table"></i>
+                    <div class="icon-bg"></div>
+                  </div>
+                  <div class="card-content">
+                    <h3 class="card-number">{{ closingHistory.TotalClosedTimeSheets }}</h3>
+                    <p class="card-label">Bảng công đã chốt</p>
+                    <div class="card-status">
+                      <span class="status-dot success"></span>
+                      <span>Hoàn thành</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="summary-card payroll-card">
+                  <div class="card-icon">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <div class="icon-bg"></div>
+                  </div>
+                  <div class="card-content">
+                    <h3 class="card-number">{{ closingHistory.TotalClosedPayrolls }}</h3>
+                    <p class="card-label">Bảng lương đã chốt</p>
+                    <div class="card-status">
+                      <span class="status-dot info"></span>
+                      <span>Hoàn thành</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="summary-card overtime-card">
+                  <div class="card-icon">
+                    <i class="fas fa-business-time"></i>
+                    <div class="icon-bg"></div>
+                  </div>
+                  <div class="card-content">
+                    <h3 class="card-number">{{ closingHistory.TotalClosedOvertimeSheets }}</h3>
+                    <p class="card-label">Bảng tăng ca đã chốt</p>
+                    <div class="card-status">
+                      <span class="status-dot warning"></span>
+                      <span>Hoàn thành</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TimeSheets Table -->
+            <div v-if="closingHistory.TimeSheets && closingHistory.TimeSheets.length > 0" class="mb-4">
+              <div class="table-header">
+                <div class="table-title">
+                  <div class="title-icon timesheet-icon">
+                    <i class="fas fa-table"></i>
+                  </div>
+                  <div class="title-content">
+                    <h5 class="mb-1">Bảng công đã chốt</h5>
+                    <p class="mb-0 text-muted">{{ closingHistory.TimeSheets.length }} bảng đã được chốt</p>
+                  </div>
+                </div>
+                <div class="table-status">
+                  <span class="status-badge success">
+                    <i class="fas fa-check-circle me-1"></i>
+                    Hoàn thành
+                  </span>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                  <thead class="table-success">
+                    <tr>
+                      <th>Nhân viên</th>
+                      <th>Tổng ngày công</th>
+                      <th>Ngày nghỉ</th>
+                      <th>Ngày nghỉ phép</th>
+                      <th>Chốt bởi</th>
+                      <th>Thời gian chốt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="timesheet in closingHistory.TimeSheets" :key="timesheet.ID">
+                      <td>{{ timesheet.EmployeeName }}</td>
+                      <td>{{ timesheet.TotalWorkingDays }}</td>
+                      <td>{{ timesheet.TotalAbsentDays }}</td>
+                      <td>{{ timesheet.TotalLeaveDays }}</td>
+                      <td>{{ timesheet.ClosedBy }}</td>
+                      <td>{{ formatClosingDate(timesheet.ClosedAt) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Payrolls Table -->
+            <div v-if="closingHistory.Payrolls && closingHistory.Payrolls.length > 0" class="mb-4">
+              <div class="table-header">
+                <div class="table-title">
+                  <div class="title-icon payroll-icon">
+                    <i class="fas fa-money-bill-wave"></i>
+                  </div>
+                  <div class="title-content">
+                    <h5 class="mb-1">Bảng lương đã chốt</h5>
+                    <p class="mb-0 text-muted">{{ closingHistory.Payrolls.length }} bảng đã được chốt</p>
+                  </div>
+                </div>
+                <div class="table-status">
+                  <span class="status-badge info">
+                    <i class="fas fa-check-circle me-1"></i>
+                    Hoàn thành
+                  </span>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                  <thead class="table-info">
+                    <tr>
+                      <th>Nhân viên</th>
+                      <th>Lương cơ bản</th>
+                      <th>Tổng lương</th>
+                      <th>Chốt bởi</th>
+                      <th>Thời gian chốt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="payroll in closingHistory.Payrolls" :key="payroll.ID">
+                      <td>{{ payroll.EmployeeName }}</td>
+                      <td>{{ payroll.BaseSalary?.toLocaleString() }} VNĐ</td>
+                      <td>{{ payroll.TotalSalary?.toLocaleString() }} VNĐ</td>
+                      <td>{{ payroll.ClosedBy }}</td>
+                      <td>{{ formatClosingDate(payroll.ClosedAt) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- OvertimeSheets Table -->
+            <div v-if="closingHistory.OvertimeSheets && closingHistory.OvertimeSheets.length > 0" class="mb-4">
+              <div class="table-header">
+                <div class="table-title">
+                  <div class="title-icon overtime-icon">
+                    <i class="fas fa-business-time"></i>
+                  </div>
+                  <div class="title-content">
+                    <h5 class="mb-1">Bảng tăng ca đã chốt</h5>
+                    <p class="mb-0 text-muted">{{ closingHistory.OvertimeSheets.length }} bảng đã được chốt</p>
+                  </div>
+                </div>
+                <div class="table-status">
+                  <span class="status-badge warning">
+                    <i class="fas fa-check-circle me-1"></i>
+                    Hoàn thành
+                  </span>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                  <thead class="table-warning">
+                    <tr>
+                      <th>Nhân viên</th>
+                      <th>Tổng ngày tăng ca</th>
+                      <th>Tổng giờ tăng ca</th>
+                      <th>Lương tăng ca</th>
+                      <th>Chốt bởi</th>
+                      <th>Thời gian chốt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="overtime in closingHistory.OvertimeSheets" :key="overtime.ID">
+                      <td>{{ overtime.EmployeeName }}</td>
+                      <td>{{ overtime.TotalOvertimeDays }}</td>
+                      <td>{{ overtime.TotalOvertimeHours }}</td>
+                      <td>{{ overtime.OvertimeSalary?.toLocaleString() }} VNĐ</td>
+                      <td>{{ overtime.ClosedBy }}</td>
+                      <td>{{ formatClosingDate(overtime.ClosedAt) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div v-if="!closingHistory.TimeSheets?.length && !closingHistory.Payrolls?.length && !closingHistory.OvertimeSheets?.length" 
+                 class="text-center py-5">
+              <i class="fas fa-history fa-3x text-muted mb-3"></i>
+              <h5 class="text-muted">Chưa có dữ liệu chốt công</h5>
+              <p class="text-muted">Tháng {{ selectedMonth }}/{{ selectedYear }} chưa có bảng nào được chốt.</p>
+            </div>
           </div>
         </div>
         <div v-else-if="activeTab === 'feedbackHistory'">
-          <div class="attendance-summary-table">
-            <DataTable :columns="feedbackColumns" :data="paginatedFeedbackData">
-              <template #actions="{ item }">
-                <button class="table-action-btn" title="Xem chi tiết"
-                  @click.stop="alert('Xem chi tiết: ' + item.title)">
-                  <i class="fas fa-eye"></i>
+          <!-- Header Section -->
+          <div class="feedback-history-header mb-4">
+            <div class="row g-3 align-items-center">
+              <div class="col-md-8">
+                <h6 class="mb-0 fw-semibold text-white">
+                  <i class="fas fa-comment-dots me-2"></i>
+                  Lịch sử phản ánh bảng công
+                </h6>
+                <p class="mb-0 text-white-50 small">Xem và quản lý các phản ánh về bảng công của bạn</p>
+              </div>
+              <div class="col-md-4 text-end">
+                <button 
+                  class="btn btn-outline-light btn-sm"
+                  @click="fetchMyTimeSheetFeedbacks"
+                  :disabled="timeSheetFeedbackLoading"
+                >
+                  <i v-if="timeSheetFeedbackLoading" class="fas fa-spinner fa-spin me-1"></i>
+                  <i v-else class="fas fa-sync-alt me-1"></i>
+                  Làm mới
                 </button>
-                <button class="table-action-btn delete" title="Xóa" @click.stop="alert('Xóa phản ánh: ' + item.title)">
-                  <i class="fas fa-trash"></i>
-                </button>
-              </template>
-              <template #content="{ item }">
-                <span class="feedback-content">{{ item.content }}</span>
-              </template>
-            </DataTable>
-            <Pagination :totalItems="feedbackData.length" :itemsPerPage="feedbackItemsPerPage"
-              :currentPage="feedbackCurrentPage" @update:currentPage="feedbackCurrentPage = $event" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Feedback List -->
+          <div class="feedback-history-content">
+            <FeedbackList
+              :feedbacks="timeSheetFeedbacks"
+              :loading="timeSheetFeedbackLoading"
+              :error="timeSheetFeedbackError"
+              type="timesheet"
+              empty-message="Bạn chưa có phản ánh nào về bảng công."
+              @edit="handleEditFeedback"
+              @delete="handleDeleteFeedback"
+            />
           </div>
         </div>
         <div v-else>
@@ -4423,6 +5072,27 @@ const getEmployeeFullName = (employee) => {
         </div>
       </div>
     </div>
+
+    <!-- Feedback Modals -->
+    <FeedbackModal
+      :show="showAttendanceFeedbackModal"
+      title="Phản ánh bảng công"
+      :loading="timeSheetFeedbackLoading"
+      :edit-data="selectedFeedbackForEdit"
+      type="timesheet"
+      @update:show="closeAttendanceFeedbackModal"
+      @submit="handleAttendanceFeedbackSubmit"
+    />
+
+    <FeedbackModal
+      :show="showOvertimeFeedbackModal"
+      title="Phản ánh công tăng ca"
+      :loading="timeSheetFeedbackLoading"
+      :edit-data="selectedFeedbackForEdit"
+      type="timesheet"
+      @update:show="closeOvertimeFeedbackModal"
+      @submit="handleOvertimeFeedbackSubmit"
+    />
   </div>
 </template>
 
@@ -5625,12 +6295,19 @@ const getEmployeeFullName = (employee) => {
 .overtime-header,
 .personal-overtime-header,
 .detail-header,
-.attendance-header {
+.attendance-header,
+.feedback-history-header,
+.closing-history-header {
   background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
   color: white;
   padding: 1rem;
   border-radius: 12px;
   box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
+}
+
+.closing-history-header {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+  box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3) !important;
 }
 
 .time-filter-compact .btn {
@@ -5663,9 +6340,19 @@ const getEmployeeFullName = (employee) => {
   transform: translateY(-1px);
 }
 
+/* Feedback History Content */
+.feedback-history-content {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
 /* Legend Compact Styles */
 .legend-compact {
-  gap: 1rem;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
 }
 
 .legend-item-compact {
@@ -5991,5 +6678,508 @@ const getEmployeeFullName = (employee) => {
   .stat-label {
     font-size: 0.8rem;
   }
+}
+
+/* Closing Status Styles */
+.closing-status-badge {
+  display: flex;
+  align-items: center;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 160px;
+}
+
+.status-indicator:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.status-indicator.success {
+  background: linear-gradient(135deg, rgba(40, 167, 69, 0.9), rgba(32, 201, 151, 0.9));
+  border-color: rgba(40, 167, 69, 0.3);
+}
+
+.status-indicator.warning {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.9), rgba(253, 126, 20, 0.9));
+  border-color: rgba(255, 193, 7, 0.3);
+}
+
+.status-indicator.info {
+  background: linear-gradient(135deg, rgba(23, 162, 184, 0.9), rgba(111, 66, 193, 0.9));
+  border-color: rgba(23, 162, 184, 0.3);
+}
+
+.status-icon {
+  margin-right: 0.5rem;
+  font-size: 1.2rem;
+  animation: pulse 2s infinite;
+}
+
+.status-indicator.success .status-icon {
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.status-indicator.warning .status-icon {
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.status-indicator.info .status-icon {
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.status-text {
+  display: flex;
+  flex-direction: column;
+  color: white;
+}
+
+.status-label {
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  margin-bottom: 0.15rem;
+}
+
+.status-detail {
+  font-size: 0.7rem;
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Summary Cards Styles */
+.summary-card {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.summary-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #28a745, #20c997);
+}
+
+.payroll-card::before {
+  background: linear-gradient(90deg, #17a2b8, #6f42c1);
+}
+
+.overtime-card::before {
+  background: linear-gradient(90deg, #ffc107, #fd7e14);
+}
+
+.card-icon {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-icon i {
+  font-size: 2rem;
+  z-index: 2;
+  position: relative;
+}
+
+.timesheet-card .card-icon i {
+  color: #28a745;
+}
+
+.payroll-card .card-icon i {
+  color: #17a2b8;
+}
+
+.overtime-card .card-icon i {
+  color: #ffc107;
+}
+
+.icon-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 50%;
+  opacity: 0.1;
+}
+
+.timesheet-card .icon-bg {
+  background: #28a745;
+}
+
+.payroll-card .icon-bg {
+  background: #17a2b8;
+}
+
+.overtime-card .icon-bg {
+  background: #ffc107;
+}
+
+.card-content {
+  text-align: left;
+}
+
+.card-number {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #2c3e50, #3498db);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.card-label {
+  font-size: 0.9rem;
+  color: #6c757d;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.card-status {
+  display: flex;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+  animation: statusPulse 2s infinite;
+}
+
+.status-dot.success {
+  background: #28a745;
+  box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+}
+
+.status-dot.info {
+  background: #17a2b8;
+  box-shadow: 0 0 10px rgba(23, 162, 184, 0.5);
+}
+
+.status-dot.warning {
+  background: #ffc107;
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+}
+
+@keyframes statusPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Table Header Styles */
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.table-title {
+  display: flex;
+  align-items: center;
+}
+
+.title-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.title-icon i {
+  font-size: 1.5rem;
+  z-index: 2;
+  position: relative;
+}
+
+.timesheet-icon {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+}
+
+.payroll-icon {
+  background: linear-gradient(135deg, #17a2b8, #6f42c1);
+  color: white;
+}
+
+.overtime-icon {
+  background: linear-gradient(135deg, #ffc107, #fd7e14);
+  color: white;
+}
+
+.title-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+
+.title-content h5 {
+  margin: 0;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  animation: statusPulse 2s infinite;
+}
+
+.status-badge.success {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  box-shadow: 0 2px 10px rgba(40, 167, 69, 0.3);
+}
+
+.status-badge.info {
+  background: linear-gradient(135deg, #17a2b8, #6f42c1);
+  color: white;
+  box-shadow: 0 2px 10px rgba(23, 162, 184, 0.3);
+}
+
+.status-badge.warning {
+  background: linear-gradient(135deg, #ffc107, #fd7e14);
+  color: white;
+  box-shadow: 0 2px 10px rgba(255, 193, 7, 0.3);
+}
+
+.closing-details {
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  border-left: 3px solid #17a2b8;
+}
+
+.closing-details .alert {
+  margin-bottom: 0;
+  background: rgba(23, 162, 184, 0.1);
+  border: 1px solid rgba(23, 162, 184, 0.2);
+  color: #0c5460;
+}
+
+/* Close Button Styles */
+.btn-warning {
+  background: linear-gradient(135deg, #ffc107, #fd7e14);
+  border: none;
+  color: white;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-warning:hover {
+  background: linear-gradient(135deg, #e0a800, #e55a00);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+  color: white;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #dc3545, #e83e8c);
+  border: none;
+  color: white;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+  background: linear-gradient(135deg, #c82333, #d63384);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+  color: white;
+}
+
+/* Feedback Button Styles */
+.btn-feedback-attendance {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  border: none;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.btn-feedback-attendance:hover {
+  background: linear-gradient(135deg, #218838, #1ea085);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+  color: white;
+}
+
+.btn-feedback-attendance:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+}
+
+.btn-feedback-overtime {
+  background: linear-gradient(135deg, #6f42c1, #e83e8c);
+  border: none;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(111, 66, 193, 0.3);
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.btn-feedback-overtime:hover {
+  background: linear-gradient(135deg, #5a2d91, #d63384);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(111, 66, 193, 0.4);
+  color: white;
+}
+
+.btn-feedback-overtime:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(111, 66, 193, 0.3);
+}
+/* Simple Status Badge Styles */
+.closing-status-simple {
+  display: flex;
+  align-items: center;
+}
+
+.status-badge-simple {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  border: 1px solid;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.status-badge-simple.success {
+  color: #155724;
+  border-color: #28a745;
+  background: rgba(40, 167, 69, 0.25);
+  font-weight: 700;
+}
+
+.status-badge-simple.warning {
+  color: #155724;
+  border-color: #28a745;
+  background: rgba(40, 167, 69, 0.25);
+  font-weight: 700;
+}
+
+.status-badge-simple.info {
+  color: #ffc107;
+  border-color: #ffc107;
+  background: rgba(255, 193, 7, 0.15);
+  font-weight: 700;
+}
+/* Custom Primary Button for Close Action */
+.btn-primary {
+  background: linear-gradient(135deg, #2c3e50, #3498db);
+  border: none;
+  color: white;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #34495e, #2980b9);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.3);
+}
+
+.btn-primary:disabled {
+  background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+  transform: none;
+  box-shadow: none;
+  opacity: 0.6;
 }
 </style>

@@ -349,16 +349,15 @@ watch(() => props.mode, (newMode) => {
 
 <template>
   <div class="form-card">
-    <div class="card-header bg-primary text-white">
-      <h5 class="mb-0">
-        <i class="fas fa-file-contract me-2"></i>
-        {{ props.mode === 'create' ? 'Thêm hợp đồng lao động' : 'Cập nhật hợp đồng lao động' }}
-      </h5>
-    </div>
-    <div class="card-body">
-      <form @submit.prevent="handleSubmit">
-        <div class="row g-4 mb-3">
-          <div class="col-md-6">
+    <form @submit.prevent="handleSubmit">
+      <!-- Thông tin cơ bản -->
+      <div class="form-group">
+        <h6 class="group-title">
+          <i class="fas fa-file-contract me-2"></i>
+          Thông tin cơ bản
+        </h6>
+        <div class="row g-4">
+          <div class="col-md-4">
             <FormField 
               label="Số hợp đồng" 
               type="text" 
@@ -367,7 +366,7 @@ watch(() => props.mode, (newMode) => {
               placeholder="Nhập số hợp đồng"
             />
           </div>
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label">Nhân viên <span class="text-danger">*</span></label>
             <select class="form-select" v-model="formData.employeeID" required>
               <option value="">Chọn nhân viên</option>
@@ -377,10 +376,7 @@ watch(() => props.mode, (newMode) => {
               </option>
             </select>
           </div>
-        </div>
-
-        <div class="row g-4 mb-3">
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label">Loại hợp đồng <span class="text-danger">*</span></label>
             <select class="form-select" v-model="formData.contractTypeID" required :disabled="loading">
               <option value="">{{ loading ? 'Đang tải...' : 'Chọn loại hợp đồng' }}</option>
@@ -391,10 +387,17 @@ watch(() => props.mode, (newMode) => {
             </select>
           </div>
         </div>
+      </div>
 
-        <!-- Hiệu lực hợp đồng cho hợp đồng xác định thời hạn -->
-        <div v-if="isDeterminedTermContract" class="row g-4 mb-3">
-          <div class="col-md-6">
+      <!-- Thời gian hợp đồng -->
+      <div class="form-group">
+        <h6 class="group-title">
+          <i class="fas fa-calendar-alt me-2"></i>
+          Thời gian hợp đồng
+        </h6>
+        <div class="row g-4">
+          <!-- Hiệu lực hợp đồng cho hợp đồng xác định thời hạn -->
+          <div v-if="isDeterminedTermContract" class="col-md-4">
             <label class="form-label">Hiệu lực <span class="text-danger">*</span></label>
             <select class="form-select" v-model="formData.validityPeriod" required>
               <option value="">Chọn hiệu lực</option>
@@ -403,91 +406,52 @@ watch(() => props.mode, (newMode) => {
               </option>
             </select>
           </div>
-          <div class="col-md-6">
+          
+          <div class="col-md-4">
             <FormField 
               label="Từ ngày" 
               type="date" 
               v-model="formData.startDate" 
               required 
             />
+          </div>
+          
+          <div class="col-md-4">
+            <FormField 
+              label="Đến ngày" 
+              type="date" 
+              v-model="formData.endDate" 
+              :required="!isIndeterminateTermContract"
+              :readonly="isDeterminedTermContract || isProbationContract"
+            />
+            <small v-if="isDeterminedTermContract || isProbationContract" class="form-text text-muted">
+              Tự động tính dựa trên từ ngày và hiệu lực
+            </small>
+            <small v-else-if="isIndeterminateTermContract" class="form-text text-muted">
+              Hợp đồng không xác định thời hạn
+            </small>
           </div>
         </div>
-
-        <!-- Hợp đồng thử việc - chỉ hiển thị từ ngày -->
-        <div v-if="isProbationContract" class="row g-4 mb-3">
-          <div class="col-md-6">
-            <FormField 
-              label="Từ ngày" 
-              type="date" 
-              v-model="formData.startDate" 
-              required 
-            />
-          </div>
-          <div class="col-md-6">
+        
+        <!-- Thông báo cho hợp đồng thử việc -->
+        <div v-if="isProbationContract" class="row g-4 mt-2">
+          <div class="col-12">
             <div class="alert alert-info">
               <i class="fas fa-info-circle me-2"></i>
               <strong>Hợp đồng thử việc:</strong> Tự động có hiệu lực 2 tháng
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Ngày tháng cho hợp đồng xác định thời hạn và thử việc -->
-        <div v-if="isDeterminedTermContract || isProbationContract" class="row g-4 mb-3">
-          <div class="col-md-6">
-            <FormField 
-              label="Đến ngày" 
-              type="date" 
-              v-model="formData.endDate" 
-              required 
-              readonly
-            />
-            <small class="form-text text-muted">Tự động tính dựa trên từ ngày và hiệu lực</small>
-          </div>
-        </div>
-
-        <!-- Ngày tháng cho hợp đồng không xác định thời hạn -->
-        <div v-if="isIndeterminateTermContract" class="row g-4 mb-3">
-          <div class="col-md-6">
-            <FormField 
-              label="Từ ngày" 
-              type="date" 
-              v-model="formData.startDate" 
-              required 
-            />
-          </div>
-          <div class="col-md-6">
-            <FormField 
-              label="Đến ngày" 
-              type="date" 
-              v-model="formData.endDate" 
-              readonly
-            />
-            <small class="form-text text-muted">Hợp đồng không xác định thời hạn</small>
-          </div>
-        </div>
-
-        <!-- Ngày tháng mặc định cho các loại hợp đồng khác -->
-        <div v-if="!isDeterminedTermContract && !isIndeterminateTermContract" class="row g-4 mb-3">
-          <div class="col-md-6">
-            <FormField 
-              label="Từ ngày" 
-              type="date" 
-              v-model="formData.startDate" 
-              required 
-            />
-          </div>
-          <div class="col-md-6">
-            <FormField 
-              label="Đến ngày" 
-              type="date" 
-              v-model="formData.endDate" 
-              required 
-            />
-          </div>
-        </div>
-
-        <div class="row g-4 mb-3">
-          <div class="col-md-6">
+      <!-- Thông tin lương và trạng thái -->
+      <div class="form-group">
+        <h6 class="group-title">
+          <i class="fas fa-money-bill-wave me-2"></i>
+          Thông tin lương và trạng thái
+        </h6>
+        <div class="row g-4">
+          <div class="col-md-4">
             <FormField 
               label="Lương hợp đồng" 
               type="number" 
@@ -497,7 +461,7 @@ watch(() => props.mode, (newMode) => {
               step="1000"
             />
           </div>
-          <div class="col-md-6">
+          <div class="col-md-4">
             <FormField 
               label="Lương bảo hiểm" 
               type="number" 
@@ -507,10 +471,7 @@ watch(() => props.mode, (newMode) => {
               step="1000"
             />
           </div>
-        </div>
-
-        <div class="row g-4 mb-3">
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label">Trạng thái duyệt</label>
             <select class="form-select" v-model="formData.approveStatus">
               <option v-for="status in approveStatusOptions" :key="status.value" :value="status.value" 
@@ -520,76 +481,138 @@ watch(() => props.mode, (newMode) => {
             </select>
           </div>
         </div>
+      </div>
 
-        <!-- Allowances Section -->
-        <div class="mb-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="mb-0">Phụ cấp</h6>
-            <button type="button" class="btn btn-sm btn-outline-primary" @click="addAllowance">
-              <i class="fas fa-plus me-1"></i> Thêm phụ cấp
-            </button>
+      <!-- Phụ cấp -->
+      <div class="form-group">
+        <div class="d-flex justify-content-between align-items-center group-title">
+          <h6 class="mb-0">
+            <i class="fas fa-plus-circle me-2"></i>
+            Phụ cấp
+          </h6>
+          <button type="button" class="btn btn-sm btn-outline-primary" @click="addAllowance">
+            <i class="fas fa-plus me-1"></i> Thêm phụ cấp
+          </button>
+        </div>
+        <div class="row g-4">
+          <div v-if="formData.allowances.length === 0" class="col-12">
+            <div class="text-muted text-center py-3">
+              Chưa có phụ cấp nào
+            </div>
           </div>
           
-          <div v-if="formData.allowances.length === 0" class="text-muted text-center py-3">
-            Chưa có phụ cấp nào
-          </div>
-          
-          <div v-for="(allowance, index) in formData.allowances" :key="index" class="row g-3 mb-3">
-            <div class="col-md-5">
-              <label class="form-label">Loại phụ cấp</label>
-              <select class="form-select" v-model="allowance.allowanceID" :disabled="loading">
-                <option value="">{{ loading ? 'Đang tải...' : 'Chọn phụ cấp' }}</option>
-                <option v-for="allow in allowances" :key="allow.id" :value="allow.id">
-                  {{ allow.allowanceName }}
-                </option>
-              </select>
-            </div>
-            <div class="col-md-5">
-              <label class="form-label">Giá trị</label>
-              <input 
-                type="number" 
-                class="form-control" 
-                v-model="allowance.value" 
-                placeholder="Nhập giá trị phụ cấp"
-                step="1000"
-              />
-            </div>
-            <div class="col-md-2 d-flex align-items-end">
-              <button type="button" class="btn btn-outline-danger btn-sm" @click="removeAllowance(index)">
-                <i class="fas fa-trash"></i>
-              </button>
+          <div v-for="(allowance, index) in formData.allowances" :key="index" class="col-12">
+            <div class="row g-3">
+              <div class="col-md-5">
+                <label class="form-label">Loại phụ cấp</label>
+                <select class="form-select" v-model="allowance.allowanceID" :disabled="loading">
+                  <option value="">{{ loading ? 'Đang tải...' : 'Chọn phụ cấp' }}</option>
+                  <option v-for="allow in allowances" :key="allow.id" :value="allow.id">
+                    {{ allow.allowanceName }}
+                  </option>
+                </select>
+              </div>
+              <div class="col-md-5">
+                <label class="form-label">Giá trị</label>
+                <input 
+                  type="number" 
+                  class="form-control" 
+                  v-model="allowance.value" 
+                  placeholder="Nhập giá trị phụ cấp"
+                  step="1000"
+                />
+              </div>
+              <div class="col-md-2 d-flex align-items-end">
+                <button type="button" class="btn btn-outline-danger btn-sm" @click="removeAllowance(index)">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <div class="d-flex justify-content-end gap-2 mt-4">
-          <button type="button" class="btn btn-outline-secondary btn-lg" @click="handleClose">
-            <i class="fas fa-times me-1"></i> Hủy
-          </button>
-          <button type="submit" class="btn btn-primary btn-gradient btn-lg">
-            <i class="fas fa-save me-1"></i> {{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}
-          </button>
-        </div>
-      </form>
-    </div>
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <button type="button" class="btn btn-outline-secondary btn-lg" @click="handleClose">
+          <i class="fas fa-times me-1"></i> Hủy
+        </button>
+        <button type="submit" class="btn btn-primary btn-gradient btn-lg">
+          <i class="fas fa-save me-1"></i> {{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}
+        </button>
+      </div>
+    </form>
   </div>
 </template>
 
 <style scoped>
 .form-card {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+/* Form Groups */
+.form-group {
+  margin-bottom: 1.25rem;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
   overflow: hidden;
 }
 
-.card-header {
-  padding: 1rem 1.5rem;
-  border-bottom: none;
+.group-title {
+  background: #f8f9fa;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e9ecef;
+  color: #495057;
+  font-weight: 600;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
 }
 
-.card-body {
-  padding: 1.5rem;
+.group-title i {
+  color: #6c757d;
+  font-size: 1rem;
+}
+
+.form-group .row {
+  padding: 1rem;
+  margin: 0;
+}
+
+.form-label {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+/* Ensure all form inputs have consistent sizing */
+.form-select,
+.form-control,
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="email"] {
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+  height: 45px;
+  width: 100%;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-select:focus,
+.form-control:focus,
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+input[type="email"]:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+  outline: none;
 }
 
 .btn-gradient {
@@ -603,13 +626,52 @@ watch(() => props.mode, (newMode) => {
   color: white;
 }
 
-.form-select:focus {
-  border-color: #667eea;
-  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+.btn {
+  border-radius: 4px;
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.2s ease;
 }
 
-.form-control:focus {
-  border-color: #667eea;
-  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+.btn-outline-secondary:hover {
+  transform: translateY(-1px);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+/* Alert styling */
+.alert-info {
+  background-color: #d1ecf1;
+  border-color: #bee5eb;
+  color: #0c5460;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.alert-info i {
+  color: #0c5460;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .form-card {
+    padding: 0.75rem;
+  }
+  
+  .form-group .row {
+    padding: 0.75rem;
+  }
+  
+  .group-title {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+  }
+  
+  .form-group {
+    margin-bottom: 1rem;
+  }
 }
 </style>

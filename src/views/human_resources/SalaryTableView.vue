@@ -4,9 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
+import FeedbackModal from '../../components/common/FeedbackModal.vue'
+import FeedbackList from '../../components/common/FeedbackList.vue'
 import { useSalary } from '../../composables/useSalary.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
 import { useAuth } from '../../composables/useAuth.js'
+import { usePayrollFeedback } from '../../composables/usePayrollFeedback.js'
+import { useClosing } from '../../composables/useClosing.js'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 
@@ -16,7 +20,8 @@ const tabs = [
   { key: 'personalSalary', label: 'Bảng lương cá nhân' },
   { key: 'insurance', label: 'Bảo hiểm theo tháng' },
   { key: 'tax', label: 'Thuế TNCN' },
-  { key: 'taxFinalization', label: 'Quyết toán thuế TNCN' }
+  { key: 'taxFinalization', label: 'Quyết toán thuế TNCN' },
+  { key: 'feedbackHistory', label: 'Lịch sử phản ánh' }
 ]
 
 // Sử dụng composable
@@ -37,6 +42,34 @@ const {
 const { showMessage } = useGlobalMessage()
 const { currentUser } = useAuth()
 
+// Initialize closing composable
+const {
+  closingStatus,
+  loading: closingLoading,
+  error: closingError,
+  isAnySheetClosed,
+  isAllSheetsClosed,
+  canCloseSheets,
+  fetchClosingStatus,
+  closePayroll,
+  closeAllPayrolls,
+  closeAllSheets,
+  formatClosingDate,
+  getClosingStatusText,
+  getClosingStatusColor
+} = useClosing()
+
+// Initialize payroll feedback composable
+const { 
+  feedbacks: payrollFeedbacks, 
+  loading: payrollFeedbackLoading, 
+  error: payrollFeedbackError,
+  createFeedback: createPayrollFeedback,
+  updateFeedback: updatePayrollFeedback,
+  deleteFeedback: deletePayrollFeedback,
+  fetchMyFeedbacks: fetchMyPayrollFeedbacks
+} = usePayrollFeedback()
+
 // Sync tab from query param
 const route = useRoute()
 const router = useRouter()
@@ -56,10 +89,15 @@ watch(() => route.query.tab, (newTab) => {
 })
 
 // Keep URL in sync when tab changes inside this view (if you have UI changing tabs)
-const setActiveTab = (key) => {
+const setActiveTab = async (key) => {
   if (tabKeys.includes(key)) {
     activeTab.value = key
     router.replace({ path: route.path, query: { ...route.query, tab: key } }).catch(() => {})
+    
+    // Load feedback data when switching to feedback history tab
+    if (key === 'feedbackHistory') {
+      await fetchMyPayrollFeedbacks()
+    }
   }
 }
 
@@ -91,11 +129,13 @@ function formatMoney(value) {
 // Load dữ liệu khi component mount
 onMounted(async () => {
   await fetchSalaryData()
+  await fetchClosingStatus(selectedYear.value, selectedMonth.value)
 })
 
 // Xử lý thay đổi thời gian
 const handleTimeChange = async (year, month) => {
   await fetchSalaryData(year, month)
+  await fetchClosingStatus(year, month)
 }
 
 // Xử lý tính lại lương
@@ -115,6 +155,42 @@ const handleExportToExcel = async (type) => {
     showMessage('Xuất Excel thành công!', 'success')
   } catch (err) {
     showMessage(`Lỗi: ${err.message}`, 'error')
+  }
+}
+
+// Xử lý chốt lương
+const handleClosePayroll = async () => {
+  if (!currentUser.value) {
+    showMessage('Vui lòng đăng nhập để thực hiện chốt lương', 'error')
+    return
+  }
+
+  const confirmed = confirm(`Bạn có chắc chắn muốn chốt bảng lương cho TẤT CẢ nhân viên tháng ${selectedMonth.value}/${selectedYear.value}?\n\nSau khi chốt, dữ liệu sẽ không thể thay đổi.`)
+  
+  if (confirmed) {
+    const success = await closeAllPayrolls(selectedYear.value, selectedMonth.value)
+    if (success) {
+      // Refresh data after closing
+      await fetchSalaryData()
+    }
+  }
+}
+
+// Xử lý chốt tất cả bảng
+const handleCloseAllSheets = async () => {
+  if (!currentUser.value) {
+    showMessage('Vui lòng đăng nhập để thực hiện chốt bảng', 'error')
+    return
+  }
+
+  const confirmed = confirm(`Bạn có chắc chắn muốn chốt tất cả bảng (công, lương, tăng ca) tháng ${selectedMonth.value}/${selectedYear.value}?\n\nSau khi chốt, dữ liệu sẽ không thể thay đổi.`)
+  
+  if (confirmed) {
+    const success = await closeAllSheets(selectedYear.value, selectedMonth.value)
+    if (success) {
+      // Refresh data after closing
+      await fetchSalaryData()
+    }
   }
 }
 
@@ -167,6 +243,10 @@ const goToCurrentMonth = () => {
 const showOvertimeModal = ref(false)
 const selectedOvertimeEmployee = ref(null)
 
+// Feedback modals and state
+const showSalaryFeedbackModal = ref(false)
+const selectedFeedbackForEdit = ref(null)
+
 const openOvertimeModal = (employee) => {
   selectedOvertimeEmployee.value = employee
   showOvertimeModal.value = true
@@ -175,6 +255,69 @@ const openOvertimeModal = (employee) => {
 const closeOvertimeModal = () => {
   showOvertimeModal.value = false
   selectedOvertimeEmployee.value = null
+}
+
+// Feedback modal functions
+function openSalaryFeedbackModal() {
+  selectedFeedbackForEdit.value = null
+  showSalaryFeedbackModal.value = true
+}
+
+function closeSalaryFeedbackModal() {
+  showSalaryFeedbackModal.value = false
+  selectedFeedbackForEdit.value = null
+}
+
+async function handleSalaryFeedbackSubmit(feedbackData) {
+  try {
+    // Tìm payroll ID cho tháng hiện tại
+    const payrollId = await findPayrollIdForCurrentMonth()
+    if (!payrollId) {
+      showMessage('Không tìm thấy bảng lương cho tháng này', 'error')
+      return
+    }
+
+    const submitData = {
+      payrollID: payrollId,
+      title: feedbackData.title,
+      content: feedbackData.content
+    }
+
+    if (selectedFeedbackForEdit.value) {
+      await updatePayrollFeedback(selectedFeedbackForEdit.value.payrollID, submitData)
+    } else {
+      await createPayrollFeedback(submitData)
+    }
+    
+    closeSalaryFeedbackModal()
+  } catch (error) {
+    console.error('Error handling salary feedback:', error)
+  }
+}
+
+async function handleEditSalaryFeedback(feedback) {
+  selectedFeedbackForEdit.value = feedback
+  showSalaryFeedbackModal.value = true
+}
+
+async function handleDeleteSalaryFeedback(feedback) {
+  try {
+    await deletePayrollFeedback(feedback.payrollID)
+  } catch (error) {
+    console.error('Error deleting feedback:', error)
+  }
+}
+
+// Helper function to find payroll ID for current month
+async function findPayrollIdForCurrentMonth() {
+  // Tìm payroll cho nhân viên hiện tại trong tháng được chọn
+  const currentUser = currentUser.value
+  if (!currentUser) return null
+
+  // Giả sử có một service hoặc API để lấy payroll ID
+  // Trong thực tế, bạn cần implement logic này dựa trên cấu trúc dữ liệu
+  // Tạm thời return một ID giả định
+  return 1 // Cần thay thế bằng logic thực tế
 }
 
 // Cột bảng lương
@@ -830,53 +973,85 @@ const printTaxFinalizationReport = () => {
       <!-- Header Section -->
       <div class="salary-header mb-4">
         <div class="row g-3 align-items-center">
-          <div class="col-md-6">
-            <div class="time-filter-compact">
-              <div class="d-flex align-items-center gap-3">
-                <button 
-                  class="btn btn-outline-light btn-sm" 
-                  @click="goToPreviousMonth"
-                  title="Tháng trước"
-                  :disabled="loading"
-                >
-                  <i class="fas fa-chevron-left"></i>
-                </button>
-                <div class="text-center px-3">
-                  <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+          <!-- Cột trái: Bộ lọc tháng + Action buttons -->
+          <div class="col-md-8">
+            <div class="d-flex align-items-center gap-4">
+              <!-- Bộ lọc tháng -->
+              <div class="time-filter-compact">
+                <div class="d-flex align-items-center gap-2">
+                  <button 
+                    class="btn btn-outline-light btn-sm" 
+                    @click="goToPreviousMonth"
+                    title="Tháng trước"
+                    :disabled="loading"
+                  >
+                    <i class="fas fa-chevron-left"></i>
+                  </button>
+                  <div class="text-center px-2">
+                    <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                  </div>
+                  <button 
+                    class="btn btn-outline-light btn-sm" 
+                    @click="goToNextMonth"
+                    title="Tháng sau"
+                    :disabled="loading"
+                  >
+                    <i class="fas fa-chevron-right"></i>
+                  </button>
+                  <button 
+                    class="btn btn-outline-light btn-sm" 
+                    @click="goToCurrentMonth"
+                    title="Tháng hiện tại"
+                    :disabled="loading"
+                  >
+                    <i class="fas fa-calendar-day"></i>
+                  </button>
                 </div>
-                <button 
-                  class="btn btn-outline-light btn-sm" 
-                  @click="goToNextMonth"
-                  title="Tháng sau"
-                  :disabled="loading"
-                >
-                  <i class="fas fa-chevron-right"></i>
+              </div>
+              
+              <!-- Action Buttons -->
+              <div class="d-flex gap-2">
+                <button class="btn btn-outline-light btn-sm" @click="handleRecalculateSalaries" :disabled="loading || closingStatus.isPayrollClosed">
+                  <i class="fas fa-calculator me-1"></i>
+                  Tính lại lương
                 </button>
-                <button 
-                  class="btn btn-outline-light btn-sm" 
-                  @click="goToCurrentMonth"
-                  title="Tháng hiện tại"
-                  :disabled="loading"
-                >
-                  <i class="fas fa-calendar-day"></i>
+                <button class="btn btn-outline-light btn-sm" @click="handleExportToExcel('salary')" :disabled="loading">
+                  <i class="fas fa-download me-1"></i>
+                  Xuất Excel
+                </button>
+                <button class="btn btn-outline-light btn-sm" @click="printSalaryReport">
+                  <i class="fas fa-print me-1"></i>
+                  In báo cáo
                 </button>
               </div>
             </div>
           </div>
-          <div class="col-md-6">
-            <div class="header-actions d-flex gap-2 justify-content-end">
-              <button class="btn btn-outline-light btn-sm" @click="handleRecalculateSalaries" :disabled="loading">
-                <i class="fas fa-calculator me-1"></i>
-                Tính lại lương
+          
+          <!-- Cột phải: Nút chốt lương + Trạng thái chốt -->
+          <div class="col-md-4">
+            <div class="d-flex align-items-center gap-3 justify-content-end">
+              <!-- Nút chốt lương -->
+              <button 
+                v-if="canCloseSheets && !closingStatus.isPayrollClosed"
+                class="btn btn-primary btn-sm" 
+                @click="handleClosePayroll" 
+                :disabled="loading || closingLoading"
+                title="Chốt bảng lương"
+              >
+                <i v-if="closingLoading" class="fas fa-spinner fa-spin me-1"></i>
+                <i v-else class="fas fa-lock me-1"></i>
+                Chốt lương
               </button>
-              <button class="btn btn-outline-light btn-sm" @click="handleExportToExcel('salary')" :disabled="loading">
-                <i class="fas fa-download me-1"></i>
-                Xuất Excel
-              </button>
-              <button class="btn btn-outline-light btn-sm" @click="printSalaryReport">
-                <i class="fas fa-print me-1"></i>
-                In báo cáo
-              </button>
+              
+              <!-- Trạng thái chốt (đơn giản) -->
+              <div class="closing-status-simple">
+                <span :class="`status-badge-simple ${getClosingStatusColor()}`">
+                  <i v-if="isAllSheetsClosed" class="fas fa-check-circle me-1"></i>
+                  <i v-else-if="isAnySheetClosed" class="fas fa-clock me-1"></i>
+                  <i v-else class="fas fa-exclamation-triangle me-1"></i>
+                  {{ getClosingStatusText() }}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -885,6 +1060,17 @@ const printTaxFinalizationReport = () => {
       <div class="d-flex justify-content-between align-items-center mb-3">
         <div class="text-muted">
           <small>Tổng số nhân viên: {{ salaryTableData.length }}</small>
+          <!-- Closing Details -->
+          <div v-if="isAnySheetClosed" class="closing-details mt-2">
+            <small class="text-muted">
+              <i class="fas fa-info-circle me-1"></i>
+              <span v-if="closingStatus.isPayrollClosed">
+                Bảng lương đã chốt: {{ formatClosingDate(closingStatus.payrollClosedAt) }}
+                <span v-if="closingStatus.payrollClosedBy"> bởi {{ closingStatus.payrollClosedBy }}</span>
+              </span>
+              <span v-else>Bảng lương chưa chốt</span>
+            </small>
+          </div>
         </div>
       </div>
       <div class="table-responsive salary-table">
@@ -1027,6 +1213,16 @@ const printTaxFinalizationReport = () => {
                     <div class="net-salary-amount">
                       {{ personalSalaryData.length > 0 ? formatMoney(personalSalaryData[0].netSalary) : '0 ₫' }}
                     </div>
+                  </div>
+                  <div class="mt-3">
+                    <button 
+                      class="btn btn-feedback-salary"
+                      @click="openSalaryFeedbackModal"
+                      title="Phản ánh về bảng lương"
+                    >
+                      <i class="fas fa-comment-dots me-2"></i>
+                      <span class="fw-semibold">Phản ánh lương</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1339,56 +1535,64 @@ const printTaxFinalizationReport = () => {
           <small>Tổng số nhân viên: {{ insuranceTableData.length }}</small>
         </div>
       </div>
-      <div class="table-responsive salary-table">
-        <table class="table">
-          <thead>
-            <tr>
-              <th rowspan="2">Mã nhân viên</th>
-              <th rowspan="2">Tên nhân viên</th>
-              <th rowspan="2">Chức danh</th>
-              <th rowspan="2">Lương đóng BH</th>
-              <th colspan="4" class="group-header">Người lao động</th>
-              <th colspan="4" class="group-header">Doanh nghiệp</th>
-              <th rowspan="2">Tổng tiền trích đóng 32%</th>
-              <th rowspan="2">Đoàn phí</th>
-            </tr>
-            <tr>
-              <th>BHXH (8%)</th>
-              <th>BHYT (1.5%)</th>
-              <th>BHTN (1%)</th>
-              <th>Tổng NV đóng (10.5%)</th>
-              <th>BHXH (17%)</th>
-              <th>BHYT (3%)</th>
-              <th>BHTN (1%)</th>
-              <th>Tổng DN đóng (21.5%)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in paginatedInsuranceData" :key="item.empId">
-              <td>{{ item.empId }}</td>
-              <td>{{ item.empName }}</td>
-              <td>{{ item.title }}</td>
-              <td><span class="money">{{ formatMoney(item.insuranceSalary) }}</span></td>
-              <td data-group="nl"><span class="money">{{ formatMoney(item.bhxhEmp) }}</span></td>
-              <td data-group="nl"><span class="money">{{ formatMoney(item.bhytEmp) }}</span></td>
-              <td data-group="nl"><span class="money">{{ formatMoney(item.bhtnEmp) }}</span></td>
-              <td data-group="nl"><span class="money">{{ formatMoney(item.totalEmp) }}</span></td>
-              <td data-group="dn"><span class="money">{{ formatMoney(item.bhxhCom) }}</span></td>
-              <td data-group="dn"><span class="money">{{ formatMoney(item.bhytCom) }}</span></td>
-              <td data-group="dn"><span class="money">{{ formatMoney(item.bhtnCom) }}</span></td>
-              <td data-group="dn"><span class="money">{{ formatMoney(item.totalCom) }}</span></td>
-              <td><span class="money">{{ formatMoney(item.totalInsurance) }}</span></td>
-              <td><span class="money">{{ formatMoney(item.unionFee) }}</span></td>
-            </tr>
-          </tbody>
-        </table>
+      
+      <!-- Insurance Table Container -->
+      <div class="insurance-table-container">
+        <div class="table-responsive">
+          <table class="table insurance-table">
+            <thead>
+              <tr>
+                <th rowspan="2">Mã nhân viên</th>
+                <th rowspan="2">Tên nhân viên</th>
+                <th rowspan="2">Chức danh</th>
+                <th rowspan="2">Lương đóng BH</th>
+                <th colspan="4" class="group-header">Người lao động</th>
+                <th colspan="4" class="group-header">Doanh nghiệp</th>
+                <th rowspan="2">Tổng tiền trích đóng 32%</th>
+                <th rowspan="2">Đoàn phí</th>
+              </tr>
+              <tr>
+                <th>BHXH (8%)</th>
+                <th>BHYT (1.5%)</th>
+                <th>BHTN (1%)</th>
+                <th>Tổng NV đóng (10.5%)</th>
+                <th>BHXH (17%)</th>
+                <th>BHYT (3%)</th>
+                <th>BHTN (1%)</th>
+                <th>Tổng DN đóng (21.5%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in paginatedInsuranceData" :key="item.empId">
+                <td>{{ item.empId }}</td>
+                <td>{{ item.empName }}</td>
+                <td>{{ item.title }}</td>
+                <td><span class="money">{{ formatMoney(item.insuranceSalary) }}</span></td>
+                <td data-group="nl"><span class="money">{{ formatMoney(item.bhxhEmp) }}</span></td>
+                <td data-group="nl"><span class="money">{{ formatMoney(item.bhytEmp) }}</span></td>
+                <td data-group="nl"><span class="money">{{ formatMoney(item.bhtnEmp) }}</span></td>
+                <td data-group="nl"><span class="money">{{ formatMoney(item.totalEmp) }}</span></td>
+                <td data-group="dn"><span class="money">{{ formatMoney(item.bhxhCom) }}</span></td>
+                <td data-group="dn"><span class="money">{{ formatMoney(item.bhytCom) }}</span></td>
+                <td data-group="dn"><span class="money">{{ formatMoney(item.bhtnCom) }}</span></td>
+                <td data-group="dn"><span class="money">{{ formatMoney(item.totalCom) }}</span></td>
+                <td><span class="money">{{ formatMoney(item.totalInsurance) }}</span></td>
+                <td><span class="money">{{ formatMoney(item.unionFee) }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Pagination -->
+        <div class="insurance-pagination mt-3">
+          <Pagination
+            :totalItems="insuranceTableData.length"
+            :itemsPerPage="insuranceItemsPerPage"
+            :currentPage="insuranceCurrentPage"
+            @update:currentPage="insuranceCurrentPage = $event"
+          />
+        </div>
       </div>
-      <Pagination
-        :totalItems="insuranceTableData.length"
-        :itemsPerPage="insuranceItemsPerPage"
-        :currentPage="insuranceCurrentPage"
-        @update:currentPage="insuranceCurrentPage = $event"
-      />
     </div>
     <!-- Tax Tab -->
     <div v-else-if="activeTab === 'tax'">
@@ -1714,6 +1918,57 @@ const printTaxFinalizationReport = () => {
       </div>
     </div>
   </ModalDialog>
+
+  <!-- Feedback History Tab -->
+  <div v-if="activeTab === 'feedbackHistory'">
+    <!-- Header Section -->
+    <div class="feedback-history-header mb-4">
+      <div class="row g-3 align-items-center">
+        <div class="col-md-8">
+          <h6 class="mb-0 fw-semibold text-white">
+            <i class="fas fa-comment-dots me-2"></i>
+            Lịch sử phản ánh bảng lương
+          </h6>
+          <p class="mb-0 text-white-50 small">Xem và quản lý các phản ánh về bảng lương của bạn</p>
+        </div>
+        <div class="col-md-4 text-end">
+          <button 
+            class="btn btn-outline-light btn-sm"
+            @click="fetchMyPayrollFeedbacks"
+            :disabled="payrollFeedbackLoading"
+          >
+            <i v-if="payrollFeedbackLoading" class="fas fa-spinner fa-spin me-1"></i>
+            <i v-else class="fas fa-sync-alt me-1"></i>
+            Làm mới
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feedback List -->
+    <div class="feedback-history-content">
+      <FeedbackList
+        :feedbacks="payrollFeedbacks"
+        :loading="payrollFeedbackLoading"
+        :error="payrollFeedbackError"
+        type="payroll"
+        empty-message="Bạn chưa có phản ánh nào về bảng lương."
+        @edit="handleEditSalaryFeedback"
+        @delete="handleDeleteSalaryFeedback"
+      />
+    </div>
+  </div>
+
+  <!-- Feedback Modal -->
+  <FeedbackModal
+    :show="showSalaryFeedbackModal"
+    title="Phản ánh bảng lương"
+    :loading="payrollFeedbackLoading"
+    :edit-data="selectedFeedbackForEdit"
+    type="payroll"
+    @update:show="closeSalaryFeedbackModal"
+    @submit="handleSalaryFeedbackSubmit"
+  />
 </template>
 
 <style scoped>
@@ -2414,6 +2669,24 @@ const printTaxFinalizationReport = () => {
 }
 
 /* Responsive adjustments */
+/* Feedback History Header */
+.feedback-history-header {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
+}
+
+/* Feedback History Content */
+.feedback-history-content {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
 @media (max-width: 768px) {
   .personal-salary-header .row {
     text-align: center;
@@ -2548,6 +2821,62 @@ const printTaxFinalizationReport = () => {
   color: #2c3e50;
 }
 
+/* Insurance Table Container */
+.insurance-table-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.insurance-table {
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.insurance-table th {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border: none;
+  padding: 1rem 0.75rem;
+  font-weight: 600;
+  color: #495057;
+  text-align: center;
+  vertical-align: middle;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.insurance-table th.group-header {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  color: #495057;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.insurance-table td {
+  padding: 0.75rem;
+  border: none;
+  border-bottom: 1px solid #f1f3f4;
+  vertical-align: middle;
+  text-align: center;
+}
+
+.insurance-table tbody tr:hover {
+  background: rgba(52, 152, 219, 0.05);
+}
+
+.insurance-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Insurance Pagination */
+.insurance-pagination {
+  padding: 1rem 1.5rem;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
 /* Tax Table Container */
 .tax-table-container {
   background: white;
@@ -2626,6 +2955,153 @@ const printTaxFinalizationReport = () => {
     height: 40px;
     font-size: 1rem;
   }
+}
+
+/* Feedback Button Styles */
+.btn-feedback-salary {
+  background: linear-gradient(135deg, #fd7e14, #ffc107);
+  border: none;
+  color: white;
+  padding: 0.6rem 1.2rem;
+  border-radius: 10px;
+  font-weight: 600;
+  box-shadow: 0 3px 10px rgba(253, 126, 20, 0.3);
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.5px;
+}
+
+.btn-feedback-salary:hover {
+  background: linear-gradient(135deg, #e55a00, #e0a800);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(253, 126, 20, 0.4);
+  color: white;
+}
+
+.btn-feedback-salary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(253, 126, 20, 0.3);
+}
+
+.btn-feedback-salary i {
+  font-size: 1.1rem;
+}
+
+.btn-feedback-salary span {
+  font-weight: 600;
+}
+
+/* Closing Status Styles */
+.closing-status-badge {
+  display: flex;
+  align-items: center;
+}
+
+.closing-status-badge .badge {
+  font-size: 0.8rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.closing-status-badge .badge.bg-success {
+  background: linear-gradient(135deg, #28a745, #20c997) !important;
+  color: white;
+}
+
+.closing-status-badge .badge.bg-warning {
+  background: linear-gradient(135deg, #ffc107, #fd7e14) !important;
+  color: white;
+}
+
+.closing-status-badge .badge.bg-info {
+  background: linear-gradient(135deg, #17a2b8, #6f42c1) !important;
+  color: white;
+}
+
+.closing-details {
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  border-left: 3px solid #17a2b8;
+}
+
+.closing-details small {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Close Button Styles */
+.btn-warning {
+  background: linear-gradient(135deg, #ffc107, #fd7e14);
+  border: none;
+  color: white;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-warning:hover {
+  background: linear-gradient(135deg, #e0a800, #e55a00);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+  color: white;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #dc3545, #e83e8c);
+  border: none;
+  color: white;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+  background: linear-gradient(135deg, #c82333, #d63384);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+  color: white;
+}
+
+/* Status Badge Styles - Matching AttendanceSummaryView */
+.closing-status-simple {
+  display: flex;
+  align-items: center;
+}
+
+.status-badge-simple {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  border: 1px solid;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.status-badge-simple.success {
+  color: #155724;
+  border-color: #28a745;
+  background: rgba(40, 167, 69, 0.25);
+  font-weight: 700;
+}
+
+.status-badge-simple.warning {
+  color: #155724;
+  border-color: #28a745;
+  background: rgba(40, 167, 69, 0.25);
+  font-weight: 700;
+}
+
+.status-badge-simple.info {
+  color: #ffc107;
+  border-color: #ffc107;
+  background: rgba(255, 193, 7, 0.15);
+  font-weight: 700;
 }
 
 </style>

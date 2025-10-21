@@ -130,80 +130,98 @@ const handleClose = () => emit('close')
 <template>
     <div class="form-card">
         <form @submit.prevent="handleSubmit">
-            <div class="row g-4 mb-3">
-                <div class="col-md-4">
-                    <FormField 
-                        label="ID nhân viên" 
-                        type="text" 
-                        v-model="formData.id" 
-                        :readonly="mode === 'update'"
-                        required 
-                    />
-                </div>
-                <div class="col-md-4">
-                    <FormField label="Họ và tên đệm" type="text" v-model="formData.lastName" required />
-                </div>
-                <div class="col-md-4">
-                    <FormField label="Tên nhân viên" type="text" v-model="formData.firstName" required />
-                </div>
-            </div>
-            <div class="row g-4 mb-3">
-                <div class="col-md-4">
-                    <FormField label="Ngày sinh" type="date" v-model="formData.birthday" required />
-                </div>
-                <div class="col-md-4">
-                    <FormField label="Ngày vào làm" type="date" v-model="formData.joinDate" required />
-                </div>
-                <div class="col-md-4">
-                    <FormField label="Số điện thoại" type="text" v-model="formData.phone" required />
-                </div>
-            </div>
-            <div class="row g-4 mb-3">
-                <div class="col-md-4">
-                    <FormField label="Email" type="email" v-model="formData.email" required />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Giới tính <span class="text-danger">*</span></label>
-                    <select class="form-select" v-model="formData.gender" required>
-                        <option value="">Chọn giới tính</option>
-                        <option value="Nam" :selected="formData.gender === 'Nam'">Nam</option>
-                        <option value="Nữ" :selected="formData.gender === 'Nữ'">Nữ</option>
-                        <option value="Khác" :selected="formData.gender === 'Khác'">Khác</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Chức danh <span class="text-danger">*</span></label>
-                    <select class="form-select" v-model="formData.roleID" required>
-                        <option value="">Chọn chức danh</option>
-                        <option v-for="role in roleOptions" :key="role.value" :value="role.value" :selected="formData.roleID == role.value">{{ role.text }}</option>
-                    </select>
-                </div>
-            </div>
-            <div class="row g-4 mb-3" v-if="mode === 'update'">
-                <div class="col-md-6">
-                    <label class="form-label">Trạng thái</label>
-                    <select class="form-select" v-model="formData.status">
-                        <option value="0">Đang làm việc</option>
-                        <option value="1">Nghỉ việc</option>
-                        <option value="2">Nghỉ thai sản</option>
-                    </select>
-                </div>
-            </div>
-            <div class="row g-4 mb-3" v-if="mode === 'create'">
-                <div class="col-md-6">
-                    <label class="form-label">Trạng thái</label>
-                    <select class="form-select" v-model="formData.status">
-                        <option value="0">Đang làm việc</option>
-                        <option value="1">Nghỉ việc</option>
-                        <option value="2">Nghỉ thai sản</option>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        <strong>Lưu ý:</strong> Mật khẩu sẽ được tạo tự động và gửi qua email cho nhân viên.
+            <!-- Thông tin cơ bản -->
+            <div class="form-group">
+                <h6 class="group-title">
+                    <i class="fas fa-id-card me-2"></i>
+                    Thông tin cơ bản
+                </h6>
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <FormField 
+                            label="ID nhân viên" 
+                            type="text" 
+                            v-model="formData.id" 
+                            :readonly="mode === 'update'"
+                            required 
+                        />
+                    </div>
+                    <div class="col-md-4">
+                        <FormField label="Họ và tên đệm" type="text" v-model="formData.lastName" required />
+                    </div>
+                    <div class="col-md-4">
+                        <FormField label="Tên nhân viên" type="text" v-model="formData.firstName" required />
                     </div>
                 </div>
+            </div>
+            <!-- Thông tin cá nhân -->
+            <div class="form-group">
+                <h6 class="group-title">
+                    <i class="fas fa-user me-2"></i>
+                    Thông tin cá nhân
+                </h6>
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <FormField label="Ngày sinh" type="date" v-model="formData.birthday" required />
+                    </div>
+                    <div class="col-md-4">
+                        <FormField label="Ngày vào làm" type="date" v-model="formData.joinDate" required />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Giới tính <span class="text-danger">*</span></label>
+                        <select class="form-select" v-model="formData.gender" required>
+                            <option value="">Chọn giới tính</option>
+                            <option value="Nam" :selected="formData.gender === 'Nam'">Nam</option>
+                            <option value="Nữ" :selected="formData.gender === 'Nữ'">Nữ</option>
+                            <option value="Khác" :selected="formData.gender === 'Khác'">Khác</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <!-- Thông tin liên hệ -->
+            <div class="form-group">
+                <h6 class="group-title">
+                    <i class="fas fa-address-book me-2"></i>
+                    Thông tin liên hệ
+                </h6>
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <FormField label="Email" type="email" v-model="formData.email" required />
+                    </div>
+                    <div class="col-md-6">
+                        <FormField label="Số điện thoại" type="text" v-model="formData.phone" required />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thông tin công việc -->
+            <div class="form-group">
+                <h6 class="group-title">
+                    <i class="fas fa-briefcase me-2"></i>
+                    Thông tin công việc
+                </h6>
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label">Chức danh <span class="text-danger">*</span></label>
+                        <select class="form-select" v-model="formData.roleID" required>
+                            <option value="">Chọn chức danh</option>
+                            <option v-for="role in roleOptions" :key="role.value" :value="role.value" :selected="formData.roleID == role.value">{{ role.text }}</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Trạng thái</label>
+                        <select class="form-select" v-model="formData.status">
+                            <option value="0">Đang làm việc</option>
+                            <option value="1">Nghỉ việc</option>
+                            <option value="2">Nghỉ thai sản</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <!-- Thông báo cho chế độ tạo mới -->
+            <div v-if="mode === 'create'" class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Lưu ý:</strong> Mật khẩu sẽ được tạo tự động và gửi qua email cho nhân viên.
             </div>
             <div class="d-flex justify-content-end gap-2 mt-4">
                 <button type="button" class="btn btn-outline-secondary btn-lg" @click="handleClose">
@@ -217,5 +235,106 @@ const handleClose = () => emit('close')
     </div>
 </template>
 <style scoped>
+.form-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+}
 
+/* Form Groups */
+.form-group {
+  margin-bottom: 1.25rem;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.group-title {
+  background: #f8f9fa;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e9ecef;
+  color: #495057;
+  font-weight: 600;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+}
+
+.group-title i {
+  color: #6c757d;
+  font-size: 1rem;
+}
+
+.form-group .row {
+  padding: 1rem;
+  margin: 0;
+}
+
+.form-label {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.5rem;
+}
+
+.form-select {
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.form-select:focus {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.btn {
+  border-radius: 4px;
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.btn-outline-secondary:hover {
+  transform: translateY(-1px);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+/* Alert styling */
+.alert-info {
+  background-color: #d1ecf1;
+  border-color: #bee5eb;
+  color: #0c5460;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.alert-info i {
+  color: #0c5460;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .form-card {
+    padding: 0.75rem;
+  }
+  
+  .form-group .row {
+    padding: 0.75rem;
+  }
+  
+  .group-title {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+  }
+  
+  .form-group {
+    margin-bottom: 1rem;
+  }
+}
 </style>
