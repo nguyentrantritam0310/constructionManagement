@@ -4,13 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
-import FeedbackModal from '../../components/common/FeedbackModal.vue'
-import FeedbackList from '../../components/common/FeedbackList.vue'
 import { useSalary } from '../../composables/useSalary.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
 import { useAuth } from '../../composables/useAuth.js'
-import { usePayrollFeedback } from '../../composables/usePayrollFeedback.js'
-import { useClosing } from '../../composables/useClosing.js'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 
@@ -20,8 +16,7 @@ const tabs = [
   { key: 'personalSalary', label: 'Bảng lương cá nhân' },
   { key: 'insurance', label: 'Bảo hiểm theo tháng' },
   { key: 'tax', label: 'Thuế TNCN' },
-  { key: 'taxFinalization', label: 'Quyết toán thuế TNCN' },
-  { key: 'feedbackHistory', label: 'Lịch sử phản ánh' }
+  { key: 'taxFinalization', label: 'Quyết toán thuế TNCN' }
 ]
 
 // Sử dụng composable
@@ -41,34 +36,6 @@ const {
 
 const { showMessage } = useGlobalMessage()
 const { currentUser } = useAuth()
-
-// Initialize closing composable
-const {
-  closingStatus,
-  loading: closingLoading,
-  error: closingError,
-  isAnySheetClosed,
-  isAllSheetsClosed,
-  canCloseSheets,
-  fetchClosingStatus,
-  closePayroll,
-  closeAllPayrolls,
-  closeAllSheets,
-  formatClosingDate,
-  getClosingStatusText,
-  getClosingStatusColor
-} = useClosing()
-
-// Initialize payroll feedback composable
-const { 
-  feedbacks: payrollFeedbacks, 
-  loading: payrollFeedbackLoading, 
-  error: payrollFeedbackError,
-  createFeedback: createPayrollFeedback,
-  updateFeedback: updatePayrollFeedback,
-  deleteFeedback: deletePayrollFeedback,
-  fetchMyFeedbacks: fetchMyPayrollFeedbacks
-} = usePayrollFeedback()
 
 // Sync tab from query param
 const route = useRoute()
@@ -93,11 +60,6 @@ const setActiveTab = async (key) => {
   if (tabKeys.includes(key)) {
     activeTab.value = key
     router.replace({ path: route.path, query: { ...route.query, tab: key } }).catch(() => {})
-    
-    // Load feedback data when switching to feedback history tab
-    if (key === 'feedbackHistory') {
-      await fetchMyPayrollFeedbacks()
-    }
   }
 }
 
@@ -243,10 +205,6 @@ const goToCurrentMonth = () => {
 const showOvertimeModal = ref(false)
 const selectedOvertimeEmployee = ref(null)
 
-// Feedback modals and state
-const showSalaryFeedbackModal = ref(false)
-const selectedFeedbackForEdit = ref(null)
-
 const openOvertimeModal = (employee) => {
   selectedOvertimeEmployee.value = employee
   showOvertimeModal.value = true
@@ -255,69 +213,6 @@ const openOvertimeModal = (employee) => {
 const closeOvertimeModal = () => {
   showOvertimeModal.value = false
   selectedOvertimeEmployee.value = null
-}
-
-// Feedback modal functions
-function openSalaryFeedbackModal() {
-  selectedFeedbackForEdit.value = null
-  showSalaryFeedbackModal.value = true
-}
-
-function closeSalaryFeedbackModal() {
-  showSalaryFeedbackModal.value = false
-  selectedFeedbackForEdit.value = null
-}
-
-async function handleSalaryFeedbackSubmit(feedbackData) {
-  try {
-    // Tìm payroll ID cho tháng hiện tại
-    const payrollId = await findPayrollIdForCurrentMonth()
-    if (!payrollId) {
-      showMessage('Không tìm thấy bảng lương cho tháng này', 'error')
-      return
-    }
-
-    const submitData = {
-      payrollID: payrollId,
-      title: feedbackData.title,
-      content: feedbackData.content
-    }
-
-    if (selectedFeedbackForEdit.value) {
-      await updatePayrollFeedback(selectedFeedbackForEdit.value.payrollID, submitData)
-    } else {
-      await createPayrollFeedback(submitData)
-    }
-    
-    closeSalaryFeedbackModal()
-  } catch (error) {
-    console.error('Error handling salary feedback:', error)
-  }
-}
-
-async function handleEditSalaryFeedback(feedback) {
-  selectedFeedbackForEdit.value = feedback
-  showSalaryFeedbackModal.value = true
-}
-
-async function handleDeleteSalaryFeedback(feedback) {
-  try {
-    await deletePayrollFeedback(feedback.payrollID)
-  } catch (error) {
-    console.error('Error deleting feedback:', error)
-  }
-}
-
-// Helper function to find payroll ID for current month
-async function findPayrollIdForCurrentMonth() {
-  // Tìm payroll cho nhân viên hiện tại trong tháng được chọn
-  const currentUser = currentUser.value
-  if (!currentUser) return null
-
-  // Giả sử có một service hoặc API để lấy payroll ID
-  // Trong thực tế, bạn cần implement logic này dựa trên cấu trúc dữ liệu
-  // Tạm thời return một ID giả định
-  return 1 // Cần thay thế bằng logic thực tế
 }
 
 // Cột bảng lương
@@ -1011,10 +906,6 @@ const printTaxFinalizationReport = () => {
               
               <!-- Action Buttons -->
               <div class="d-flex gap-2">
-                <button class="btn btn-outline-light btn-sm" @click="handleRecalculateSalaries" :disabled="loading || closingStatus.isPayrollClosed">
-                  <i class="fas fa-calculator me-1"></i>
-                  Tính lại lương
-                </button>
                 <button class="btn btn-outline-light btn-sm" @click="handleExportToExcel('salary')" :disabled="loading">
                   <i class="fas fa-download me-1"></i>
                   Xuất Excel
@@ -1027,33 +918,6 @@ const printTaxFinalizationReport = () => {
             </div>
           </div>
           
-          <!-- Cột phải: Nút chốt lương + Trạng thái chốt -->
-          <div class="col-md-4">
-            <div class="d-flex align-items-center gap-3 justify-content-end">
-              <!-- Nút chốt lương -->
-              <button 
-                v-if="canCloseSheets && !closingStatus.isPayrollClosed"
-                class="btn btn-primary btn-sm" 
-                @click="handleClosePayroll" 
-                :disabled="loading || closingLoading"
-                title="Chốt bảng lương"
-              >
-                <i v-if="closingLoading" class="fas fa-spinner fa-spin me-1"></i>
-                <i v-else class="fas fa-lock me-1"></i>
-                Chốt lương
-              </button>
-              
-              <!-- Trạng thái chốt (đơn giản) -->
-              <div class="closing-status-simple">
-                <span :class="`status-badge-simple ${getClosingStatusColor()}`">
-                  <i v-if="isAllSheetsClosed" class="fas fa-check-circle me-1"></i>
-                  <i v-else-if="isAnySheetClosed" class="fas fa-clock me-1"></i>
-                  <i v-else class="fas fa-exclamation-triangle me-1"></i>
-                  {{ getClosingStatusText() }}
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1213,16 +1077,6 @@ const printTaxFinalizationReport = () => {
                     <div class="net-salary-amount">
                       {{ personalSalaryData.length > 0 ? formatMoney(personalSalaryData[0].netSalary) : '0 ₫' }}
                     </div>
-                  </div>
-                  <div class="mt-3">
-                    <button 
-                      class="btn btn-feedback-salary"
-                      @click="openSalaryFeedbackModal"
-                      title="Phản ánh về bảng lương"
-                    >
-                      <i class="fas fa-comment-dots me-2"></i>
-                      <span class="fw-semibold">Phản ánh lương</span>
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1918,57 +1772,6 @@ const printTaxFinalizationReport = () => {
       </div>
     </div>
   </ModalDialog>
-
-  <!-- Feedback History Tab -->
-  <div v-if="activeTab === 'feedbackHistory'">
-    <!-- Header Section -->
-    <div class="feedback-history-header mb-4">
-      <div class="row g-3 align-items-center">
-        <div class="col-md-8">
-          <h6 class="mb-0 fw-semibold text-white">
-            <i class="fas fa-comment-dots me-2"></i>
-            Lịch sử phản ánh bảng lương
-          </h6>
-          <p class="mb-0 text-white-50 small">Xem và quản lý các phản ánh về bảng lương của bạn</p>
-        </div>
-        <div class="col-md-4 text-end">
-          <button 
-            class="btn btn-outline-light btn-sm"
-            @click="fetchMyPayrollFeedbacks"
-            :disabled="payrollFeedbackLoading"
-          >
-            <i v-if="payrollFeedbackLoading" class="fas fa-spinner fa-spin me-1"></i>
-            <i v-else class="fas fa-sync-alt me-1"></i>
-            Làm mới
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Feedback List -->
-    <div class="feedback-history-content">
-      <FeedbackList
-        :feedbacks="payrollFeedbacks"
-        :loading="payrollFeedbackLoading"
-        :error="payrollFeedbackError"
-        type="payroll"
-        empty-message="Bạn chưa có phản ánh nào về bảng lương."
-        @edit="handleEditSalaryFeedback"
-        @delete="handleDeleteSalaryFeedback"
-      />
-    </div>
-  </div>
-
-  <!-- Feedback Modal -->
-  <FeedbackModal
-    :show="showSalaryFeedbackModal"
-    title="Phản ánh bảng lương"
-    :loading="payrollFeedbackLoading"
-    :edit-data="selectedFeedbackForEdit"
-    type="payroll"
-    @update:show="closeSalaryFeedbackModal"
-    @submit="handleSalaryFeedbackSubmit"
-  />
 </template>
 
 <style scoped>

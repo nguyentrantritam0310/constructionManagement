@@ -3,46 +3,21 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import LeaveForm from '../../components/common/leave/LeaveForm.vue'
-import FeedbackModal from '../../components/common/FeedbackModal.vue'
-import FeedbackList from '../../components/common/FeedbackList.vue'
-import { useClosing } from '../../composables/useClosing.js'
 import { useAuth } from '../../composables/useAuth.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
-
-// Initialize closing composable
-const {
-  closingStatus,
-  loading: closingLoading,
-  error: closingError,
-  closingHistory,
-  historyLoading,
-  historyError,
-  isAnySheetClosed,
-  isAllSheetsClosed,
-  canCloseSheets,
-  fetchClosingStatus,
-  closeTimeSheet,
-  closeOvertimeSheet,
-  closeAllSheets,
-  formatClosingDate,
-  getClosingStatusText,
-  getClosingStatusColor,
-  fetchClosingHistory
-} = useClosing()
+import api from '../../api.js'
 
 const showEmployeeModal = ref(false)
 const showDayModal = ref(false)
 const showLeaveFormModal = ref(false)
+const showImageModal = ref(false)
+const selectedImage = ref(null)
 const selectedEmployee = ref(null)
 const selectedDateIdx = ref(null)
 const selectedLeaveRequest = ref(null)
 const dayModalLoading = ref(false)
 const dayModalError = ref(null)
 
-// Feedback modals and state
-const showAttendanceFeedbackModal = ref(false)
-const showOvertimeFeedbackModal = ref(false)
-const selectedFeedbackForEdit = ref(null)
 
 function openEmployeeModal(emp) {
   selectedEmployee.value = emp
@@ -67,6 +42,17 @@ async function openDayModal(emp, dayIdx) {
 }
 function closeDayModal() {
   showDayModal.value = false
+}
+
+// Function to handle image click for zoom
+function handleImageClick(imageUrl, imageType = 'checkin') {
+  if (!imageUrl) return
+  
+  selectedImage.value = {
+    url: imageUrl,
+    type: imageType
+  }
+  showImageModal.value = true
 }
 
 // Function to open LeaveForm modal when clicking on voucher code
@@ -99,105 +85,6 @@ function closeLeaveFormModal() {
   selectedLeaveRequest.value = null
 }
 
-// Feedback modal functions
-function openAttendanceFeedbackModal() {
-  selectedFeedbackForEdit.value = null
-  showAttendanceFeedbackModal.value = true
-}
-
-function closeAttendanceFeedbackModal() {
-  showAttendanceFeedbackModal.value = false
-  selectedFeedbackForEdit.value = null
-}
-
-function openOvertimeFeedbackModal() {
-  selectedFeedbackForEdit.value = null
-  showOvertimeFeedbackModal.value = true
-}
-
-function closeOvertimeFeedbackModal() {
-  showOvertimeFeedbackModal.value = false
-  selectedFeedbackForEdit.value = null
-}
-
-async function handleAttendanceFeedbackSubmit(feedbackData) {
-  try {
-    // Tìm timesheet ID cho tháng hiện tại
-    const timeSheetId = await findTimeSheetIdForCurrentMonth()
-    if (!timeSheetId) {
-      showMessage('Không tìm thấy bảng công cho tháng này', 'error')
-      return
-    }
-
-    const submitData = {
-      timeSheetID: timeSheetId,
-      title: feedbackData.title,
-      content: feedbackData.content
-    }
-
-    if (selectedFeedbackForEdit.value) {
-      await updateTimeSheetFeedback(selectedFeedbackForEdit.value.timeSheetID, submitData)
-    } else {
-      await createTimeSheetFeedback(submitData)
-    }
-    
-    closeAttendanceFeedbackModal()
-  } catch (error) {
-    console.error('Error handling attendance feedback:', error)
-  }
-}
-
-async function handleOvertimeFeedbackSubmit(feedbackData) {
-  try {
-    // Tìm timesheet ID cho tháng hiện tại (tăng ca cũng dùng TimeSheetFeedback)
-    const timeSheetId = await findTimeSheetIdForCurrentMonth()
-    if (!timeSheetId) {
-      showMessage('Không tìm thấy bảng công cho tháng này', 'error')
-      return
-    }
-
-    const submitData = {
-      timeSheetID: timeSheetId,
-      title: `[Tăng ca] ${feedbackData.title}`,
-      content: feedbackData.content
-    }
-
-    if (selectedFeedbackForEdit.value) {
-      await updateTimeSheetFeedback(selectedFeedbackForEdit.value.timeSheetID, submitData)
-    } else {
-      await createTimeSheetFeedback(submitData)
-    }
-    
-    closeOvertimeFeedbackModal()
-  } catch (error) {
-    console.error('Error handling overtime feedback:', error)
-  }
-}
-
-async function handleEditFeedback(feedback) {
-  selectedFeedbackForEdit.value = feedback
-  showAttendanceFeedbackModal.value = true
-}
-
-async function handleDeleteFeedback(feedback) {
-  try {
-    await deleteTimeSheetFeedback(feedback.timeSheetID)
-  } catch (error) {
-    console.error('Error deleting feedback:', error)
-  }
-}
-
-// Helper function to find timesheet ID for current month
-async function findTimeSheetIdForCurrentMonth() {
-  // Tìm timesheet cho nhân viên hiện tại trong tháng được chọn
-  const currentUser = currentUser.value
-  if (!currentUser) return null
-
-  // Giả sử có một service hoặc API để lấy timesheet ID
-  // Trong thực tế, bạn cần implement logic này dựa trên cấu trúc dữ liệu
-  // Tạm thời return một ID giả định
-  return 1 // Cần thay thế bằng logic thực tế
-}
 // Cấu hình cột cho DataTable
 const attendanceColumns = [
   { key: 'stt', label: 'STT' },
@@ -244,6 +131,34 @@ const filteredAttendanceHistory = computed(() => {
   console.log('Filtered attendance history:', attendanceHistory.value);
   return attendanceHistory.value || [];
 });
+
+// Computed property để xử lý URL ảnh như ReportDetailDialog
+const apiBaseUrl = computed(() => {
+  const baseUrl = api.defaults.baseURL || import.meta.env.VITE_API_URL
+  // Remove /api from the end if it exists
+  return baseUrl.endsWith('/api')
+    ? baseUrl.slice(0, -4)
+    : baseUrl
+});
+
+// Function để format URL ảnh
+const formatImageUrl = (imagePath) => {
+  if (!imagePath) return null;
+  
+  // Nếu đã là full URL thì return luôn
+  if (imagePath.startsWith('http')) {
+    return imagePath;
+  }
+  
+  // Sử dụng API endpoint thay vì static files
+  const baseUrl = 'https://xaydungvipro.id.vn/api/Attendance';
+  
+  // Extract filename from path like "/uploads/attendance/filename.jpg"
+  const filename = imagePath.split('/').pop();
+  
+  // Construct API URL
+  return `${baseUrl}/image/${filename}`;
+};
 
 const filteredWorkHistory = computed(() => {
   console.log('Filtered work history:', workHistory.value);
@@ -306,19 +221,9 @@ import { useLeaveRequest } from '../../composables/useLeaveRequest'
 import { useLeaveType } from '../../composables/useLeaveType'
 import { useShiftAssignment } from '../../composables/useShiftAssignment'
 import { usePermissions } from '../../composables/usePermissions'
-import { useTimeSheetFeedback } from '../../composables/useTimeSheetFeedback'
 
 // Initialize composables
 const { employees: allEmployees, fetchAllEmployees } = useEmployee()
-const { 
-  feedbacks: timeSheetFeedbacks, 
-  loading: timeSheetFeedbackLoading, 
-  error: timeSheetFeedbackError,
-  createFeedback: createTimeSheetFeedback,
-  updateFeedback: updateTimeSheetFeedback,
-  deleteFeedback: deleteTimeSheetFeedback,
-  fetchMyFeedbacks: fetchMyTimeSheetFeedbacks
-} = useTimeSheetFeedback()
 const { attendanceList, fetchAttendance } = useAttendance()
 const { workshifts, fetchWorkShifts } = useWorkShift()
 const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
@@ -345,8 +250,6 @@ const allTabs = [
   { key: 'personalOvertime', label: 'Bảng công tăng ca cá nhân', icon: 'fas fa-user-plus', restricted: false },
   { key: 'detail', label: 'Bảng công chi tiết', icon: 'fas fa-list-alt', restricted: false, personalOnly: true },
   { key: 'attendance', label: 'Dữ liệu chấm công', icon: 'fas fa-fingerprint', restricted: false, personalOnly: true },
-  { key: 'closeHistory', label: 'Lịch sử chốt công', icon: 'fas fa-history', restricted: true },
-  { key: 'feedbackHistory', label: 'Lịch sử phản ánh', icon: 'fas fa-comment-dots', restricted: true }
 ]
 
 // Computed property to filter tabs based on user permissions
@@ -356,7 +259,7 @@ const tabs = computed(() => {
     if (!tab.restricted) return true
     
     // If tab is restricted, check permissions based on tab type
-    if (tab.key === 'summary' || tab.key === 'overtime' || tab.key === 'closeHistory' || tab.key === 'feedbackHistory') {
+    if (tab.key === 'summary' || tab.key === 'overtime') {
       return canView('attendance-summary')
     }
     
@@ -414,16 +317,6 @@ const selectTab = async (tabKey) => {
       loadAttendanceDataForSummary(),
       fetchLeaveRequests()
     ])
-  }
-  
-  // Load feedback data when switching to feedback history tab
-  if (tabKey === 'feedbackHistory') {
-    await fetchMyTimeSheetFeedbacks()
-  }
-  
-  // Load closing history data when switching to close history tab
-  if (tabKey === 'closeHistory') {
-    await fetchClosingHistory(selectedYear.value, selectedMonth.value)
   }
   
   // Load data for personal tab
@@ -1983,72 +1876,6 @@ const getAttendanceType = (status) => {
       return 'Chưa xác định'
   }
 }
-const closeHistoryColumns = [
-  { key: 'stt', label: 'STT' },
-  { key: 'closeDate', label: 'Ngày chốt công' },
-  { key: 'content', label: 'Nội dung chốt' },
-  { key: 'createdBy', label: 'Người lập' },
-  { key: 'createdDate', label: 'Ngày lập' },
-  { key: 'active', label: 'Hiệu lực', class: 'text-center' }
-];
-
-const closeHistoryData = ref([
-  {
-    stt: 1,
-    closeDate: '31/08/2025',
-    content: 'Chốt công tháng 8/2025',
-    createdBy: 'Nguyễn Thạc Hùng',
-    createdDate: '01/09/2025',
-    active: true
-  },
-  {
-    stt: 2,
-    closeDate: '31/07/2025',
-    content: 'Chốt công tháng 7/2025',
-    createdBy: 'Trần Nha Trang',
-    createdDate: '01/08/2025',
-    active: false
-  }
-]);
-
-function toggleCloseActive(item) {
-  item.active = !item.active;
-  // Có thể thêm logic gọi API cập nhật trạng thái ở đây
-}
-const feedbackColumns = [
-  { key: 'stt', label: 'STT' },
-  { key: 'title', label: 'Tiêu đề' },
-  { key: 'id', label: 'Mã nhân viên' },
-  { key: 'name', label: 'Tên nhân viên' },
-  { key: 'time', label: 'Thời gian' },
-  { key: 'content', label: 'Nội dung' },
-  { key: 'createdBy', label: 'Người lập' },
-  { key: 'createdDate', label: 'Ngày lập' },
-  { key: 'actions', label: 'Thao tác', class: 'text-center' }
-];
-
-const feedbackData = [
-  {
-    stt: 1,
-    title: 'Phản ánh về giờ vào',
-    id: 'NV0001',
-    name: 'Vũ Thị Hợp',
-    time: '08:45 01/09/2025',
-    content: 'Giờ vào bị ghi nhận sai do máy lỗi.',
-    createdBy: 'Vũ Thị Hợp',
-    createdDate: '01/09/2025'
-  },
-  {
-    stt: 2,
-    title: 'Phản ánh về ca làm việc',
-    id: 'NV0002',
-    name: 'Trần Nha Trang',
-    time: '17:30 01/09/2025',
-    content: 'Ca làm việc chưa cập nhật đúng.',
-    createdBy: 'Trần Nha Trang',
-    createdDate: '01/09/2025'
-  }
-];
 
 // Phân trang cho các tab chi tiết
 const detailCurrentPage = ref(1)
@@ -2205,8 +2032,7 @@ watch([selectedYear, selectedMonth], async () => {
     ])
   }
   
-  // Fetch closing status when year/month changes
-  await fetchClosingStatus(selectedYear.value, selectedMonth.value)
+
 })
 
 // Load detail data from API
@@ -3105,8 +2931,6 @@ onMounted(async () => {
     if (allowed.includes(qTab)) activeTab.value = qTab
   }
 
-  // Load closing status
-  await fetchClosingStatus(selectedYear.value, selectedMonth.value)
 
   // Load employees first
   console.log('Fetching all employees...');
@@ -3250,19 +3074,7 @@ watch(() => route.query.tab, (newTab) => {
   }
 })
 
-const closeHistoryCurrentPage = ref(1)
-const closeHistoryItemsPerPage = ref(10)
-const paginatedCloseHistoryData = computed(() => {
-  const start = (closeHistoryCurrentPage.value - 1) * closeHistoryItemsPerPage.value
-  return closeHistoryData.value.slice(start, start + closeHistoryItemsPerPage.value)
-})
 
-const feedbackCurrentPage = ref(1)
-const feedbackItemsPerPage = ref(10)
-const paginatedFeedbackData = computed(() => {
-  const start = (feedbackCurrentPage.value - 1) * feedbackItemsPerPage.value
-  return feedbackData.slice(start, start + feedbackItemsPerPage.value)
-})
 
 // Personal attendance tab logic
 const personalAttendanceColumns = computed(() => {
@@ -3667,33 +3479,6 @@ const getEmployeeFullName = (employee) => {
                 </div>
               </div>
               
-              <!-- Cột phải: Nút chốt công + Trạng thái chốt -->
-              <div class="col-md-4">
-                <div class="d-flex align-items-center gap-3 justify-content-end">
-                  <!-- Nút chốt công -->
-                  <button 
-                    v-if="canCloseSheets && !isAllSheetsClosed"
-                    class="btn btn-primary btn-sm" 
-                    @click="handleCloseTimeSheet" 
-                    :disabled="attendanceLoading || closingLoading"
-                    title="Chốt bảng công"
-                  >
-                    <i v-if="closingLoading" class="fas fa-spinner fa-spin me-1"></i>
-                    <i v-else class="fas fa-lock me-1"></i>
-                    Chốt công
-                  </button>
-                  
-                  <!-- Trạng thái chốt (đơn giản) -->
-                  <div class="closing-status-simple">
-                    <span :class="`status-badge-simple ${getClosingStatusColor()}`">
-                      <i v-if="isAllSheetsClosed" class="fas fa-check-circle me-1"></i>
-                      <i v-else-if="isAnySheetClosed" class="fas fa-clock me-1"></i>
-                      <i v-else class="fas fa-exclamation-triangle me-1"></i>
-                      {{ getClosingStatusText() }}
-                    </span>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
           <div class="attendance-summary-table">
@@ -3883,7 +3668,8 @@ const getEmployeeFullName = (employee) => {
                   <div v-if="filteredAttendanceHistory.length > 0">
                     <DataTable :columns="attendanceColumnsNoActions" :data="filteredAttendanceHistory">
                       <template #avatar="{ item }">
-                        <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar" />
+                        <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar clickable-image" 
+                             @click="handleImageClick(item.avatar, 'checkin')" />
                       </template>
                       <template #refCode="{ item }">
                         <!-- Debug info -->
@@ -4046,14 +3832,6 @@ const getEmployeeFullName = (employee) => {
                     <i class="fas fa-chart-bar me-2"></i>
                     Thống kê tháng {{ selectedMonth }}/{{ selectedYear }}
                   </h6>
-                  <button 
-                    class="btn btn-feedback-attendance"
-                    @click="openAttendanceFeedbackModal"
-                    title="Phản ánh về bảng công"
-                  >
-                    <i class="fas fa-comment-dots me-2"></i>
-                    <span class="fw-semibold">Phản ánh công</span>
-                  </button>
                 </div>
                 <div class="card-body">
                   <div class="row text-center">
@@ -4206,14 +3984,6 @@ const getEmployeeFullName = (employee) => {
                     <i class="fas fa-chart-bar me-2"></i>
                     Thống kê tăng ca tháng {{ selectedMonth }}/{{ selectedYear }}
                   </h6>
-                  <button 
-                    class="btn btn-feedback-overtime"
-                    @click="openOvertimeFeedbackModal"
-                    title="Phản ánh về công tăng ca"
-                  >
-                    <i class="fas fa-comment-dots me-2"></i>
-                    <span class="fw-semibold">Phản ánh tăng ca</span>
-                  </button>
                 </div>
                 <div class="card-body">
                   <div class="row text-center">
@@ -4331,34 +4101,7 @@ const getEmployeeFullName = (employee) => {
                   </div>
                 </div>
               </div>
-              
-              <!-- Cột phải: Nút chốt tăng ca + Trạng thái chốt -->
-              <div class="col-md-4">
-                <div class="d-flex align-items-center gap-3 justify-content-end">
-                  <!-- Nút chốt tăng ca -->
-                  <button 
-                    v-if="canCloseSheets && !closingStatus.isOvertimeSheetClosed"
-                    class="btn btn-primary btn-sm" 
-                    @click="handleCloseOvertimeSheet" 
-                    :disabled="overtimeLoading || closingLoading"
-                    title="Chốt bảng công tăng ca"
-                  >
-                    <i v-if="closingLoading" class="fas fa-spinner fa-spin me-1"></i>
-                    <i v-else class="fas fa-lock me-1"></i>
-                    Chốt tăng ca
-                  </button>
-                  
-                  <!-- Trạng thái chốt (đơn giản) -->
-                  <div class="closing-status-simple">
-                    <span :class="`status-badge-simple ${getClosingStatusColor()}`">
-                      <i v-if="isAllSheetsClosed" class="fas fa-check-circle me-1"></i>
-                      <i v-else-if="isAnySheetClosed" class="fas fa-clock me-1"></i>
-                      <i v-else class="fas fa-exclamation-triangle me-1"></i>
-                      {{ getClosingStatusText() }}
-                    </span>
-                  </div>
-                </div>
-              </div>
+
             </div>
           </div>
 
@@ -4751,7 +4494,7 @@ const getEmployeeFullName = (employee) => {
                   <div>
                     <strong>Trạng thái chốt:</strong>
                     <span v-if="closingStatus.isTimeSheetClosed">
-                      Bảng công đã chốt: {{ formatClosingDate(closingStatus.timeSheetClosedAt) }}
+                      Bảng công đã chốt: {{ closingStatus.timeSheetClosedAt }}
                       <span v-if="closingStatus.timeSheetClosedBy"> bởi {{ closingStatus.timeSheetClosedBy }}</span>
                     </span>
                     <span v-else>Bảng công chưa chốt</span>
@@ -4762,7 +4505,8 @@ const getEmployeeFullName = (employee) => {
             
             <DataTable :columns="attendanceDataColumns" :data="paginatedAttendanceData">
               <template #avatar="{ item }">
-                <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar" />
+                <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar clickable-image" 
+                     @click="handleImageClick(item.avatar, 'checkin')" />
               </template>
               <template #type="{ item }">
                 <span :class="{
@@ -4777,295 +4521,6 @@ const getEmployeeFullName = (employee) => {
               :currentPage="attendanceCurrentPage" @update:currentPage="attendanceCurrentPage = $event" />
           </div>
         </div>
-        <div v-else-if="activeTab === 'closeHistory'">
-          <!-- Header Section -->
-          <div class="closing-history-header mb-4">
-            <div class="row g-3 align-items-center">
-              <div class="col-md-6">
-                <div class="time-filter-compact">
-                  <div class="d-flex align-items-center gap-3">
-                    <button 
-                      class="btn btn-outline-light btn-sm" 
-                      @click="goToPreviousMonth"
-                      title="Tháng trước"
-                    >
-                      <i class="fas fa-chevron-left"></i>
-                    </button>
-                    <div class="text-center px-3">
-                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
-                    </div>
-                    <button 
-                      class="btn btn-outline-light btn-sm" 
-                      @click="goToNextMonth"
-                      title="Tháng sau"
-                    >
-                      <i class="fas fa-chevron-right"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div class="col-md-6 text-end">
-                <button 
-                  class="btn btn-outline-light btn-sm"
-                  @click="fetchClosingHistory(selectedYear, selectedMonth)"
-                  :disabled="historyLoading"
-                >
-                  <i v-if="historyLoading" class="fas fa-spinner fa-spin me-1"></i>
-                  <i v-else class="fas fa-sync-alt me-1"></i>
-                  Làm mới
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Loading State -->
-          <div v-if="historyLoading" class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">Đang tải...</span>
-            </div>
-            <p class="mt-3 text-muted">Đang tải lịch sử chốt công...</p>
-          </div>
-
-          <!-- Error State -->
-          <div v-else-if="historyError" class="alert alert-danger">
-            <i class="fas fa-exclamation-triangle me-2"></i>
-            {{ historyError }}
-          </div>
-
-          <!-- History Content -->
-          <div v-else-if="closingHistory" class="closing-history-content">
-            <!-- Summary Cards -->
-            <div class="row mb-4">
-              <div class="col-md-4">
-                <div class="summary-card timesheet-card">
-                  <div class="card-icon">
-                    <i class="fas fa-table"></i>
-                    <div class="icon-bg"></div>
-                  </div>
-                  <div class="card-content">
-                    <h3 class="card-number">{{ closingHistory.TotalClosedTimeSheets }}</h3>
-                    <p class="card-label">Bảng công đã chốt</p>
-                    <div class="card-status">
-                      <span class="status-dot success"></span>
-                      <span>Hoàn thành</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="col-md-4">
-                <div class="summary-card payroll-card">
-                  <div class="card-icon">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <div class="icon-bg"></div>
-                  </div>
-                  <div class="card-content">
-                    <h3 class="card-number">{{ closingHistory.TotalClosedPayrolls }}</h3>
-                    <p class="card-label">Bảng lương đã chốt</p>
-                    <div class="card-status">
-                      <span class="status-dot info"></span>
-                      <span>Hoàn thành</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="col-md-4">
-                <div class="summary-card overtime-card">
-                  <div class="card-icon">
-                    <i class="fas fa-business-time"></i>
-                    <div class="icon-bg"></div>
-                  </div>
-                  <div class="card-content">
-                    <h3 class="card-number">{{ closingHistory.TotalClosedOvertimeSheets }}</h3>
-                    <p class="card-label">Bảng tăng ca đã chốt</p>
-                    <div class="card-status">
-                      <span class="status-dot warning"></span>
-                      <span>Hoàn thành</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- TimeSheets Table -->
-            <div v-if="closingHistory.TimeSheets && closingHistory.TimeSheets.length > 0" class="mb-4">
-              <div class="table-header">
-                <div class="table-title">
-                  <div class="title-icon timesheet-icon">
-                    <i class="fas fa-table"></i>
-                  </div>
-                  <div class="title-content">
-                    <h5 class="mb-1">Bảng công đã chốt</h5>
-                    <p class="mb-0 text-muted">{{ closingHistory.TimeSheets.length }} bảng đã được chốt</p>
-                  </div>
-                </div>
-                <div class="table-status">
-                  <span class="status-badge success">
-                    <i class="fas fa-check-circle me-1"></i>
-                    Hoàn thành
-                  </span>
-                </div>
-              </div>
-              <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                  <thead class="table-success">
-                    <tr>
-                      <th>Nhân viên</th>
-                      <th>Tổng ngày công</th>
-                      <th>Ngày nghỉ</th>
-                      <th>Ngày nghỉ phép</th>
-                      <th>Chốt bởi</th>
-                      <th>Thời gian chốt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="timesheet in closingHistory.TimeSheets" :key="timesheet.ID">
-                      <td>{{ timesheet.EmployeeName }}</td>
-                      <td>{{ timesheet.TotalWorkingDays }}</td>
-                      <td>{{ timesheet.TotalAbsentDays }}</td>
-                      <td>{{ timesheet.TotalLeaveDays }}</td>
-                      <td>{{ timesheet.ClosedBy }}</td>
-                      <td>{{ formatClosingDate(timesheet.ClosedAt) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Payrolls Table -->
-            <div v-if="closingHistory.Payrolls && closingHistory.Payrolls.length > 0" class="mb-4">
-              <div class="table-header">
-                <div class="table-title">
-                  <div class="title-icon payroll-icon">
-                    <i class="fas fa-money-bill-wave"></i>
-                  </div>
-                  <div class="title-content">
-                    <h5 class="mb-1">Bảng lương đã chốt</h5>
-                    <p class="mb-0 text-muted">{{ closingHistory.Payrolls.length }} bảng đã được chốt</p>
-                  </div>
-                </div>
-                <div class="table-status">
-                  <span class="status-badge info">
-                    <i class="fas fa-check-circle me-1"></i>
-                    Hoàn thành
-                  </span>
-                </div>
-              </div>
-              <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                  <thead class="table-info">
-                    <tr>
-                      <th>Nhân viên</th>
-                      <th>Lương cơ bản</th>
-                      <th>Tổng lương</th>
-                      <th>Chốt bởi</th>
-                      <th>Thời gian chốt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="payroll in closingHistory.Payrolls" :key="payroll.ID">
-                      <td>{{ payroll.EmployeeName }}</td>
-                      <td>{{ payroll.BaseSalary?.toLocaleString() }} VNĐ</td>
-                      <td>{{ payroll.TotalSalary?.toLocaleString() }} VNĐ</td>
-                      <td>{{ payroll.ClosedBy }}</td>
-                      <td>{{ formatClosingDate(payroll.ClosedAt) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- OvertimeSheets Table -->
-            <div v-if="closingHistory.OvertimeSheets && closingHistory.OvertimeSheets.length > 0" class="mb-4">
-              <div class="table-header">
-                <div class="table-title">
-                  <div class="title-icon overtime-icon">
-                    <i class="fas fa-business-time"></i>
-                  </div>
-                  <div class="title-content">
-                    <h5 class="mb-1">Bảng tăng ca đã chốt</h5>
-                    <p class="mb-0 text-muted">{{ closingHistory.OvertimeSheets.length }} bảng đã được chốt</p>
-                  </div>
-                </div>
-                <div class="table-status">
-                  <span class="status-badge warning">
-                    <i class="fas fa-check-circle me-1"></i>
-                    Hoàn thành
-                  </span>
-                </div>
-              </div>
-              <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                  <thead class="table-warning">
-                    <tr>
-                      <th>Nhân viên</th>
-                      <th>Tổng ngày tăng ca</th>
-                      <th>Tổng giờ tăng ca</th>
-                      <th>Lương tăng ca</th>
-                      <th>Chốt bởi</th>
-                      <th>Thời gian chốt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="overtime in closingHistory.OvertimeSheets" :key="overtime.ID">
-                      <td>{{ overtime.EmployeeName }}</td>
-                      <td>{{ overtime.TotalOvertimeDays }}</td>
-                      <td>{{ overtime.TotalOvertimeHours }}</td>
-                      <td>{{ overtime.OvertimeSalary?.toLocaleString() }} VNĐ</td>
-                      <td>{{ overtime.ClosedBy }}</td>
-                      <td>{{ formatClosingDate(overtime.ClosedAt) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Empty State -->
-            <div v-if="!closingHistory.TimeSheets?.length && !closingHistory.Payrolls?.length && !closingHistory.OvertimeSheets?.length" 
-                 class="text-center py-5">
-              <i class="fas fa-history fa-3x text-muted mb-3"></i>
-              <h5 class="text-muted">Chưa có dữ liệu chốt công</h5>
-              <p class="text-muted">Tháng {{ selectedMonth }}/{{ selectedYear }} chưa có bảng nào được chốt.</p>
-            </div>
-          </div>
-        </div>
-        <div v-else-if="activeTab === 'feedbackHistory'">
-          <!-- Header Section -->
-          <div class="feedback-history-header mb-4">
-            <div class="row g-3 align-items-center">
-              <div class="col-md-8">
-                <h6 class="mb-0 fw-semibold text-white">
-                  <i class="fas fa-comment-dots me-2"></i>
-                  Lịch sử phản ánh bảng công
-                </h6>
-                <p class="mb-0 text-white-50 small">Xem và quản lý các phản ánh về bảng công của bạn</p>
-              </div>
-              <div class="col-md-4 text-end">
-                <button 
-                  class="btn btn-outline-light btn-sm"
-                  @click="fetchMyTimeSheetFeedbacks"
-                  :disabled="timeSheetFeedbackLoading"
-                >
-                  <i v-if="timeSheetFeedbackLoading" class="fas fa-spinner fa-spin me-1"></i>
-                  <i v-else class="fas fa-sync-alt me-1"></i>
-                  Làm mới
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Feedback List -->
-          <div class="feedback-history-content">
-            <FeedbackList
-              :feedbacks="timeSheetFeedbacks"
-              :loading="timeSheetFeedbackLoading"
-              :error="timeSheetFeedbackError"
-              type="timesheet"
-              empty-message="Bạn chưa có phản ánh nào về bảng công."
-              @edit="handleEditFeedback"
-              @delete="handleDeleteFeedback"
-            />
-          </div>
-        </div>
         <div v-else>
           <div class="text-muted">Nội dung tab "{{tabs.find(t => t.key === activeTab)?.label}}" sẽ được mô tả sau.
           </div>
@@ -5073,27 +4528,21 @@ const getEmployeeFullName = (employee) => {
       </div>
     </div>
 
-    <!-- Feedback Modals -->
-    <FeedbackModal
-      :show="showAttendanceFeedbackModal"
-      title="Phản ánh bảng công"
-      :loading="timeSheetFeedbackLoading"
-      :edit-data="selectedFeedbackForEdit"
-      type="timesheet"
-      @update:show="closeAttendanceFeedbackModal"
-      @submit="handleAttendanceFeedbackSubmit"
-    />
-
-    <FeedbackModal
-      :show="showOvertimeFeedbackModal"
-      title="Phản ánh công tăng ca"
-      :loading="timeSheetFeedbackLoading"
-      :edit-data="selectedFeedbackForEdit"
-      type="timesheet"
-      @update:show="closeOvertimeFeedbackModal"
-      @submit="handleOvertimeFeedbackSubmit"
-    />
   </div>
+
+  <!-- Modal Zoom Ảnh -->
+  <ModalDialog v-if="selectedImage" :show="showImageModal" @update:show="showImageModal = $event"
+    title="Xem Chi Tiết Ảnh Chấm Công" size="xl">
+    <div class="image-zoom-container">
+      <img :src="selectedImage.url" :alt="'Ảnh chấm công ' + selectedImage.type" class="img-zoom" />
+      <div class="image-info mt-3">
+        <div class="text-muted small">
+          <i class="fas fa-camera me-1"></i>
+          Ảnh {{ selectedImage.type === 'checkin' ? 'chấm công vào' : 'chấm công ra' }}
+        </div>
+      </div>
+    </div>
+  </ModalDialog>
 </template>
 
 
@@ -5268,6 +4717,42 @@ const getEmployeeFullName = (employee) => {
   border-radius: 50%;
   object-fit: cover;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.clickable-image {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.clickable-image:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+/* Image zoom modal styles */
+.image-zoom-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 1rem;
+}
+
+.img-zoom {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.image-info {
+  width: 100%;
+  text-align: center;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
 }
 
 @media (max-width: 900px) {
