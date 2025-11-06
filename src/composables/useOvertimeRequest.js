@@ -73,6 +73,74 @@ export function useOvertimeRequest() {
     }
   };
 
+  const submitOvertimeRequestForApproval = async (voucherCode, notes) => {
+    try {
+      loading.value = true;
+      error.value = null;
+      await overtimeRequestService.submitForApproval(voucherCode, notes);
+      await fetchOvertimeRequests();
+      showMessage('Gửi duyệt thành công!', 'success');
+    } catch (err) {
+      console.error('Error in submitOvertimeRequestForApproval:', err);
+      error.value = err.response?.data?.message || err.message || 'Không thể gửi duyệt';
+      showMessage(error.value, 'error');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const approveOvertimeRequest = async (voucherCode, notes) => {
+    try {
+      loading.value = true;
+      error.value = null;
+      await overtimeRequestService.approve(voucherCode, notes);
+      await fetchOvertimeRequests();
+      showMessage('Duyệt đơn thành công!', 'success');
+    } catch (err) {
+      console.error('Error in approveOvertimeRequest:', err);
+      error.value = err.response?.data?.message || err.message || 'Không thể duyệt đơn';
+      showMessage(error.value, 'error');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const rejectOvertimeRequest = async (voucherCode, notes) => {
+    try {
+      loading.value = true;
+      error.value = null;
+      await overtimeRequestService.reject(voucherCode, notes);
+      await fetchOvertimeRequests();
+      showMessage('Từ chối đơn thành công!', 'success');
+    } catch (err) {
+      console.error('Error in rejectOvertimeRequest:', err);
+      error.value = err.response?.data?.message || err.message || 'Không thể từ chối đơn';
+      showMessage(error.value, 'error');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const returnOvertimeRequest = async (voucherCode, notes) => {
+    try {
+      loading.value = true;
+      error.value = null;
+      await overtimeRequestService.return(voucherCode, notes);
+      await fetchOvertimeRequests();
+      showMessage('Trả lại đơn thành công!', 'success');
+    } catch (err) {
+      console.error('Error in returnOvertimeRequest:', err);
+      error.value = err.response?.data?.message || err.message || 'Không thể trả lại đơn';
+      showMessage(error.value, 'error');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     overtimeRequests,
     loading,
@@ -81,5 +149,9 @@ export function useOvertimeRequest() {
     createOvertimeRequest,
     updateOvertimeRequest,
     deleteOvertimeRequest,
+    submitOvertimeRequestForApproval,
+    approveOvertimeRequest,
+    rejectOvertimeRequest,
+    returnOvertimeRequest,
   };
 }

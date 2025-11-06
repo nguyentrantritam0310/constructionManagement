@@ -86,6 +86,22 @@ export function useShiftAssignment() {
     }
   }
 
+  // Get shift assignments by construction task ID
+  const getShiftAssignmentsByConstructionTaskId = async (constructionTaskId) => {
+    try {
+      loading.value = true
+      error.value = null
+      const data = await shiftAssignmentService.getShiftAssignmentsByConstructionTaskId(constructionTaskId)
+      return data
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Có lỗi xảy ra khi tải phân ca theo nhiệm vụ'
+      console.error('Error fetching shift assignments by construction task:', err)
+      return []
+    } finally {
+      loading.value = false
+    }
+  }
+
   // Get shift schedule by week
   const getShiftScheduleByWeek = async (weekStartDate) => {
     try {
@@ -236,6 +252,7 @@ export function useShiftAssignment() {
     getShiftAssignmentsByEmployeeId,
     getShiftAssignmentsByDate,
     getShiftAssignmentsByDateRange,
+    getShiftAssignmentsByConstructionTaskId,
     getShiftScheduleByWeek,
     createShiftAssignment,
     updateShiftAssignment,

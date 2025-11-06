@@ -21,7 +21,10 @@
 
       <div class="forecast-content">
         <div v-if="loading" class="loading-container">
-          <NyanCatLoader />
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Đang tải...</span>
+          </div>
+          <p class="loading-text">Đang tải dự báo thời tiết...</p>
         </div>
         <div v-else-if="error" class="error">{{ error }}</div>
         <div v-else>
@@ -161,7 +164,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api.js'
-import NyanCatLoader from '@/components/common/NyanCatLoader.vue'
 import { useConstructionManagement } from '@/composables/useConstructionManagement'
 
 const { constructions, fetchConstructions } = useConstructionManagement()
@@ -309,10 +311,38 @@ const fetchForecast = async () => {
         lng: lng.toFixed(4)
       }
     })
+    
+    // Kiểm tra response có dữ liệu hợp lệ không
+    if (!res.data || !res.data.forecast) {
+      error.value = 'Không nhận được dữ liệu dự báo từ server'
+      return
+    }
+    
     forecast.value = res.data.forecast
-    metrics.value = res.data.metrics
+    metrics.value = res.data.metrics || {}
   } catch (err) {
-    error.value = err.message || 'Lỗi không xác định'
+    console.error('Error fetching weather forecast:', err)
+    
+    // Xử lý lỗi chi tiết hơn
+    if (err.response) {
+      // Server trả về response nhưng có status lỗi
+      const status = err.response.status
+      const message = err.response.data?.message || err.response.data || 'Lỗi từ server'
+      
+      if (status === 500) {
+        error.value = `Lỗi server (500): ${message}. Vui lòng kiểm tra cấu hình Python script hoặc liên hệ quản trị viên.`
+      } else if (status === 400) {
+        error.value = `Dữ liệu không hợp lệ (400): ${message}`
+      } else {
+        error.value = `Lỗi ${status}: ${message}`
+      }
+    } else if (err.request) {
+      // Request đã được gửi nhưng không nhận được response
+      error.value = 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.'
+    } else {
+      // Lỗi khác
+      error.value = err.message || 'Lỗi không xác định khi tải dự báo thời tiết'
+    }
   } finally {
     loading.value = false
   }
@@ -598,19 +628,29 @@ const weatherAverages = computed(() => {
   right: 0;
   bottom: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(5px);
   border-radius: 16px;
   z-index: 10;
 }
 
-/* Remove old loading styles */
-.loading,
-.spinner {
-  display: none;
+.loading-text {
+  color: #2980b9;
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin: 0;
 }
+
+.spinner-border {
+  width: 3rem;
+  height: 3rem;
+  border-width: 0.3rem;
+}
+
 
 .construction-warning {
   background: #fff3cd;

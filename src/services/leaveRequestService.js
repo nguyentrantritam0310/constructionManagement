@@ -54,6 +54,58 @@ const leaveRequestService = {
       console.error('Error deleting leave request:', error)
       throw error
     }
+  },
+
+  // Gửi đơn nghỉ phép để duyệt
+  async submitLeaveRequestForApproval(voucherCode, notes) {
+    try {
+      const response = await api.put(`/EmployeeRequest/leave/${voucherCode}/submit`, {
+        notes: notes || null
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error submitting leave request for approval:', error)
+      throw error
+    }
+  },
+
+  // Duyệt đơn nghỉ phép
+  async approveLeaveRequest(voucherCode, notes) {
+    try {
+      const response = await api.put(`/EmployeeRequest/leave/${voucherCode}/approve`, {
+        notes: notes || null
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error approving leave request:', error)
+      throw error
+    }
+  },
+
+  // Từ chối đơn nghỉ phép
+  async rejectLeaveRequest(voucherCode, notes) {
+    try {
+      const response = await api.put(`/EmployeeRequest/leave/${voucherCode}/reject`, {
+        notes: notes || null
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error rejecting leave request:', error)
+      throw error
+    }
+  },
+
+  // Trả lại đơn nghỉ phép
+  async returnLeaveRequest(voucherCode, notes) {
+    try {
+      const response = await api.put(`/EmployeeRequest/leave/${voucherCode}/return`, {
+        notes: notes || null
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error returning leave request:', error)
+      throw error
+    }
   }
 }
 

@@ -18,6 +18,8 @@ import { useTask } from '../../composables/useTask'
 import { useEmployee } from '../../composables/useEmployee'
 import { useAttendance } from '../../composables/useAttendance'
 import { attendanceService } from '../../services/attendanceService'
+import { useWorkShift } from '../../composables/useWorkShift'
+import { shiftAssignmentService } from '../../services/shiftAssignmentService'
 import FormField from '@/components/common/FormField.vue'
 import api from '../../api.js'
 const { showMessage } = useGlobalMessage()
@@ -39,6 +41,9 @@ const selectedWorkers = ref([])
 const assignmentStartDate = ref('')
 const assignmentEndDate = ref('')
 const assignmentNotes = ref('')
+const { workshifts, fetchWorkShifts, loading: workShiftsLoading } = useWorkShift()
+const selectedWorkShiftIds = ref([])
+const assignmentStep = ref('select-workers') // 'select-workers', 'select-date-range', 'select-work-shifts'
 const loading = ref(false)
 const error = ref(null)
 const currentPage = ref(1)
@@ -82,7 +87,8 @@ onMounted(async () => {
       fetchConstructionDetail(constructionId),
       fetchPlans(),
       fetchAllEmployees(),
-      fetchAttendance()
+      fetchAttendance(),
+      fetchWorkShifts()
     ])
     construction.value = selectedConstruction.value
   } catch (err) {
@@ -200,53 +206,140 @@ const handlePlanStatusSubmit = async (data) => {
   }
 }
 
-const assignedWorkers = computed(() => {
-  if (!selectedTask.value) return []
-  return getAssignedWorkersForTask(selectedTask.value.id)
-})
+const assignedWorkers = ref([])
+
+// Load assigned workers for selected task
+const loadAssignedWorkers = async (taskId) => {
+  if (!taskId) {
+    assignedWorkers.value = []
+    return
+  }
+  try {
+    assignedWorkers.value = await getAssignedWorkersForTask(taskId)
+  } catch (error) {
+    console.error('Error loading assigned workers:', error)
+    assignedWorkers.value = []
+  }
+}
+
+// Watch for selectedTask changes to reload assigned workers
+watch(() => selectedTask.value?.id, async (newTaskId) => {
+  await loadAssignedWorkers(newTaskId)
+}, { immediate: true })
 
 const handleAssignWorkers = async (task) => {
   selectedTask.value = task
   selectedWorkers.value = []
+  selectedWorkShiftIds.value = []
+  assignmentStep.value = 'select-workers'
+  assignmentStartDate.value = ''
+  assignmentEndDate.value = ''
   showAssignmentModal.value = true
 }
 
 const assignWorkers = async (event) => {
   event.preventDefault()
-  try {
-    loading.value = true
-
-    // Tìm kế hoạch chứa task này
-    const plan = plans.value.find(p => p.id === selectedTask.value.constructionPlanID)
-    if (!plan) {
-      throw new Error('Không tìm thấy kế hoạch cho nhiệm vụ này')
+  
+  if (assignmentStep.value === 'select-workers') {
+    // Chuyển sang bước chọn khoảng thời gian
+    if (selectedWorkers.value.length === 0) {
+      showMessage('Vui lòng chọn ít nhất một công nhân', 'warning')
+      return
+    }
+    
+    assignmentStep.value = 'select-date-range'
+    // Set default date range: từ hôm nay đến 7 ngày sau
+    const today = new Date()
+    assignmentStartDate.value = today.toISOString().split('T')[0]
+    const endDate = new Date(today)
+    endDate.setDate(endDate.getDate() + 7)
+    assignmentEndDate.value = endDate.toISOString().split('T')[0]
+  } else if (assignmentStep.value === 'select-date-range') {
+    // Chuyển sang bước chọn ca làm việc
+    if (!assignmentStartDate.value || !assignmentEndDate.value) {
+      showMessage('Vui lòng chọn khoảng thời gian', 'warning')
+      return
     }
 
-    // Tạo attendance records cho tất cả công nhân được chọn
-    await createAttendanceForWorkers(
-      selectedWorkers.value,
+    if (new Date(assignmentStartDate.value) > new Date(assignmentEndDate.value)) {
+      showMessage('Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc', 'warning')
+      return
+    }
+
+    assignmentStep.value = 'select-work-shifts'
+  } else {
+    // Hoàn thành phân công
+    await confirmAssignWorkShifts()
+  }
+}
+
+const toggleWorkShiftSelection = (workShiftId) => {
+  const index = selectedWorkShiftIds.value.indexOf(workShiftId)
+  if (index > -1) {
+    selectedWorkShiftIds.value.splice(index, 1)
+  } else {
+    selectedWorkShiftIds.value.push(workShiftId)
+  }
+}
+
+const confirmAssignWorkShifts = async () => {
+  if (selectedWorkShiftIds.value.length === 0) {
+    showMessage('Vui lòng chọn ít nhất một ca làm việc', 'warning')
+    return
+  }
+
+  try {
+    loading.value = true
+    
+    const selectedWorkerIds = selectedWorkers.value.map(w => w.id)
+    
+    // Gán nhiệm vụ cho tất cả ShiftAssignment tương ứng
+    const result = await shiftAssignmentService.assignTaskToWorkShifts(
       selectedTask.value.id,
-      plan.startDate,
-      plan.expectedCompletionDate
+      selectedWorkerIds,
+      selectedWorkShiftIds.value,
+      assignmentStartDate.value,
+      assignmentEndDate.value
     )
-
-    // Cập nhật UI và hiển thị thông báo thành công
-    showMessage('Phân công công nhân thành công', 'success')
-
+    
+    showMessage(result.message || `Đã phân công nhiệm vụ cho ${result.count || 0} ca làm việc`, 'success')
+    
     // Refresh lại danh sách task và attendance để cập nhật UI
     await Promise.all([
       fetchTasks(selectedTask.value.constructionPlanID),
-      fetchAttendance() // Thêm fetch attendance để cập nhật danh sách công nhân đã phân công
+      fetchAttendance()
     ])
 
-    // Reset danh sách công nhân đã chọn để có thể phân công tiếp
+    // Refresh danh sách công nhân đã phân công để hiển thị ở cột bên trái
+    await loadAssignedWorkers(selectedTask.value.id)
+
+    // Reset selected workers sau khi phân công thành công
+    // Các công nhân đã chọn sẽ tự động xuất hiện ở cột "Công nhân đã phân công" 
     selectedWorkers.value = []
+    selectedWorkShiftIds.value = []
+    
+    // Giữ modal mở để user thấy công nhân đã chuyển sang cột đã phân công
+    // Chỉ reset về bước đầu để có thể phân công tiếp
+    assignmentStartDate.value = ''
+    assignmentEndDate.value = ''
+    assignmentStep.value = 'select-workers'
 
   } catch (error) {
-    console.error('Lỗi khi phân công công nhân:', error)
-    showMessage(error.message || 'Không thể phân công công nhân', 'error')
+    console.error('Lỗi khi phân công:', error)
+    showMessage(error.response?.data?.message || error.message || 'Không thể phân công', 'error')
   } finally {
     loading.value = false
+  }
+}
+
+const goBackToPreviousStep = () => {
+  if (assignmentStep.value === 'select-work-shifts') {
+    assignmentStep.value = 'select-date-range'
+    selectedWorkShiftIds.value = []
+  } else if (assignmentStep.value === 'select-date-range') {
+    assignmentStep.value = 'select-workers'
+    assignmentStartDate.value = ''
+    assignmentEndDate.value = ''
   }
 }
 
@@ -877,13 +970,6 @@ const downloadDesign = async () => {
                 Kế hoạch thi công
               </a>
             </li>
-            <li class="nav-item">
-              <a class="nav-link" :class="{ active: activeTab === 'attendance' }"
-                @click.prevent="activeTab = 'attendance'" href="#">
-                <i class="fa-solid fa-calendar-check me-2"></i>
-                Chấm công
-              </a>
-            </li>
           </ul>
 
           <!-- Tab Content -->
@@ -1120,124 +1206,6 @@ const downloadDesign = async () => {
                 </div>
               </div>
             </template>
-
-            <template v-else-if="activeTab === 'attendance'">
-              <div class="fade-in">
-                <div class="table-toolbar mb-3">
-                  <h2 class="section-title">
-                    <i class="fas fa-calendar-check me-2"></i>
-                    Chấm công
-                  </h2>
-                </div>
-
-                <div class="attendance-controls mb-4">
-                  <div class="row g-3 align-items-center">
-                    <div class="col-auto">
-                      <div class="date-picker-wrapper">
-                        <div class="input-group">
-                          <span class="input-group-text bg-white border-end-0">
-                            <i class="fas fa-calendar text-primary"></i>
-                          </span>
-                          <input type="date" class="form-control border-start-0 ps-0" v-model="selectedDate">
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div v-if="attendanceLoading" class="text-center py-4">
-                  <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                  </div>
-                </div>
-
-                <div v-else-if="attendanceError" class="alert alert-danger">
-                  {{ attendanceError }}
-                </div>
-
-                <div v-else class="attendance-table-container">
-                  <div v-if="groupedAttendance.length === 0" class="text-center py-5">
-                    <i class="fas fa-calendar-times mb-3" style="font-size: 3rem; color: #dee2e6;"></i>
-                    <h4 class="text-muted">Không có dữ liệu chấm công cho ngày này</h4>
-                    <p class="text-muted">Vui lòng chọn ngày khác hoặc thêm dữ liệu chấm công mới</p>
-                  </div>
-
-                  <template v-else>
-                    <DataTable :columns="[
-                      { key: 'employeeID', label: 'Mã công nhân' },
-                      { key: 'employeeName', label: 'Họ và tên' },
-                      { key: 'email', label: 'Email' },
-                      { key: 'tasks', label: 'Nhiệm vụ' },
-                      { key: 'status', label: 'Trạng thái' }
-                    ]" :data="paginatedGroupedAttendance" class="custom-table attendance-table">
-                      <template #employeeID="{ item }">
-                        <div class="d-flex align-items-center">
-                          <span class="text-primary fw-bold">CN-{{ item.employeeID }}</span>
-                        </div>
-                      </template>
-
-                      <template #employeeName="{ item }">
-                        <div class="d-flex align-items-center">
-                          <div class="employee-status-indicator" :class="{
-                            'status-present': item.status === 'Có mặt',
-                            'status-absent': item.status === 'Vắng mặt'
-                          }">
-                            <i class="fas" :class="{
-                              'fa-check': item.status === 'Có mặt',
-                              'fa-times': item.status === 'Vắng mặt'
-                            }"></i>
-                          </div>
-                          <span class="fw-bold ms-2">{{ item.employeeName }}</span>
-                        </div>
-                      </template>
-
-                      <template #email="{ item }">
-                        <div class="d-flex align-items-center">
-                          <i class="fas fa-envelope text-muted me-2"></i>
-                          <span>{{ item.email }}</span>
-                        </div>
-                      </template>
-
-                      <template #tasks="{ item }">
-                        <div class="task-list">
-                          <div class="task-items">
-                            <div v-for="(task, index) in item.tasks.slice(0, 2)" :key="task.taskId" class="task-item">
-                              <span class="task-name fw-bold">{{ task.taskName }}</span>
-                            </div>
-                            <button v-if="item.tasks.length > 2" class="btn-view-more"
-                              @click="showTaskDetails(item.tasks, item.employeeName)">
-                              +{{ item.tasks.length - 2 }}
-                            </button>
-                          </div>
-                        </div>
-                      </template>
-
-                      <template #status="{ item }">
-                        <div class="status-wrapper">
-
-                          <FormField type="select"
-                            :model-value="temporaryStatusChanges.get(item.employeeID) || item.status" :options="[
-                              { value: 'Có mặt', label: 'Có mặt' },
-                              { value: 'Vắng mặt', label: 'Vắng mặt' }
-                            ]"
-                            @update:model-value="(newStatus) => updateEmployeeAttendanceStatus(item.employeeID, newStatus)"
-                            class="status-select" />
-                        </div>
-                      </template>
-                    </DataTable>
-
-                    <div class="d-flex justify-content-between align-items-center mt-4">
-                      <div class="text-muted">
-                        <i class="fas fa-users me-1"></i>
-                        Hiển thị {{ paginatedGroupedAttendance.length }} trên {{ groupedAttendance.length }} công nhân
-                      </div>
-                      <Pagination :total-items="groupedAttendance.length" :items-per-page="attendancePerPage"
-                        :current-page="currentAttendancePage" @update:currentPage="handleAttendancePageChange" />
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </template>
           </div>
         </div>
       </div>
@@ -1262,13 +1230,16 @@ const downloadDesign = async () => {
 
     <!-- Update Assignment Modal -->
     <template v-if="selectedTask">
-      <ModalDialog :show="showAssignmentModal" @update:show="showAssignmentModal = $event" title="Phân công công nhân"
+      <ModalDialog :show="showAssignmentModal" @update:show="showAssignmentModal = $event" 
+        :title="assignmentStep === 'select-workers' ? 'Phân công công nhân' : assignmentStep === 'select-date-range' ? 'Chọn khoảng thời gian' : 'Chọn ca làm việc'"
         size="lg">
         <div v-if="selectedTask.statusName !== 'Chờ khởi công'" class="alert alert-warning mb-3">
           <i class="fas fa-exclamation-triangle me-2"></i>
           Chỉ có thể phân công công nhân cho nhiệm vụ chờ khởi công
         </div>
-        <form @submit.prevent="assignWorkers">
+        
+        <!-- Step 1: Chọn công nhân -->
+        <form v-if="assignmentStep === 'select-workers'" @submit.prevent="assignWorkers">
           <div class="row g-4">
             <!-- Right Column: Add New Workers -->
             <div class="col-md-6">
@@ -1366,14 +1337,154 @@ const downloadDesign = async () => {
             </div>
           </div>
 
-          <div class="card-footer bg-white border-top-0 text-end">
+          <div class="card-footer bg-white border-top-0 d-flex justify-content-between">
+            <button type="button" class="btn btn-secondary" @click="showAssignmentModal = false">
+              Hủy
+            </button>
             <button type="submit" class="btn btn-primary px-4"
               :disabled="selectedWorkers.length === 0 || selectedTask.statusName !== 'Chờ khởi công'">
-              <i class="fas fa-save me-1"></i>
-              Phân công
+              <i class="fas fa-arrow-right me-1"></i>
+              Tiếp theo: Chọn khoảng thời gian
             </button>
           </div>
         </form>
+
+        <!-- Step 2: Chọn khoảng thời gian -->
+        <div v-else-if="assignmentStep === 'select-date-range'">
+          <div class="alert alert-info mb-3">
+            <h6 class="mb-1">Nhiệm vụ #{{ selectedTask.id }}</h6>
+            <p class="mb-0">Đã chọn <strong>{{ selectedWorkers.length }}</strong> công nhân. Chọn khoảng thời gian để chọn ca làm việc.</p>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Từ ngày</label>
+              <input 
+                type="date" 
+                class="form-control" 
+                v-model="assignmentStartDate"
+              />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Đến ngày</label>
+              <input 
+                type="date" 
+                class="form-control" 
+                v-model="assignmentEndDate"
+              />
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between mt-4">
+            <button class="btn btn-secondary" @click="goBackToPreviousStep">
+              <i class="fas fa-arrow-left me-2"></i>
+              Quay lại
+            </button>
+            <div class="d-flex gap-2">
+              <button class="btn btn-outline-secondary" @click="showAssignmentModal = false">
+                Hủy
+              </button>
+              <button 
+                type="button"
+                class="btn btn-primary" 
+                @click="assignWorkers"
+                :disabled="!assignmentStartDate || !assignmentEndDate"
+              >
+                <i class="fas fa-arrow-right me-2"></i>
+                Tiếp theo: Chọn ca làm việc
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Chọn ca làm việc -->
+        <div v-else-if="assignmentStep === 'select-work-shifts'">
+          <div class="alert alert-info mb-3">
+            <h6 class="mb-1">Nhiệm vụ #{{ selectedTask.id }}</h6>
+            <p class="mb-0">
+              Đã chọn <strong>{{ selectedWorkers.length }}</strong> công nhân. 
+              Khoảng thời gian: <strong>{{ formatDate(assignmentStartDate) }}</strong> - <strong>{{ formatDate(assignmentEndDate) }}</strong>
+            </p>
+          </div>
+
+          <div v-if="workShiftsLoading" class="text-center py-4">
+            <div class="spinner-border text-primary"></div>
+            <p class="text-muted mt-2">Đang tải danh sách ca làm việc...</p>
+          </div>
+
+          <div v-else-if="workshifts.length === 0" class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Không có ca làm việc nào trong hệ thống.
+          </div>
+
+          <div v-else class="mb-3">
+            <label class="form-label fw-bold">
+              Chọn ca làm việc ({{ workshifts.length }} ca)
+            </label>
+            <p class="text-muted small mb-2">
+              Tất cả ShiftAssignment của các công nhân đã chọn, có ca làm việc được chọn, trong khoảng thời gian sẽ được cập nhật.
+            </p>
+            <div class="shift-list border rounded p-2" style="max-height: 400px; overflow-y: auto;">
+              <div 
+                v-for="workshift in workshifts" 
+                :key="workshift.id"
+                class="shift-item p-3 mb-2 rounded d-flex justify-content-between align-items-center border"
+                :class="{ 
+                  'bg-primary text-white border-primary': selectedWorkShiftIds.includes(workshift.id)
+                }"
+                @click="toggleWorkShiftSelection(workshift.id)"
+                style="cursor: pointer; transition: all 0.2s;"
+              >
+                <div class="flex-grow-1">
+                  <div class="fw-bold">{{ workshift.shiftName }}</div>
+                  <div v-if="workshift.shiftDetails && workshift.shiftDetails.length > 0" 
+                       class="small mt-1"
+                       :class="selectedWorkShiftIds.includes(workshift.id) ? 'text-white-50' : 'text-muted'">
+                    <template v-for="(detail, index) in workshift.shiftDetails" :key="index">
+                      <i class="fas fa-clock me-1"></i>
+                      {{ detail.startTime }} - {{ detail.endTime }}
+                      <span v-if="index < workshift.shiftDetails.length - 1">, </span>
+                    </template>
+                  </div>
+                </div>
+                <div>
+                  <input 
+                    type="checkbox" 
+                    class="form-check-input"
+                    :checked="selectedWorkShiftIds.includes(workshift.id)"
+                    @click.stop
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedWorkShiftIds.length > 0" class="alert alert-success">
+            Đã chọn <strong>{{ selectedWorkShiftIds.length }}</strong> ca làm việc.
+            <br><small>Tất cả ShiftAssignment của {{ selectedWorkers.length }} công nhân đã chọn, có các ca này, trong khoảng từ {{ formatDate(assignmentStartDate) }} đến {{ formatDate(assignmentEndDate) }} sẽ được gán nhiệm vụ này.</small>
+          </div>
+
+          <div class="d-flex justify-content-between mt-4">
+            <button class="btn btn-secondary" @click="goBackToPreviousStep">
+              <i class="fas fa-arrow-left me-2"></i>
+              Quay lại
+            </button>
+            <div class="d-flex gap-2">
+              <button class="btn btn-outline-secondary" @click="showAssignmentModal = false">
+                Hủy
+              </button>
+              <button 
+                type="button"
+                class="btn btn-primary" 
+                @click="confirmAssignWorkShifts"
+                :disabled="loading || selectedWorkShiftIds.length === 0"
+              >
+                <i class="fas fa-check me-2"></i>
+                Phân công ({{ selectedWorkShiftIds.length }} ca)
+              </button>
+            </div>
+          </div>
+        </div>
       </ModalDialog>
     </template>
 

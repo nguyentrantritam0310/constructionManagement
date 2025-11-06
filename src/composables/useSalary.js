@@ -29,13 +29,31 @@ export function useSalary() {
   const { overtimeRequests, fetchOvertimeRequests } = useOvertimeRequest()
   const { payrollAdjustments, fetchPayrollAdjustments } = usePayrollAdjustment()
 
+  // Helper function to check if approveStatus indicates approved
+  // Supports both string ('Đã duyệt', 'Approved') and number (2) formats
+  const isApproved = (approveStatus) => {
+    if (!approveStatus) return false
+    // Check for string values
+    if (typeof approveStatus === 'string') {
+      return approveStatus === 'Đã duyệt' || approveStatus === 'Approved'
+    }
+    // Check for number values (ApproveStatusEnum.Approved = 2)
+    if (typeof approveStatus === 'number') {
+      return approveStatus === 2
+    }
+    return false
+  }
+
   // Computed properties
   const salaryTableData = computed(() => {
     if (!employees.value || employees.value.length === 0) return []
     
     return employees.value.map((employee, index) => {
-      // Tìm hợp đồng của nhân viên
-      const contract = contracts.value.find(c => c.employeeID === employee.id)
+      // Tìm hợp đồng ĐÃ DUYỆT của nhân viên
+      // Chỉ lấy hợp đồng có approveStatus = 'Đã duyệt', 'Approved' hoặc 2
+      const contract = contracts.value.find(c => 
+        c.employeeID === employee.id && isApproved(c.approveStatus)
+      )
       
       // Tìm dữ liệu chấm công của nhân viên trong tháng
       const attendanceData = attendanceList.value.filter(att => 
@@ -45,6 +63,7 @@ export function useSalary() {
       )
 
       // Tính toán các chỉ số từ dữ liệu thực tế
+      // Nếu không có hợp đồng đã duyệt, lương = 0
       const contractSalary = contract?.contractSalary || 0
       const insuranceSalary = contract?.insuranceSalary || 0
       
@@ -78,7 +97,7 @@ export function useSalary() {
       
       const totalDays = uniqueWorkDays.size
       
-      // Tính tổng nghỉ có lương = tổng số ngày nghỉ phép từ leave requests
+      // Tính tổng nghỉ có lương = tổng số ngày nghỉ phép từ leave requests ĐÃ DUYỆT
       const approvedLeaveRequests = leaveRequests.value.filter(leave => {
         const leaveStartDate = new Date(leave.startDateTime)
         const leaveEndDate = new Date(leave.endDateTime)
@@ -86,7 +105,7 @@ export function useSalary() {
         return leave.employeeID === employee.id &&
                leaveStartDate.getMonth() + 1 === selectedMonth.value &&
                leaveStartDate.getFullYear() === selectedYear.value &&
-               (leave.approveStatus === 'Đã duyệt' || leave.approveStatus === 'Approved') &&
+               isApproved(leave.approveStatus) &&
                leave.leaveTypeName && leave.leaveTypeName.toLowerCase().includes('phép')
       })
       
@@ -104,14 +123,14 @@ export function useSalary() {
       const paidLeaveDays = totalPaidLeaveDays
       
       // Tính công tăng ca và lương tăng ca
-      // Lọc các đơn tăng ca đã duyệt trong tháng
+      // Lọc các đơn tăng ca ĐÃ DUYỆT trong tháng
       const approvedOvertimeForMonth = (overtimeRequests?.value || []).filter(ot => {
         if (!ot || !ot.startDateTime) return false
         const start = new Date(ot.startDateTime)
         const isSameMonth = (start.getFullYear() === selectedYear.value) && (start.getMonth() + 1 === selectedMonth.value)
-        const isApproved = ot.approveStatus === 'Đã duyệt' || ot.approveStatus === 'Approved' || ot.approveStatus === 2
+        const isApprovedStatus = isApproved(ot.approveStatus)
         const employeeMatch = ot.employeeID === employee.id || String(ot.employeeID) === String(employee.id)
-        return isSameMonth && isApproved && employeeMatch
+        return isSameMonth && isApprovedStatus && employeeMatch
       })
 
       // Tính tổng số giờ tăng ca và các chỉ số chi tiết
@@ -209,8 +228,9 @@ export function useSalary() {
       // Tính các khoản trừ từ khoản cộng trừ
       // Chỉ tính các khoản cộng trừ có tính chất TRỪ: Kỷ luật, Truy thu, Tạm ứng
       // và tất cả các hạng mục thuộc các khoản này
+      // CHỈ ÁP DỤNG KHI ĐÃ DUYỆT
       const getAdjustmentDeductions = (employeeId, year, month) => {
-        // Lấy các khoản cộng trừ đã duyệt trong tháng
+        // Lấy các khoản cộng trừ ĐÃ DUYỆT trong tháng
         const approvedAdjustments = (payrollAdjustments?.value || []).filter(adj => {
           if (!adj || !adj.decisionDate) return false
           const adjDate = new Date(adj.decisionDate)
@@ -219,7 +239,7 @@ export function useSalary() {
           
           return adjYear === year && 
                  adjMonth === month &&
-                 (adj.approveStatus === 'Đã duyệt' || adj.approveStatus === 'Approved') &&
+                 isApproved(adj.approveStatus) &&
                  // CHỈ LẤY CÁC KHOẢN CÓ TÍNH CHẤT TRỪ:
                  // - Kỷ luật: các hình thức kỷ luật, phạt
                  // - Truy thu: thu hồi các khoản đã chi

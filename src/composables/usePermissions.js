@@ -311,36 +311,32 @@ export function usePermissions() {
     if (!item || !canView(page)) return false
     
     // Only allow approve if status is "Chờ duyệt"
-    if (item.approveStatus !== 'Chờ duyệt') {
+    if (item.approveStatus !== 'Chờ duyệt' && item.approveStatus !== 'Pending') {
       return false
     }
     
-    const userRole = currentUser.value?.role
-    const submitterRole = item.submitterRole || item.role
+    // Người cùng cấp với người submit không được duyệt/từ chối/trả lại
+    // Phải đi theo quy trình duyệt (cấp trên mới được duyệt)
+    const currentUserRole = currentUser.value?.role
+    const submitterRole = item.submitterRole
     
-    // Logic duyệt theo luồng nghiệp vụ
-    if (userRole === 'manager' && hasPermission(page, 'approve_team')) {
-      // Chỉ huy công trình duyệt đơn của công nhân
-      const isWorkerItem = submitterRole === 'worker' || item.role === 'worker'
-      return isWorkerItem
+    if (currentUserRole && submitterRole) {
+      // Normalize role names for comparison
+      const normalizedCurrentRole = currentUserRole.toLowerCase()
+      const normalizedSubmitterRole = submitterRole.toLowerCase()
+      
+      // Nếu cùng role, không cho phép approve
+      if (normalizedCurrentRole === normalizedSubmitterRole) {
+        return false
+      }
     }
     
-    if (userRole === 'hr_employee' && hasPermission(page, 'approve_hr')) {
-      // Nhân viên HCNS duyệt đơn của chỉ huy công trình và kỹ thuật
-      return ['manager', 'technician'].includes(submitterRole)
-    }
-    
-    if (userRole === 'hr_manager' && hasPermission(page, 'approve_manager')) {
-      // Trưởng phòng HCNS duyệt đơn của nhân viên HCNS
-      return submitterRole === 'hr_employee'
-    }
-    
-    if (userRole === 'director' && hasPermission(page, 'approve_director')) {
-      // Giám đốc duyệt đơn của trưởng phòng HCNS
-      return submitterRole === 'hr_manager'
-    }
-    
-    return false
+    // Check if user has any approval permission for this page
+    // Backend will validate the detailed workflow logic
+    return hasPermission(page, 'approve_team') || 
+           hasPermission(page, 'approve_hr') || 
+           hasPermission(page, 'approve_manager') || 
+           hasPermission(page, 'approve_director')
   }
 
   // Check if user can see all data or only own data

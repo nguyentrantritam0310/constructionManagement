@@ -8,6 +8,8 @@ import { usePermissions } from '../../composables/usePermissions'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import OvertimeForm from '@/components/common/overtime/OvertimeForm.vue'
 import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
+import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
+import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
@@ -19,7 +21,11 @@ const {
   fetchOvertimeRequests,
   createOvertimeRequest,
   updateOvertimeRequest,
-  deleteOvertimeRequest
+  deleteOvertimeRequest,
+  submitOvertimeRequestForApproval,
+  approveOvertimeRequest,
+  rejectOvertimeRequest,
+  returnOvertimeRequest
 } = useOvertimeRequest()
 
 // Auth composable for role checking
@@ -59,6 +65,16 @@ const selectedItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
 
+// Approval modal states
+const showApprovalModal = ref(false)
+const pendingAction = ref('') // 'approve', 'reject', 'return', 'submit'
+const pendingVoucherCode = ref('')
+
+// Approval history modal states
+const showHistoryModal = ref(false)
+const historyRequestType = ref('')
+const historyRequestId = ref('')
+
 const handleCreate = async (formData) => {
   try {
     await createOvertimeRequest(formData)
@@ -77,33 +93,72 @@ const handleUpdate = async (formData) => {
   }
 }
 
-const handleSubmitForApproval = async (voucherCode) => {
+const handleSubmitForApproval = (voucherCode) => {
+  pendingVoucherCode.value = voucherCode
+  pendingAction.value = 'submit'
+  showApprovalModal.value = true
+}
+
+const openApprovalModal = (voucherCode, action) => {
+  pendingVoucherCode.value = voucherCode
+  pendingAction.value = action
+  showApprovalModal.value = true
+}
+
+const handleApprovalConfirm = async (notes) => {
   try {
-    // Update status to "Chờ duyệt"
-    await updateOvertimeRequest(voucherCode, { approveStatus: 'Chờ duyệt' })
-    showUpdateForm.value = false
-    selectedItem.value = null
+    const voucherCode = pendingVoucherCode.value
+    const action = pendingAction.value
+    
+    switch (action) {
+      case 'submit':
+        await submitOvertimeRequestForApproval(voucherCode, notes)
+        showUpdateForm.value = false
+        selectedItem.value = null
+        break
+      case 'approve':
+        await approveOvertimeRequest(voucherCode, notes)
+        break
+      case 'reject':
+        await rejectOvertimeRequest(voucherCode, notes)
+        break
+      case 'return':
+        await returnOvertimeRequest(voucherCode, notes)
+        break
+    }
+    
+    showApprovalModal.value = false
+    pendingVoucherCode.value = ''
+    pendingAction.value = ''
   } catch (error) {
-    console.error('Error submitting for approval:', error)
+    console.error(`Error ${pendingAction.value} overtime request:`, error)
   }
 }
 
-const handleApprove = async (voucherCode, action) => {
-  try {
-    let newStatus
-    if (action === 'approve') {
-      newStatus = 'Đã duyệt'
-    } else if (action === 'reject') {
-      newStatus = 'Từ chối'
-    } else if (action === 'return') {
-      newStatus = 'Tạo mới'
-    }
-    
-    await updateOvertimeRequest(voucherCode, { approveStatus: newStatus })
-    console.log(`Overtime request ${action}:`, voucherCode)
-  } catch (error) {
-    console.error(`Error ${action} overtime request:`, error)
+const handleApprovalCancel = () => {
+  showApprovalModal.value = false
+  pendingVoucherCode.value = ''
+  pendingAction.value = ''
+}
+
+const getApprovalModalTitle = () => {
+  const titles = {
+    submit: 'Gửi duyệt đơn tăng ca',
+    approve: 'Duyệt đơn tăng ca',
+    reject: 'Từ chối đơn tăng ca',
+    return: 'Trả lại đơn tăng ca'
   }
+  return titles[pendingAction.value] || 'Nhập ghi chú'
+}
+
+const openHistoryModal = (item) => {
+  historyRequestType.value = 'OvertimeRequest'
+  historyRequestId.value = item.voucherCode
+  showHistoryModal.value = true
+}
+
+const handleUndoSuccess = async () => {
+  await fetchOvertimeRequests()
 }
 
 const handleDelete = async (voucherCode) => {
@@ -424,7 +479,7 @@ const exportToExcel = async (type) => {
             <ActionButton 
               v-if="canApproveItem('overtime', item)" 
               type="success" 
-              @click.stop="handleApprove(item.voucherCode, 'approve')" 
+              @click.stop="openApprovalModal(item.voucherCode, 'approve')" 
               icon="fas fa-check" 
               title="Duyệt"
             ></ActionButton>
@@ -432,7 +487,7 @@ const exportToExcel = async (type) => {
             <ActionButton 
               v-if="canApproveItem('overtime', item)" 
               type="danger" 
-              @click.stop="handleApprove(item.voucherCode, 'reject')" 
+              @click.stop="openApprovalModal(item.voucherCode, 'reject')" 
               icon="fas fa-times" 
               title="Từ chối"
             ></ActionButton>
@@ -440,7 +495,7 @@ const exportToExcel = async (type) => {
             <ActionButton 
               v-if="canApproveItem('overtime', item)" 
               type="warning" 
-              @click.stop="handleApprove(item.voucherCode, 'return')" 
+              @click.stop="openApprovalModal(item.voucherCode, 'return')" 
               icon="fas fa-undo" 
               title="Trả lại"
             ></ActionButton>
@@ -456,7 +511,13 @@ const exportToExcel = async (type) => {
           </div>
         </template>
         <template #approveStatus="{ item }">
-          <ApprovalStatusLabel :status="item.approveStatus" />
+          <span
+            @click.stop="openHistoryModal(item)"
+            style="cursor: pointer; text-decoration: underline;"
+            title="Xem lịch sử duyệt"
+          >
+            <ApprovalStatusLabel :status="item.approveStatus" />
+          </span>
         </template>
         <template #startDateTime="{ item }">
           {{ new Date(item.startDateTime).toLocaleString('vi-VN') }}
@@ -485,6 +546,25 @@ const exportToExcel = async (type) => {
       @submit-for-approval="handleSubmitForApproval"
     />
   </ModalDialog>
+
+  <!-- Approval Note Modal -->
+  <ApprovalNoteModal
+    :show="showApprovalModal"
+    :title="getApprovalModalTitle()"
+    :action="pendingAction"
+    @confirm="handleApprovalConfirm"
+    @cancel="handleApprovalCancel"
+    @update:show="showApprovalModal = $event"
+  />
+
+  <!-- Approval History Modal -->
+  <ApprovalHistoryModal
+    :show="showHistoryModal"
+    :requestType="historyRequestType"
+    :requestId="historyRequestId"
+    @update:show="showHistoryModal = $event"
+    @undo-success="handleUndoSuccess"
+  />
 
   <!-- Import Excel Modal -->
   <ModalDialog v-model:show="showImportModal" title="Nhập đơn tăng ca từ Excel" size="lg">
@@ -543,4 +623,5 @@ const exportToExcel = async (type) => {
   background: #f0f6ff;
 }
 </style>
+
 

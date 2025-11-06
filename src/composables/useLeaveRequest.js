@@ -107,6 +107,98 @@ export function useLeaveRequest() {
     }
   }
 
+  const submitLeaveRequestForApproval = async (voucherCode, notes) => {
+    try {
+      loading.value = true
+      error.value = null
+      const data = await leaveRequestService.submitLeaveRequestForApproval(voucherCode, notes)
+      
+      // Cập nhật trong danh sách
+      const index = leaveRequests.value.findIndex(item => item.voucherCode === voucherCode)
+      if (index !== -1) {
+        leaveRequests.value[index] = data
+      }
+      
+      showMessage('success', 'Gửi duyệt thành công')
+      return data
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message || 'Có lỗi xảy ra khi gửi duyệt'
+      showMessage('error', error.value)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const approveLeaveRequest = async (voucherCode, notes) => {
+    try {
+      loading.value = true
+      error.value = null
+      const data = await leaveRequestService.approveLeaveRequest(voucherCode, notes)
+      
+      // Cập nhật trong danh sách
+      const index = leaveRequests.value.findIndex(item => item.voucherCode === voucherCode)
+      if (index !== -1) {
+        leaveRequests.value[index] = data
+      }
+      
+      showMessage('success', 'Duyệt đơn thành công')
+      return data
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message || 'Có lỗi xảy ra khi duyệt đơn'
+      showMessage('error', error.value)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const rejectLeaveRequest = async (voucherCode, notes) => {
+    try {
+      loading.value = true
+      error.value = null
+      const data = await leaveRequestService.rejectLeaveRequest(voucherCode, notes)
+      
+      // Cập nhật trong danh sách
+      const index = leaveRequests.value.findIndex(item => item.voucherCode === voucherCode)
+      if (index !== -1) {
+        leaveRequests.value[index] = data
+      }
+      
+      showMessage('success', 'Từ chối đơn thành công')
+      return data
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message || 'Có lỗi xảy ra khi từ chối đơn'
+      showMessage('error', error.value)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const returnLeaveRequest = async (voucherCode, notes) => {
+    try {
+      loading.value = true
+      error.value = null
+      const data = await leaveRequestService.returnLeaveRequest(voucherCode, notes)
+      
+      // Cập nhật trong danh sách
+      const index = leaveRequests.value.findIndex(item => item.voucherCode === voucherCode)
+      if (index !== -1) {
+        leaveRequests.value[index] = data
+      }
+      
+      showMessage('success', 'Trả lại đơn thành công')
+      return data
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message || 'Có lỗi xảy ra khi trả lại đơn'
+      showMessage('error', error.value)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   const clearError = () => {
     error.value = null
   }
@@ -126,6 +218,10 @@ export function useLeaveRequest() {
     createLeaveRequest,
     updateLeaveRequest,
     deleteLeaveRequest,
+    submitLeaveRequestForApproval,
+    approveLeaveRequest,
+    rejectLeaveRequest,
+    returnLeaveRequest,
     clearError
   }
 }

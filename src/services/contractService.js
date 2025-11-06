@@ -98,5 +98,57 @@ export const contractService = {
       console.error('Error fetching employees without contract:', error)
       throw error
     }
+  },
+
+  // Gửi hợp đồng để duyệt
+  async submitContractForApproval(contractId, notes) {
+    try {
+      const response = await api.put(`/Contract/${contractId}/submit`, {
+        notes: notes || null
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error submitting contract for approval:', error)
+      throw error
+    }
+  },
+
+  // Duyệt hợp đồng
+  async approveContract(contractId, notes) {
+    try {
+      const response = await api.put(`/Contract/${contractId}/approve`, {
+        notes: notes || null
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error approving contract:', error)
+      throw error
+    }
+  },
+
+  // Từ chối hợp đồng
+  async rejectContract(contractId, notes) {
+    try {
+      const response = await api.put(`/Contract/${contractId}/reject`, {
+        notes: notes || null
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error rejecting contract:', error)
+      throw error
+    }
+  },
+
+  // Trả lại hợp đồng
+  async returnContract(contractId, notes) {
+    try {
+      const response = await api.put(`/Contract/${contractId}/return`, {
+        notes: notes || null
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error returning contract:', error)
+      throw error
+    }
   }
 }

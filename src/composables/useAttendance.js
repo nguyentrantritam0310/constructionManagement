@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { attendanceService } from '../services/attendanceService'
+import { shiftAssignmentService } from '../services/shiftAssignmentService'
 import { useGlobalMessage } from './useGlobalMessage'
 import axios from 'axios'
 
@@ -255,24 +256,45 @@ export function useAttendance() {
   })
 
   // Get assigned workers for a task
-  const getAssignedWorkersForTask = (taskId) => {
-    const taskAttendance = attendanceList.value.filter(
-      record => record.constructionTaskID === taskId
-    )
+  const getAssignedWorkersForTask = async (taskId) => {
+    try {
+      // Lấy từ ShiftAssignment thay vì Attendance
+      const shiftAssignments = await shiftAssignmentService.getShiftAssignmentsByConstructionTaskId(taskId)
+      
+      const uniqueWorkers = new Map()
+      shiftAssignments.forEach(sa => {
+        if (!uniqueWorkers.has(sa.employeeID)) {
+          uniqueWorkers.set(sa.employeeID, {
+            id: sa.employeeID,
+            name: sa.employeeName,
+            email: sa.employee?.email || '',
+            assignedDate: new Date(sa.workDate).toISOString().split('T')[0]
+          })
+        }
+      })
 
-    const uniqueWorkers = new Map()
-    taskAttendance.forEach(record => {
-      if (!uniqueWorkers.has(record.employeeID)) {
-        uniqueWorkers.set(record.employeeID, {
-          id: record.employeeID,
-          name: record.employeeName,
-          email: record.email,
-          assignedDate: new Date(record.attendanceDate).toISOString().split('T')[0]
-        })
-      }
-    })
+      return Array.from(uniqueWorkers.values())
+    } catch (error) {
+      console.error('Error getting assigned workers for task:', error)
+      // Fallback: lấy từ attendanceList nếu có lỗi
+      const taskAttendance = attendanceList.value.filter(
+        record => record.constructionTaskID === taskId
+      )
 
-    return Array.from(uniqueWorkers.values())
+      const uniqueWorkers = new Map()
+      taskAttendance.forEach(record => {
+        if (!uniqueWorkers.has(record.employeeID)) {
+          uniqueWorkers.set(record.employeeID, {
+            id: record.employeeID,
+            name: record.employeeName,
+            email: record.email,
+            assignedDate: new Date(record.attendanceDate).toISOString().split('T')[0]
+          })
+        }
+      })
+
+      return Array.from(uniqueWorkers.values())
+    }
   }
 
   // Delete attendance for a worker from a task

@@ -56,7 +56,7 @@
                 <ActionButton 
                   v-if="canApproveItem('personnel-contract', item)" 
                   type="success" 
-                  @click.stop="handleApprove(item.id, 'approve')" 
+                  @click.stop="openApprovalModal(item.id, 'approve')" 
                   icon="fas fa-check" 
                   title="Duyệt"
                 ></ActionButton>
@@ -64,7 +64,7 @@
                 <ActionButton 
                   v-if="canApproveItem('personnel-contract', item)" 
                   type="danger" 
-                  @click.stop="handleApprove(item.id, 'reject')" 
+                  @click.stop="openApprovalModal(item.id, 'reject')" 
                   icon="fas fa-times" 
                   title="Từ chối"
                 ></ActionButton>
@@ -72,7 +72,7 @@
                 <ActionButton 
                   v-if="canApproveItem('personnel-contract', item)" 
                   type="warning" 
-                  @click.stop="handleApprove(item.id, 'return')" 
+                  @click.stop="openApprovalModal(item.id, 'return')" 
                   icon="fas fa-undo" 
                   title="Trả lại"
                 ></ActionButton>
@@ -101,7 +101,13 @@
             </div>
           </template>
           <template #approveStatus="{ item }">
-            <ApprovalStatusLabel :status="item.approveStatus" />
+            <span
+              @click.stop="openHistoryModal(item)"
+              style="cursor: pointer; text-decoration: underline;"
+              title="Xem lịch sử duyệt"
+            >
+              <ApprovalStatusLabel :status="item.approveStatus" />
+            </span>
           </template>
           <template #validityStatus="{ item }">
             <span :class="getValidityStatusClass(item.validityStatus)" class="validity-status">
@@ -252,6 +258,25 @@
       </div>
     </ModalDialog>
 
+    <!-- Approval Note Modal -->
+    <ApprovalNoteModal
+      :show="showApprovalModal"
+      :title="getApprovalModalTitle()"
+      :action="pendingAction"
+      @confirm="handleApprovalConfirm"
+      @cancel="handleApprovalCancel"
+      @update:show="showApprovalModal = $event"
+    />
+
+    <!-- Approval History Modal -->
+    <ApprovalHistoryModal
+      :show="showHistoryModal"
+      :requestType="historyRequestType"
+      :requestId="historyRequestId"
+      @update:show="showHistoryModal = $event"
+      @undo-success="handleUndoSuccess"
+    />
+
     <GlobalMessageModal />
   </div>
 </template>
@@ -267,6 +292,8 @@ import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import ContractForm from '../../components/common/contract/ContractForm.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
+import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
+import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import { useContract } from '../../composables/useContract.js'
 import { useEmployee } from '../../composables/useEmployee.js'
@@ -293,7 +320,11 @@ const {
   error,
   fetchAllContracts,
   calculateEmployeesWithoutContract,
-  deleteContract: deleteContractFromStore
+  deleteContract: deleteContractFromStore,
+  submitContractForApproval,
+  approveContract,
+  rejectContract,
+  returnContract
 } = useContract()
 const { employees, fetchAllEmployees } = useEmployee()
 const { showMessage } = useGlobalMessage()
@@ -340,34 +371,81 @@ const updateContract = async (contractData) => {
   }
 }
 
-const handleSubmitForApproval = async (contractId) => {
+const handleSubmitForApproval = (contractId) => {
+  pendingContractId.value = contractId
+  pendingAction.value = 'submit'
+  showApprovalModal.value = true
+}
+
+// Approval modal states
+const showApprovalModal = ref(false)
+const pendingAction = ref('') // 'approve', 'reject', 'return', 'submit'
+const pendingContractId = ref(null)
+
+// Approval history modal states
+const showHistoryModal = ref(false)
+const historyRequestType = ref('')
+const historyRequestId = ref('')
+
+const openApprovalModal = (contractId, action) => {
+  pendingContractId.value = contractId
+  pendingAction.value = action
+  showApprovalModal.value = true
+}
+
+const handleApprovalConfirm = async (notes) => {
   try {
-    // Update status to "Chờ duyệt"
-    await contractService.updateContract({ id: contractId, approveStatus: 'Chờ duyệt' })
+    const contractId = pendingContractId.value
+    const action = pendingAction.value
+    
+    switch (action) {
+      case 'submit':
+        await submitContractForApproval(contractId, notes)
+        break
+      case 'approve':
+        await approveContract(contractId, notes)
+        break
+      case 'reject':
+        await rejectContract(contractId, notes)
+        break
+      case 'return':
+        await returnContract(contractId, notes)
+        break
+    }
+    
     await fetchAllContracts() // Refresh data
-    console.log('Contract submitted for approval:', contractId)
+    showApprovalModal.value = false
+    pendingContractId.value = null
+    pendingAction.value = ''
   } catch (error) {
-    console.error('Error submitting for approval:', error)
+    console.error(`Error ${pendingAction.value} contract:`, error)
   }
 }
 
-const handleApprove = async (contractId, action) => {
-  try {
-    let newStatus
-    if (action === 'approve') {
-      newStatus = 'Đã duyệt'
-    } else if (action === 'reject') {
-      newStatus = 'Từ chối'
-    } else if (action === 'return') {
-      newStatus = 'Tạo mới'
-    }
-    
-    await contractService.updateContract({ id: contractId, approveStatus: newStatus })
-    await fetchAllContracts() // Refresh data
-    console.log(`Contract ${action}:`, contractId)
-  } catch (error) {
-    console.error(`Error ${action} contract:`, error)
+const handleApprovalCancel = () => {
+  showApprovalModal.value = false
+  pendingContractId.value = null
+  pendingAction.value = ''
+}
+
+const getApprovalModalTitle = () => {
+  const titles = {
+    submit: 'Gửi duyệt hợp đồng',
+    approve: 'Duyệt hợp đồng',
+    reject: 'Từ chối hợp đồng',
+    return: 'Trả lại hợp đồng'
   }
+  return titles[pendingAction.value] || 'Nhập ghi chú'
+}
+
+const openHistoryModal = (item) => {
+  historyRequestType.value = 'Contract'
+  historyRequestId.value = item.id.toString()
+  showHistoryModal.value = true
+}
+
+const handleUndoSuccess = async () => {
+  await fetchAllContracts()
 }
 
 const formatContractForSubmit = (data) => {
@@ -1145,3 +1223,4 @@ const closeTerminateModal = () => {
   }
 }
 </style>
+

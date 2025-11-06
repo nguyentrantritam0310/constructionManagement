@@ -94,6 +94,74 @@ export function usePayrollAdjustment() {
     }
   }
 
+  const submitPayrollAdjustmentForApproval = async (voucherNo, notes) => {
+    try {
+      loading.value = true
+      error.value = null
+      await payrollAdjustmentService.submitForApproval(voucherNo, notes)
+      await fetchPayrollAdjustments()
+      showMessage('Gửi duyệt thành công!', 'success')
+    } catch (err) {
+      console.error('Error in submitPayrollAdjustmentForApproval:', err)
+      error.value = err.response?.data?.message || err.message || 'Không thể gửi duyệt'
+      showMessage(error.value, 'error')
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const approvePayrollAdjustment = async (voucherNo, notes) => {
+    try {
+      loading.value = true
+      error.value = null
+      await payrollAdjustmentService.approve(voucherNo, notes)
+      await fetchPayrollAdjustments()
+      showMessage('Duyệt khoản cộng trừ thành công!', 'success')
+    } catch (err) {
+      console.error('Error in approvePayrollAdjustment:', err)
+      error.value = err.response?.data?.message || err.message || 'Không thể duyệt'
+      showMessage(error.value, 'error')
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const rejectPayrollAdjustment = async (voucherNo, notes) => {
+    try {
+      loading.value = true
+      error.value = null
+      await payrollAdjustmentService.reject(voucherNo, notes)
+      await fetchPayrollAdjustments()
+      showMessage('Từ chối khoản cộng trừ thành công!', 'success')
+    } catch (err) {
+      console.error('Error in rejectPayrollAdjustment:', err)
+      error.value = err.response?.data?.message || err.message || 'Không thể từ chối'
+      showMessage(error.value, 'error')
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const returnPayrollAdjustment = async (voucherNo, notes) => {
+    try {
+      loading.value = true
+      error.value = null
+      await payrollAdjustmentService.return(voucherNo, notes)
+      await fetchPayrollAdjustments()
+      showMessage('Trả lại khoản cộng trừ thành công!', 'success')
+    } catch (err) {
+      console.error('Error in returnPayrollAdjustment:', err)
+      error.value = err.response?.data?.message || err.message || 'Không thể trả lại'
+      showMessage(error.value, 'error')
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     payrollAdjustments,
     loading,
@@ -102,6 +170,10 @@ export function usePayrollAdjustment() {
     createPayrollAdjustment,
     updatePayrollAdjustment,
     deletePayrollAdjustment,
-    createMultiplePayrollAdjustments
+    createMultiplePayrollAdjustments,
+    submitPayrollAdjustmentForApproval,
+    approvePayrollAdjustment,
+    rejectPayrollAdjustment,
+    returnPayrollAdjustment
   }
 }

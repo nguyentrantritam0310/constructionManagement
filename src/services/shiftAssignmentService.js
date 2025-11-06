@@ -56,6 +56,17 @@ export const shiftAssignmentService = {
     }
   },
 
+  // Get shift assignments by construction task ID
+  async getShiftAssignmentsByConstructionTaskId(constructionTaskId) {
+    try {
+      const response = await api.get(`/ShiftAssignment/task/${constructionTaskId}`)
+      return response.data
+    } catch (error) {
+      console.error('Error fetching shift assignments by construction task:', error)
+      throw error
+    }
+  },
+
   // Get shift schedule by week
   async getShiftScheduleByWeek(weekStartDate) {
     try {
@@ -96,6 +107,23 @@ export const shiftAssignmentService = {
       return true
     } catch (error) {
       console.error('Error deleting shift assignment:', error)
+      throw error
+    }
+  },
+
+  // Assign task to work shifts (update all shift assignments for selected work shifts)
+  async assignTaskToWorkShifts(constructionTaskID, employeeIds, workShiftIds, startDate, endDate) {
+    try {
+      const response = await api.post('/ShiftAssignment/assign-task-to-work-shifts', {
+        constructionTaskID,
+        employeeIds,
+        workShiftIds,
+        startDate,
+        endDate
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error assigning task to work shifts:', error)
       throw error
     }
   }

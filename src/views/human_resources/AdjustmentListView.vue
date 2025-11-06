@@ -7,6 +7,8 @@ import { usePermissions } from '../../composables/usePermissions'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import AdjustmentForm from '@/components/common/adjustment/AdjustmentForm.vue'
 import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
+import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
+import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
@@ -19,7 +21,11 @@ const {
   fetchPayrollAdjustments,
   createPayrollAdjustment,
   updatePayrollAdjustment,
-  deletePayrollAdjustment
+  deletePayrollAdjustment,
+  submitPayrollAdjustmentForApproval,
+  approvePayrollAdjustment,
+  rejectPayrollAdjustment,
+  returnPayrollAdjustment
 } = usePayrollAdjustment()
 
 // Permissions composable for centralized permission management
@@ -53,6 +59,16 @@ const showUpdateForm = ref(false)
 const selectedItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
+
+// Approval modal states
+const showApprovalModal = ref(false)
+const pendingAction = ref('') // 'approve', 'reject', 'return', 'submit'
+const pendingVoucherNo = ref('')
+
+// Approval history modal states
+const showHistoryModal = ref(false)
+const historyRequestType = ref('')
+const historyRequestId = ref('')
 
 const adjustmentData = computed(() => {
   return payrollAdjustments.value.map(request => ({
@@ -90,32 +106,72 @@ const handleUpdate = async (formData) => {
   }
 }
 
-const handleSubmitForApproval = async (voucherNo) => {
+const handleSubmitForApproval = (voucherNo) => {
+  pendingVoucherNo.value = voucherNo
+  pendingAction.value = 'submit'
+  showApprovalModal.value = true
+}
+
+const openApprovalModal = (voucherNo, action) => {
+  pendingVoucherNo.value = voucherNo
+  pendingAction.value = action
+  showApprovalModal.value = true
+}
+
+const handleApprovalConfirm = async (notes) => {
   try {
-    // Update status to "Chờ duyệt"
-    await updatePayrollAdjustment(voucherNo, { approveStatus: 'Chờ duyệt' })
-    console.log('Adjustment submitted for approval:', voucherNo)
+    const voucherNo = pendingVoucherNo.value
+    const action = pendingAction.value
+    
+    switch (action) {
+      case 'submit':
+        await submitPayrollAdjustmentForApproval(voucherNo, notes)
+        showUpdateForm.value = false
+        selectedItem.value = null
+        break
+      case 'approve':
+        await approvePayrollAdjustment(voucherNo, notes)
+        break
+      case 'reject':
+        await rejectPayrollAdjustment(voucherNo, notes)
+        break
+      case 'return':
+        await returnPayrollAdjustment(voucherNo, notes)
+        break
+    }
+    
+    showApprovalModal.value = false
+    pendingVoucherNo.value = ''
+    pendingAction.value = ''
   } catch (error) {
-    console.error('Error submitting for approval:', error)
+    console.error(`Error ${pendingAction.value} adjustment:`, error)
   }
 }
 
-const handleApprove = async (voucherNo, action) => {
-  try {
-    let newStatus
-    if (action === 'approve') {
-      newStatus = 'Đã duyệt'
-    } else if (action === 'reject') {
-      newStatus = 'Từ chối'
-    } else if (action === 'return') {
-      newStatus = 'Tạo mới'
-    }
-    
-    await updatePayrollAdjustment(voucherNo, { approveStatus: newStatus })
-    console.log(`Adjustment ${action}:`, voucherNo)
-  } catch (error) {
-    console.error(`Error ${action} adjustment:`, error)
+const handleApprovalCancel = () => {
+  showApprovalModal.value = false
+  pendingVoucherNo.value = ''
+  pendingAction.value = ''
+}
+
+const getApprovalModalTitle = () => {
+  const titles = {
+    submit: 'Gửi duyệt khoản cộng/trừ',
+    approve: 'Duyệt khoản cộng/trừ',
+    reject: 'Từ chối khoản cộng/trừ',
+    return: 'Trả lại khoản cộng/trừ'
   }
+  return titles[pendingAction.value] || 'Nhập ghi chú'
+}
+
+const openHistoryModal = (item) => {
+  historyRequestType.value = 'PayrollAdjustment'
+  historyRequestId.value = item.voucherNo
+  showHistoryModal.value = true
+}
+
+const handleUndoSuccess = async () => {
+  await fetchPayrollAdjustments()
 }
 
 const handleDelete = async (voucherNo) => {
@@ -490,7 +546,7 @@ const exportToExcel = async (type) => {
             <ActionButton 
               v-if="canApproveItem('payroll-adjustment', item)" 
               type="success" 
-              @click.stop="handleApprove(item.voucherNo, 'approve')" 
+              @click.stop="openApprovalModal(item.voucherNo, 'approve')" 
               icon="fas fa-check" 
               title="Duyệt"
             ></ActionButton>
@@ -498,7 +554,7 @@ const exportToExcel = async (type) => {
             <ActionButton 
               v-if="canApproveItem('payroll-adjustment', item)" 
               type="danger" 
-              @click.stop="handleApprove(item.voucherNo, 'reject')" 
+              @click.stop="openApprovalModal(item.voucherNo, 'reject')" 
               icon="fas fa-times" 
               title="Từ chối"
             ></ActionButton>
@@ -506,14 +562,20 @@ const exportToExcel = async (type) => {
             <ActionButton 
               v-if="canApproveItem('payroll-adjustment', item)" 
               type="warning" 
-              @click.stop="handleApprove(item.voucherNo, 'return')" 
+              @click.stop="openApprovalModal(item.voucherNo, 'return')" 
               icon="fas fa-undo" 
               title="Trả lại"
             ></ActionButton>
           </div>
         </template>
         <template #approveStatus="{ item }">
-          <ApprovalStatusLabel :status="item.approveStatus" />
+          <span
+            @click.stop="openHistoryModal(item)"
+            style="cursor: pointer; text-decoration: underline;"
+            title="Xem lịch sử duyệt"
+          >
+            <ApprovalStatusLabel :status="item.approveStatus" />
+          </span>
         </template>
       </DataTable>
     </div>
@@ -524,8 +586,27 @@ const exportToExcel = async (type) => {
       @update:currentPage="currentPage = $event"
     />
 
-    <!-- Import Excel Modal -->
-    <ModalDialog v-model:show="showImportModal" title="Nhập khoản cộng trừ từ Excel" size="lg">
+  <!-- Approval Note Modal -->
+  <ApprovalNoteModal
+    :show="showApprovalModal"
+    :title="getApprovalModalTitle()"
+    :action="pendingAction"
+    @confirm="handleApprovalConfirm"
+    @cancel="handleApprovalCancel"
+    @update:show="showApprovalModal = $event"
+  />
+
+  <!-- Approval History Modal -->
+  <ApprovalHistoryModal
+    :show="showHistoryModal"
+    :requestType="historyRequestType"
+    :requestId="historyRequestId"
+    @update:show="showHistoryModal = $event"
+    @undo-success="handleUndoSuccess"
+  />
+
+  <!-- Import Excel Modal -->
+  <ModalDialog v-model:show="showImportModal" title="Nhập khoản cộng trừ từ Excel" size="lg">
       <div class="p-4">
         <div class="alert alert-info">
           <h6><i class="fas fa-info-circle me-2"></i>Hướng dẫn nhập Excel</h6>
@@ -593,4 +674,5 @@ const exportToExcel = async (type) => {
   background: #f0f6ff;
 }
 </style>
+
 

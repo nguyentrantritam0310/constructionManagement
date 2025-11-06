@@ -63,6 +63,94 @@ export function useContract() {
         }
     }
 
+    const submitContractForApproval = async (contractId, notes) => {
+        loading.value = true
+        error.value = null
+        try {
+            const data = await contractService.submitContractForApproval(contractId, notes)
+            // Cập nhật trong danh sách
+            const index = contracts.value.findIndex(c => c.id === contractId)
+            if (index !== -1) {
+                contracts.value[index] = data
+            }
+            showMessage('Gửi duyệt thành công!', 'success')
+            return data
+        } catch (err) {
+            console.error('Error in submitContractForApproval:', err)
+            error.value = err.response?.data?.message || err.message || 'Không thể gửi duyệt'
+            showMessage(error.value, 'error')
+            throw err
+        } finally {
+            loading.value = false
+        }
+    }
+
+    const approveContract = async (contractId, notes) => {
+        loading.value = true
+        error.value = null
+        try {
+            const data = await contractService.approveContract(contractId, notes)
+            // Cập nhật trong danh sách
+            const index = contracts.value.findIndex(c => c.id === contractId)
+            if (index !== -1) {
+                contracts.value[index] = data
+            }
+            showMessage('Duyệt hợp đồng thành công!', 'success')
+            return data
+        } catch (err) {
+            console.error('Error in approveContract:', err)
+            error.value = err.response?.data?.message || err.message || 'Không thể duyệt'
+            showMessage(error.value, 'error')
+            throw err
+        } finally {
+            loading.value = false
+        }
+    }
+
+    const rejectContract = async (contractId, notes) => {
+        loading.value = true
+        error.value = null
+        try {
+            const data = await contractService.rejectContract(contractId, notes)
+            // Cập nhật trong danh sách
+            const index = contracts.value.findIndex(c => c.id === contractId)
+            if (index !== -1) {
+                contracts.value[index] = data
+            }
+            showMessage('Từ chối hợp đồng thành công!', 'success')
+            return data
+        } catch (err) {
+            console.error('Error in rejectContract:', err)
+            error.value = err.response?.data?.message || err.message || 'Không thể từ chối'
+            showMessage(error.value, 'error')
+            throw err
+        } finally {
+            loading.value = false
+        }
+    }
+
+    const returnContract = async (contractId, notes) => {
+        loading.value = true
+        error.value = null
+        try {
+            const data = await contractService.returnContract(contractId, notes)
+            // Cập nhật trong danh sách
+            const index = contracts.value.findIndex(c => c.id === contractId)
+            if (index !== -1) {
+                contracts.value[index] = data
+            }
+            showMessage('Trả lại hợp đồng thành công!', 'success')
+            return data
+        } catch (err) {
+            console.error('Error in returnContract:', err)
+            error.value = err.response?.data?.message || err.message || 'Không thể trả lại'
+            showMessage(error.value, 'error')
+            throw err
+        } finally {
+            loading.value = false
+        }
+    }
+
     return {
         contracts,
         loading,
@@ -70,6 +158,10 @@ export function useContract() {
         employeesWithoutContract,
         fetchAllContracts,
         calculateEmployeesWithoutContract,
-        deleteContract
+        deleteContract,
+        submitContractForApproval,
+        approveContract,
+        rejectContract,
+        returnContract
     }
 }
