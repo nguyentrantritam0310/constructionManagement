@@ -1,16 +1,38 @@
 <template>
   <div class="weather-forecast-container">
     <div class="location-select">
-      <label for="location">Chọn vị trí:</label>
-      <select id="location" v-model="selectedLocation">
-        <option v-for="loc in locations" :value="loc" :key="loc.name">
-          {{ loc.name }}
-        </option>
-      </select>
-      <div>
-        <b>Kinh độ:</b> {{ selectedLocation.lng }} | <b>Vĩ độ:</b> {{ selectedLocation.lat }}
+      <div class="location-header">
+        <h4><i class="fas fa-map-marker-alt me-2"></i> Chọn vị trí để dự báo thời tiết</h4>
       </div>
-      <button @click="fetchForecast">Lấy dự báo cho vị trí này</button>
+      <div class="location-content">
+        <div class="location-info">
+          <div class="info-item">
+            <label>Vĩ độ:</label>
+            <span>{{ selectedLatitude.toFixed(6) }}</span>
+          </div>
+          <div class="info-item">
+            <label>Kinh độ:</label>
+            <span>{{ selectedLongitude.toFixed(6) }}</span>
+          </div>
+          <button class="btn btn-primary" @click="fetchForecast" :disabled="loading">
+            <i class="fas fa-cloud-sun me-2"></i>Lấy dự báo cho vị trí này
+          </button>
+          <button class="btn btn-outline-secondary" @click="getCurrentLocation">
+            <i class="fas fa-crosshairs me-2"></i>Lấy vị trí hiện tại
+          </button>
+        </div>
+        <div class="map-container">
+          <div class="map-wrapper">
+            <l-map ref="map" :zoom="zoom" :center="mapCenter" @click="handleMapClick">
+              <l-tile-layer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" layer-type="base"
+                name="OpenStreetMap" attribution="&copy; <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a>">
+              </l-tile-layer>
+              <l-marker v-if="markerLatLng" :lat-lng="markerLatLng"></l-marker>
+            </l-map>
+          </div>
+          <p class="map-hint"><i class="fas fa-info-circle me-2"></i>Click trên bản đồ để chọn vị trí</p>
+        </div>
+      </div>
     </div>
 
     <div class="weather-forecast-view">
@@ -165,75 +187,35 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api.js'
 import { useConstructionManagement } from '@/composables/useConstructionManagement'
+import { LMap, LTileLayer, LMarker } from "@vue-leaflet/vue-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from 'leaflet';
+
+// Fix lỗi icon marker mặc định của Leaflet khi dùng với bundler như Vite/Webpack
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 
 const { constructions, fetchConstructions } = useConstructionManagement()
 
-const locations = [
-  { name: 'An Giang', lat: 10.5216, lng: 105.1259 },
-  { name: 'Bà Rịa - Vũng Tàu', lat: 10.5417, lng: 107.2428 },
-  { name: 'Bắc Giang', lat: 21.2810, lng: 106.1978 },
-  { name: 'Bắc Kạn', lat: 22.1470, lng: 105.8348 },
-  { name: 'Bạc Liêu', lat: 9.2941, lng: 105.7278 },
-  { name: 'Bắc Ninh', lat: 21.1861, lng: 106.0763 },
-  { name: 'Bến Tre', lat: 10.2434, lng: 106.3756 },
-  { name: 'Bình Định', lat: 13.782, lng: 109.219 },
-  { name: 'Bình Dương', lat: 11.3254, lng: 106.4770 },
-  { name: 'Bình Phước', lat: 11.7512, lng: 106.7235 },
-  { name: 'Bình Thuận', lat: 11.0904, lng: 108.0721 },
-  { name: 'Cà Mau', lat: 9.1527, lng: 105.1961 },
-  { name: 'Cần Thơ', lat: 10.0452, lng: 105.7469 },
-  { name: 'Cao Bằng', lat: 22.6657, lng: 106.2570 },
-  { name: 'Đà Nẵng', lat: 16.0471, lng: 108.2068 },
-  { name: 'Đắk Lắk', lat: 12.7100, lng: 108.2378 },
-  { name: 'Đắk Nông', lat: 12.2644, lng: 107.6098 },
-  { name: 'Điện Biên', lat: 21.3860, lng: 103.0230 },
-  { name: 'Đồng Nai', lat: 10.9453, lng: 106.8246 },
-  { name: 'Đồng Tháp', lat: 10.4930, lng: 105.6882 },
-  { name: 'Gia Lai', lat: 13.8079, lng: 108.1098 },
-  { name: 'Hà Giang', lat: 22.8233, lng: 104.9836 },
-  { name: 'Hà Nam', lat: 20.5836, lng: 105.9229 },
-  { name: 'Hà Nội', lat: 21.0285, lng: 105.8542 },
-  { name: 'Hà Tĩnh', lat: 18.3559, lng: 105.8875 },
-  { name: 'Hải Dương', lat: 20.9373, lng: 106.3147 },
-  { name: 'Hải Phòng', lat: 20.8449, lng: 106.6881 },
-  { name: 'Hậu Giang', lat: 9.7579, lng: 105.6413 },
-  { name: 'Hòa Bình', lat: 20.8171, lng: 105.3376 },
-  { name: 'Hưng Yên', lat: 20.8526, lng: 106.0160 },
-  { name: 'Khánh Hòa', lat: 12.2585, lng: 109.0526 },
-  { name: 'Kiên Giang', lat: 10.0080, lng: 105.0782 },
-  { name: 'Kon Tum', lat: 14.3490, lng: 108.0000 },
-  { name: 'Lai Châu', lat: 22.3862, lng: 103.4708 },
-  { name: 'Lâm Đồng', lat: 11.5753, lng: 108.1429 },
-  { name: 'Lạng Sơn', lat: 21.8537, lng: 106.7615 },
-  { name: 'Lào Cai', lat: 22.4851, lng: 103.9707 },
-  { name: 'Long An', lat: 10.5437, lng: 106.4111 },
-  { name: 'Nam Định', lat: 20.4388, lng: 106.1621 },
-  { name: 'Nghệ An', lat: 19.2342, lng: 104.9200 },
-  { name: 'Ninh Bình', lat: 20.2506, lng: 105.9745 },
-  { name: 'Ninh Thuận', lat: 11.6739, lng: 108.9902 },
-  { name: 'Phú Thọ', lat: 21.3450, lng: 105.1996 },
-  { name: 'Phú Yên', lat: 13.0882, lng: 109.0929 },
-  { name: 'Quảng Bình', lat: 17.4689, lng: 106.6223 },
-  { name: 'Quảng Nam', lat: 15.5394, lng: 108.0191 },
-  { name: 'Quảng Ngãi', lat: 15.1201, lng: 108.7923 },
-  { name: 'Quảng Ninh', lat: 21.0064, lng: 107.2925 },
-  { name: 'Quảng Trị', lat: 16.8183, lng: 107.1021 },
-  { name: 'Sóc Trăng', lat: 9.6026, lng: 105.9739 },
-  { name: 'Sơn La', lat: 21.3256, lng: 103.9188 },
-  { name: 'Tây Ninh', lat: 11.3659, lng: 106.0986 },
-  { name: 'Thái Bình', lat: 20.4463, lng: 106.3365 },
-  { name: 'Thái Nguyên', lat: 21.5942, lng: 105.8480 },
-  { name: 'Thanh Hóa', lat: 19.8067, lng: 105.7852 },
-  { name: 'Thừa Thiên Huế', lat: 16.4637, lng: 107.5909 },
-  { name: 'Tiền Giang', lat: 10.4491, lng: 106.3421 },
-  { name: 'TP.HCM', lat: 10.7769, lng: 106.7009 },
-  { name: 'Trà Vinh', lat: 9.9345, lng: 106.3452 },
-  { name: 'Tuyên Quang', lat: 21.8236, lng: 105.2149 },
-  { name: 'Vĩnh Long', lat: 10.2539, lng: 105.9722 },
-  { name: 'Vĩnh Phúc', lat: 21.3089, lng: 105.6049 },
-  { name: 'Yên Bái', lat: 21.7056, lng: 104.8945 }
-]
-const selectedLocation = ref(locations[0])
+// State cho bản đồ và vị trí
+const zoom = ref(6) // Zoom level để xem toàn bộ Việt Nam
+const mapCenter = ref([16.0583, 108.2772]) // Mặc định ở giữa Việt Nam
+const selectedLatitude = ref(16.0583)
+const selectedLongitude = ref(108.2772)
+
+const markerLatLng = computed(() => {
+  return [selectedLatitude.value, selectedLongitude.value]
+})
+
+const selectedLocation = computed(() => ({
+  name: 'Vị trí đã chọn',
+  lat: selectedLatitude.value,
+  lng: selectedLongitude.value
+}))
 
 const loading = ref(false)
 const error = ref('')
@@ -285,13 +267,42 @@ const averageRainfall = computed(() => {
   return totalRain / forecast.value.length
 })
 
+// Hàm lấy vị trí hiện tại
+const getCurrentLocation = () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        selectedLatitude.value = position.coords.latitude
+        selectedLongitude.value = position.coords.longitude
+        mapCenter.value = [selectedLatitude.value, selectedLongitude.value]
+        zoom.value = 13 // Phóng to vị trí hiện tại
+      },
+      (error) => {
+        console.error("Error getting location: ", error);
+        alert("Không thể lấy vị trí hiện tại. Vui lòng kiểm tra quyền truy cập vị trí của trình duyệt.");
+      }
+    );
+  } else {
+    alert("Trình duyệt của bạn không hỗ trợ Geolocation.");
+  }
+}
+
+// Hàm xử lý khi click trên bản đồ
+const handleMapClick = (event) => {
+  if (event.latlng) {
+    selectedLatitude.value = event.latlng.lat
+    selectedLongitude.value = event.latlng.lng
+    zoom.value = Math.max(zoom.value, 10) // Phóng to một chút khi chọn vị trí mới
+  }
+}
+
 // Lọc các công trình bị ảnh hưởng bởi mưa
+// Note: Vì giờ chọn vị trí tự do trên map, không thể match với provinceName nữa
+// Có thể cải thiện bằng cách reverse geocoding hoặc tính khoảng cách
 const affectedConstructions = computed(() => {
   if (averageRainfall.value <= 7) return []
-  return constructions.value.filter(construction =>
-    construction.provinceName === selectedLocation.value.name &&
-    construction.constructionStatusID !== 4 // Không phải hoàn thành
-  )
+  // Tạm thời return empty vì không có province info từ map coordinates
+  return []
 })
 
 const getForecastCacheKey = (location) => {
@@ -303,8 +314,8 @@ const fetchForecast = async () => {
   loading.value = true
   error.value = ''
   try {
-    const lat = selectedLocation.value.lat
-    const lng = selectedLocation.value.lng
+    const lat = selectedLatitude.value
+    const lng = selectedLongitude.value
     const res = await api.get('/Weather/predict', {
       params: {
         lat: lat.toFixed(4),
@@ -391,41 +402,92 @@ const weatherAverages = computed(() => {
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   padding: 1.5rem 2rem;
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  flex-wrap: wrap;
 }
 
-.location-select label {
+.location-header {
+  margin-bottom: 1.5rem;
+}
+
+.location-header h4 {
+  color: #2980b9;
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.location-content {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.location-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.info-item label {
   font-weight: 600;
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+.info-item span {
+  color: #2c3e50;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.location-info .btn {
+  width: 100%;
+}
+
+.map-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.map-wrapper {
+  height: 400px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #dee2e6;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.map-hint {
+  font-size: 0.9rem;
+  color: #6c757d;
+  margin: 0;
+  display: flex;
+  align-items: center;
+}
+
+.map-hint i {
   color: #2980b9;
 }
 
-.location-select select {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  font-size: 1rem;
-}
-
-.location-select button {
-  background: #3498db;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.5rem 1.5rem;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.location-select button:hover {
-  background: #217dbb;
-}
-
-.location-select b {
-  color: #2c3e50;
+@media (max-width: 992px) {
+  .location-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .location-info {
+    order: 2;
+  }
+  
+  .map-container {
+    order: 1;
+  }
 }
 
 .weather-forecast-view {
