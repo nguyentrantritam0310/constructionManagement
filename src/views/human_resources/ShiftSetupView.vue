@@ -375,11 +375,8 @@ const handleUpdateAttendanceMachineClick = async (item) => {
 
 const handleUpdateMachine = async (formData) => {
   if (!selectedItem.value) return
-  const dataToUpdate = {
-    ...formData,
-    id: selectedItem.value.id
-  }
-  await updateAttendanceMachine(selectedItem.value.id, dataToUpdate)
+  // Form đã tự thêm ID vào formData, không cần thêm lại
+  await updateAttendanceMachine(selectedItem.value.id || selectedItem.value.ID, formData)
   showUpdateFormAttendanceMachine.value = false
   selectedItem.value = null
 }

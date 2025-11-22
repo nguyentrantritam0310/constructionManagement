@@ -32,6 +32,39 @@ const formData = ref({
     status: '0' // Default value, will be updated by watch function
 })
 
+// Regex patterns cho validation
+const regexPatterns = {
+    // ID nhân viên: chữ cái, số, dấu gạch ngang và gạch dưới, độ dài 1-20
+    id: /^[A-Za-z0-9_-]{1,20}$/,
+    // Họ và tên đệm: chữ cái, dấu tiếng Việt, khoảng trắng, độ dài 1-50
+    lastName: /^[a-zA-ZàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s]{1,50}$/,
+    // Tên nhân viên: chữ cái, dấu tiếng Việt, độ dài 1-30
+    firstName: /^[a-zA-ZàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]{1,30}$/,
+    // Ngày sinh: định dạng YYYY-MM-DD
+    date: /^\d{4}-\d{2}-\d{2}$/,
+    // Số điện thoại Việt Nam: 10 số, bắt đầu bằng 0
+    phone: /^0[3|5|7|8|9][0-9]{8}$/,
+    // Email: định dạng email chuẩn
+    email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+    // Giới tính: Nam, Nữ, Khác
+    gender: /^(Nam|Nữ|Khác)$/,
+    // ID: chỉ số nguyên dương
+    idNumber: /^[1-9]\d*$/
+}
+
+// Validation errors
+const errors = ref({
+    id: '',
+    lastName: '',
+    firstName: '',
+    birthday: '',
+    joinDate: '',
+    phone: '',
+    email: '',
+    gender: '',
+    roleID: ''
+})
+
 // Watch for changes in employee prop
 watch(() => props.employee, (newEmployee) => {
     if (newEmployee && props.mode === 'update') {
@@ -103,26 +136,274 @@ const roleOptions = computed(() => {
     }))
 })
 
+// Validation functions
+const validateID = () => {
+    const value = formData.value.id?.trim()
+    if (!value) {
+        errors.value.id = 'ID nhân viên không được để trống'
+        return false
+    }
+    if (!regexPatterns.id.test(value)) {
+        errors.value.id = 'ID nhân viên chỉ được chứa chữ cái, số, dấu gạch ngang và gạch dưới (tối đa 20 ký tự)'
+        return false
+    }
+    errors.value.id = ''
+    return true
+}
+
+const validateLastName = () => {
+    const value = formData.value.lastName?.trim()
+    if (!value) {
+        errors.value.lastName = 'Họ và tên đệm không được để trống'
+        return false
+    }
+    if (!regexPatterns.lastName.test(value)) {
+        errors.value.lastName = 'Họ và tên đệm chỉ được chứa chữ cái, dấu tiếng Việt và khoảng trắng (tối đa 50 ký tự)'
+        return false
+    }
+    errors.value.lastName = ''
+    return true
+}
+
+const validateFirstName = () => {
+    const value = formData.value.firstName?.trim()
+    if (!value) {
+        errors.value.firstName = 'Tên nhân viên không được để trống'
+        return false
+    }
+    if (!regexPatterns.firstName.test(value)) {
+        errors.value.firstName = 'Tên nhân viên chỉ được chứa chữ cái và dấu tiếng Việt (tối đa 30 ký tự)'
+        return false
+    }
+    errors.value.firstName = ''
+    return true
+}
+
+const validateBirthday = () => {
+    const value = formData.value.birthday
+    if (!value) {
+        errors.value.birthday = 'Ngày sinh không được để trống'
+        return false
+    }
+    if (!regexPatterns.date.test(value)) {
+        errors.value.birthday = 'Định dạng ngày sinh không hợp lệ'
+        return false
+    }
+    
+    const birthday = new Date(value)
+    if (isNaN(birthday.getTime())) {
+        errors.value.birthday = 'Ngày sinh không hợp lệ'
+        return false
+    }
+    
+    // Ngày sinh không được quá tương lai
+    if (birthday > new Date()) {
+        errors.value.birthday = 'Ngày sinh không được lớn hơn ngày hiện tại'
+        return false
+    }
+    
+    // Ngày sinh phải hợp lý (ít nhất 16 tuổi, tối đa 100 tuổi)
+    const age = new Date().getFullYear() - birthday.getFullYear()
+    if (age < 16) {
+        errors.value.birthday = 'Nhân viên phải ít nhất 16 tuổi'
+        return false
+    }
+    if (age > 100) {
+        errors.value.birthday = 'Ngày sinh không hợp lệ'
+        return false
+    }
+    
+    // Ngày sinh phải trước ngày vào làm
+    if (formData.value.joinDate) {
+        const joinDate = new Date(formData.value.joinDate)
+        if (!isNaN(joinDate.getTime()) && birthday >= joinDate) {
+            errors.value.birthday = 'Ngày sinh phải trước ngày vào làm'
+            return false
+        }
+    }
+    
+    errors.value.birthday = ''
+    return true
+}
+
+const validateJoinDate = () => {
+    const value = formData.value.joinDate
+    if (!value) {
+        errors.value.joinDate = 'Ngày vào làm không được để trống'
+        return false
+    }
+    if (!regexPatterns.date.test(value)) {
+        errors.value.joinDate = 'Định dạng ngày vào làm không hợp lệ'
+        return false
+    }
+    
+    const joinDate = new Date(value)
+    if (isNaN(joinDate.getTime())) {
+        errors.value.joinDate = 'Ngày vào làm không hợp lệ'
+        return false
+    }
+    
+    // Ngày vào làm không được quá tương lai
+    if (joinDate > new Date()) {
+        errors.value.joinDate = 'Ngày vào làm không được lớn hơn ngày hiện tại'
+        return false
+    }
+    
+    // Ngày vào làm phải sau ngày sinh
+    if (formData.value.birthday) {
+        const birthday = new Date(formData.value.birthday)
+        if (!isNaN(birthday.getTime()) && birthday >= joinDate) {
+            errors.value.joinDate = 'Ngày vào làm phải sau ngày sinh'
+            return false
+        }
+    }
+    
+    errors.value.joinDate = ''
+    return true
+}
+
+const validatePhone = () => {
+    const value = formData.value.phone?.trim()
+    if (!value) {
+        errors.value.phone = 'Số điện thoại không được để trống'
+        return false
+    }
+    // Loại bỏ khoảng trắng và dấu gạch ngang
+    const cleanPhone = value.replace(/[\s-]/g, '')
+    if (!regexPatterns.phone.test(cleanPhone)) {
+        errors.value.phone = 'Số điện thoại phải là 10 số, bắt đầu bằng 0 (ví dụ: 0912345678)'
+        return false
+    }
+    errors.value.phone = ''
+    return true
+}
+
+const validateEmail = () => {
+    const value = formData.value.email?.trim()
+    if (!value) {
+        errors.value.email = 'Email không được để trống'
+        return false
+    }
+    if (!regexPatterns.email.test(value)) {
+        errors.value.email = 'Định dạng email không hợp lệ (ví dụ: example@domain.com)'
+        return false
+    }
+    // Kiểm tra độ dài email
+    if (value.length > 100) {
+        errors.value.email = 'Email không được vượt quá 100 ký tự'
+        return false
+    }
+    errors.value.email = ''
+    return true
+}
+
+const validateGender = () => {
+    const value = formData.value.gender
+    if (!value) {
+        errors.value.gender = 'Vui lòng chọn giới tính'
+        return false
+    }
+    if (!regexPatterns.gender.test(value)) {
+        errors.value.gender = 'Giới tính không hợp lệ'
+        return false
+    }
+    errors.value.gender = ''
+    return true
+}
+
+const validateRoleID = () => {
+    const value = formData.value.roleID
+    if (!value) {
+        errors.value.roleID = 'Vui lòng chọn chức danh'
+        return false
+    }
+    if (!regexPatterns.idNumber.test(String(value))) {
+        errors.value.roleID = 'Chức danh không hợp lệ'
+        return false
+    }
+    errors.value.roleID = ''
+    return true
+}
+
+// Real-time validation cho các trường input
+const validateField = (fieldName) => {
+    switch (fieldName) {
+        case 'id':
+            validateID()
+            break
+        case 'lastName':
+            validateLastName()
+            break
+        case 'firstName':
+            validateFirstName()
+            break
+        case 'birthday':
+            validateBirthday()
+            // Re-validate join date when birthday changes
+            if (formData.value.joinDate) {
+                validateJoinDate()
+            }
+            break
+        case 'joinDate':
+            validateJoinDate()
+            // Re-validate birthday when join date changes
+            if (formData.value.birthday) {
+                validateBirthday()
+            }
+            break
+        case 'phone':
+            validatePhone()
+            break
+        case 'email':
+            validateEmail()
+            break
+        case 'gender':
+            validateGender()
+            break
+        case 'roleID':
+            validateRoleID()
+            break
+    }
+}
+
+// Validate toàn bộ form
+const validateForm = () => {
+    const validations = [
+        validateID(),
+        validateLastName(),
+        validateFirstName(),
+        validateBirthday(),
+        validateJoinDate(),
+        validatePhone(),
+        validateEmail(),
+        validateGender(),
+        validateRoleID()
+    ]
+    
+    return validations.every(v => v === true)
+}
+
 const handleSubmit = () => {
-    // Validate required fields
-    if (!formData.value.id || !formData.value.firstName || !formData.value.lastName || !formData.value.email || !formData.value.phone) {
-        alert('Vui lòng điền đầy đủ thông tin bắt buộc')
+    // Validate form trước khi submit
+    if (!validateForm()) {
+        // Scroll đến trường đầu tiên có lỗi
+        const firstErrorField = document.querySelector('.is-invalid')
+        if (firstErrorField) {
+            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            firstErrorField.focus()
+        }
         return
     }
-
-    if (!formData.value.gender) {
-        alert('Vui lòng chọn giới tính')
-        return
-    }
-
-    if (!formData.value.roleID) {
-        alert('Vui lòng chọn chức danh')
-        return
-    }
-
+    
     // Password validation removed - default password is set automatically for create mode
-
-    emit('submit', formData.value)
+    emit('submit', {
+        ...formData.value,
+        id: formData.value.id.trim(),
+        lastName: formData.value.lastName.trim(),
+        firstName: formData.value.firstName.trim(),
+        phone: formData.value.phone.trim().replace(/[\s-]/g, ''),
+        email: formData.value.email.trim()
+    })
 }
 
 const handleClose = () => emit('close')
@@ -138,19 +419,47 @@ const handleClose = () => emit('close')
                 </h6>
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <FormField 
-                            label="ID nhân viên" 
+                        <label class="form-label">ID nhân viên <span class="text-danger">*</span></label>
+                        <input 
                             type="text" 
-                            v-model="formData.id" 
+                            class="form-control" 
+                            :class="{ 'is-invalid': errors.id }"
+                            v-model="formData.id"
+                            @blur="validateField('id')"
+                            @input="validateField('id')"
                             :readonly="mode === 'update'"
-                            required 
+                            maxlength="20"
+                            placeholder="VD: NV001"
                         />
+                        <div class="invalid-feedback">{{ errors.id }}</div>
                     </div>
                     <div class="col-md-4">
-                        <FormField label="Họ và tên đệm" type="text" v-model="formData.lastName" required />
+                        <label class="form-label">Họ và tên đệm <span class="text-danger">*</span></label>
+                        <input 
+                            type="text" 
+                            class="form-control" 
+                            :class="{ 'is-invalid': errors.lastName }"
+                            v-model="formData.lastName"
+                            @blur="validateField('lastName')"
+                            @input="validateField('lastName')"
+                            maxlength="50"
+                            placeholder="VD: Nguyễn Văn"
+                        />
+                        <div class="invalid-feedback">{{ errors.lastName }}</div>
                     </div>
                     <div class="col-md-4">
-                        <FormField label="Tên nhân viên" type="text" v-model="formData.firstName" required />
+                        <label class="form-label">Tên nhân viên <span class="text-danger">*</span></label>
+                        <input 
+                            type="text" 
+                            class="form-control" 
+                            :class="{ 'is-invalid': errors.firstName }"
+                            v-model="formData.firstName"
+                            @blur="validateField('firstName')"
+                            @input="validateField('firstName')"
+                            maxlength="30"
+                            placeholder="VD: An"
+                        />
+                        <div class="invalid-feedback">{{ errors.firstName }}</div>
                     </div>
                 </div>
             </div>
@@ -162,19 +471,45 @@ const handleClose = () => emit('close')
                 </h6>
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <FormField label="Ngày sinh" type="date" v-model="formData.birthday" required />
+                        <label class="form-label">Ngày sinh <span class="text-danger">*</span></label>
+                        <input 
+                            type="date" 
+                            class="form-control" 
+                            :class="{ 'is-invalid': errors.birthday }"
+                            v-model="formData.birthday"
+                            @blur="validateField('birthday')"
+                            @change="validateField('birthday')"
+                            :max="new Date().toISOString().split('T')[0]"
+                        />
+                        <div class="invalid-feedback">{{ errors.birthday }}</div>
                     </div>
                     <div class="col-md-4">
-                        <FormField label="Ngày vào làm" type="date" v-model="formData.joinDate" required />
+                        <label class="form-label">Ngày vào làm <span class="text-danger">*</span></label>
+                        <input 
+                            type="date" 
+                            class="form-control" 
+                            :class="{ 'is-invalid': errors.joinDate }"
+                            v-model="formData.joinDate"
+                            @blur="validateField('joinDate')"
+                            @change="validateField('joinDate')"
+                            :max="new Date().toISOString().split('T')[0]"
+                        />
+                        <div class="invalid-feedback">{{ errors.joinDate }}</div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Giới tính <span class="text-danger">*</span></label>
-                        <select class="form-select" v-model="formData.gender" required>
+                        <select 
+                            class="form-select" 
+                            :class="{ 'is-invalid': errors.gender }"
+                            v-model="formData.gender"
+                            @change="validateField('gender')"
+                        >
                             <option value="">Chọn giới tính</option>
-                            <option value="Nam" :selected="formData.gender === 'Nam'">Nam</option>
-                            <option value="Nữ" :selected="formData.gender === 'Nữ'">Nữ</option>
-                            <option value="Khác" :selected="formData.gender === 'Khác'">Khác</option>
+                            <option value="Nam">Nam</option>
+                            <option value="Nữ">Nữ</option>
+                            <option value="Khác">Khác</option>
                         </select>
+                        <div class="invalid-feedback">{{ errors.gender }}</div>
                     </div>
                 </div>
             </div>
@@ -186,10 +521,32 @@ const handleClose = () => emit('close')
                 </h6>
                 <div class="row g-4">
                     <div class="col-md-6">
-                        <FormField label="Email" type="email" v-model="formData.email" required />
+                        <label class="form-label">Email <span class="text-danger">*</span></label>
+                        <input 
+                            type="email" 
+                            class="form-control" 
+                            :class="{ 'is-invalid': errors.email }"
+                            v-model="formData.email"
+                            @blur="validateField('email')"
+                            @input="validateField('email')"
+                            maxlength="100"
+                            placeholder="VD: example@domain.com"
+                        />
+                        <div class="invalid-feedback">{{ errors.email }}</div>
                     </div>
                     <div class="col-md-6">
-                        <FormField label="Số điện thoại" type="text" v-model="formData.phone" required />
+                        <label class="form-label">Số điện thoại <span class="text-danger">*</span></label>
+                        <input 
+                            type="text" 
+                            class="form-control" 
+                            :class="{ 'is-invalid': errors.phone }"
+                            v-model="formData.phone"
+                            @blur="validateField('phone')"
+                            @input="validateField('phone')"
+                            maxlength="11"
+                            placeholder="VD: 0912345678"
+                        />
+                        <div class="invalid-feedback">{{ errors.phone }}</div>
                     </div>
                 </div>
             </div>
@@ -203,10 +560,18 @@ const handleClose = () => emit('close')
                 <div class="row g-4">
                     <div class="col-md-6">
                         <label class="form-label">Chức danh <span class="text-danger">*</span></label>
-                        <select class="form-select" v-model="formData.roleID" required>
+                        <select 
+                            class="form-select" 
+                            :class="{ 'is-invalid': errors.roleID }"
+                            v-model="formData.roleID"
+                            @change="validateField('roleID')"
+                        >
                             <option value="">Chọn chức danh</option>
-                            <option v-for="role in roleOptions" :key="role.value" :value="role.value" :selected="formData.roleID == role.value">{{ role.text }}</option>
+                            <option v-for="role in roleOptions" :key="role.value" :value="role.value">
+                                {{ role.text }}
+                            </option>
                         </select>
+                        <div class="invalid-feedback">{{ errors.roleID }}</div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Trạng thái</label>

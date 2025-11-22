@@ -182,7 +182,11 @@ const handleDelete = async (voucherNo) => {
 }
 
 const openUpdateForm = (voucherNo) => {
-  selectedItem.value = adjustmentData.value.find(item => item.voucherNo === voucherNo)
+  // Lấy dữ liệu gốc từ payrollAdjustments thay vì adjustmentData để có decisionDate ở định dạng gốc
+  const originalData = payrollAdjustments.value.find(item => item.voucherNo === voucherNo)
+  if (originalData) {
+    selectedItem.value = { ...originalData }
+  }
   showUpdateForm.value = true
 }
 

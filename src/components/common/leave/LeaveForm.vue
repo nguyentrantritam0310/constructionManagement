@@ -43,6 +43,18 @@ const errors = ref({})
 // Selected year for calculations (current year)
 const selectedYear = ref(new Date().getFullYear())
 
+// Regex patterns cho validation
+const regexPatterns = {
+  // Số phiếu: chỉ cho phép chữ cái, số, dấu gạch ngang và gạch dưới, độ dài 1-50
+  voucherCode: /^[A-Za-z0-9_-]{1,50}$/,
+  // DateTime-local: định dạng YYYY-MM-DDTHH:mm
+  dateTimeLocal: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
+  // ID: chỉ số nguyên dương
+  id: /^[1-9]\d*$/,
+  // Lý do: cho phép chữ, số, khoảng trắng, dấu câu, độ dài tối đa 500
+  reason: /^[\s\S]{1,500}$/
+}
+
 // Function to calculate seniority leave (1 day for every 5 years)
 const calculateSeniorityLeave = (joinDate) => {
     if (!joinDate) return 0
@@ -149,138 +161,312 @@ const requestedDays = computed(() => {
 })
 
 
-const validateForm = () => {
-    errors.value = {}
-    
-    if (!formData.value.voucherCode.trim()) {
-        errors.value.voucherCode = 'Số phiếu là bắt buộc'
+// Validation functions
+const validateVoucherCode = () => {
+    const value = formData.value.voucherCode?.trim()
+    if (!value) {
+        errors.value.voucherCode = 'Số phiếu không được để trống'
+        return false
     }
-    
-    if (!formData.value.employeeID) {
+    if (!regexPatterns.voucherCode.test(value)) {
+        errors.value.voucherCode = 'Số phiếu chỉ được chứa chữ cái, số, dấu gạch ngang và gạch dưới (tối đa 50 ký tự)'
+        return false
+    }
+    errors.value.voucherCode = ''
+    return true
+}
+
+const validateEmployeeID = () => {
+    const value = formData.value.employeeID
+    if (!value) {
         errors.value.employeeID = 'Nhân viên là bắt buộc'
+        return false
     }
-    
-    if (!formData.value.leaveTypeID) {
+    errors.value.employeeID = ''
+    return true
+}
+
+const validateLeaveTypeID = () => {
+    const value = formData.value.leaveTypeID
+    if (!value) {
         errors.value.leaveTypeID = 'Loại nghỉ phép là bắt buộc'
+        return false
     }
-    
-    if (!formData.value.workShiftID) {
-        errors.value.workShiftID = 'Ca làm việc là bắt buộc'
-    }
-    
-    if (!formData.value.startDateTime) {
-        errors.value.startDateTime = 'Ngày bắt đầu là bắt buộc'
-    }
-    
-    if (!formData.value.endDateTime) {
-        errors.value.endDateTime = 'Ngày kết thúc là bắt buộc'
-    }
-    
-    if (!formData.value.reason.trim()) {
-        errors.value.reason = 'Lý do là bắt buộc'
-    }
-    
-    // Validate date range
-    if (formData.value.startDateTime && formData.value.endDateTime) {
-        const startDate = new Date(formData.value.startDateTime)
-        const endDate = new Date(formData.value.endDateTime)
-        
-        if (startDate >= endDate) {
-            errors.value.endDateTime = 'Ngày kết thúc phải sau ngày bắt đầu'
-        }
-        
-        // Validate time range against work shift
-        if (formData.value.workShiftID) {
-            const selectedWorkShift = workshifts.value.find(shift => shift.id == formData.value.workShiftID)
-            if (selectedWorkShift && selectedWorkShift.shiftDetails) {
-                // Get the day of week for start date
-                const startDayOfWeek = startDate.getDay()
-                const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
-                const startDayName = dayNames[startDayOfWeek]
-                
-                // Find shift details for the start day
-                const startDayShiftDetail = selectedWorkShift.shiftDetails.find(detail => detail.dayOfWeek === startDayName)
-                
-                if (startDayShiftDetail && startDayShiftDetail.startTime !== '00:00:00' && startDayShiftDetail.endTime !== '00:00:00') {
-                    // Extract time from datetime
-                    const startTime = startDate.toTimeString().substring(0, 8) // HH:mm:ss
-                    const endTime = endDate.toTimeString().substring(0, 8) // HH:mm:ss
-                    
-                    // Check if start time is within shift hours
-                    if (startTime < startDayShiftDetail.startTime || startTime > startDayShiftDetail.endTime) {
-                        errors.value.startDateTime = `Giờ bắt đầu phải trong khoảng ${startDayShiftDetail.startTime.substring(0, 5)} - ${startDayShiftDetail.endTime.substring(0, 5)} của ca làm việc`
-                    }
-                    
-                    // Check if end time is within shift hours
-                    if (endTime < startDayShiftDetail.startTime || endTime > startDayShiftDetail.endTime) {
-                        errors.value.endDateTime = `Giờ kết thúc phải trong khoảng ${startDayShiftDetail.startTime.substring(0, 5)} - ${startDayShiftDetail.endTime.substring(0, 5)} của ca làm việc`
-                    }
-                }
-                
-                // For multi-day leaves, also check end day
-                const endDayOfWeek = endDate.getDay()
-                const endDayName = dayNames[endDayOfWeek]
-                const endDayShiftDetail = selectedWorkShift.shiftDetails.find(detail => detail.dayOfWeek === endDayName)
-                
-                if (endDayShiftDetail && endDayShiftDetail.startTime !== '00:00:00' && endDayShiftDetail.endTime !== '00:00:00') {
-                    const endTime = endDate.toTimeString().substring(0, 8) // HH:mm:ss
-                    
-                    // Check if end time is within shift hours
-                    if (endTime < endDayShiftDetail.startTime || endTime > endDayShiftDetail.endTime) {
-                        errors.value.endDateTime = `Giờ kết thúc phải trong khoảng ${endDayShiftDetail.startTime.substring(0, 5)} - ${endDayShiftDetail.endTime.substring(0, 5)} của ca làm việc`
-                    }
-                }
-            }
-        }
+    if (!regexPatterns.id.test(String(value))) {
+        errors.value.leaveTypeID = 'Loại nghỉ phép không hợp lệ'
+        return false
     }
     
     // Validate leave days availability
     if (formData.value.employeeID && formData.value.startDateTime && formData.value.endDateTime) {
         const startDate = new Date(formData.value.startDateTime)
         const endDate = new Date(formData.value.endDateTime)
-        const requestedDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
         
-        const leaveInfo = employeeLeaveInfo.value
-        if (leaveInfo) {
-            const selectedLeaveType = leaveTypes.value.find(type => type.id == formData.value.leaveTypeID)
+        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && startDate < endDate) {
+            const requestedDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
+            const leaveInfo = employeeLeaveInfo.value
             
-            if (selectedLeaveType) {
-                if (selectedLeaveType.leaveTypeName === 'Phép năm' && leaveInfo.leaveRemain < requestedDays) {
-                    errors.value.leaveTypeID = `Không đủ phép năm. Còn lại: ${leaveInfo.leaveRemain} ngày, yêu cầu: ${requestedDays} ngày`
-                } else if (selectedLeaveType.leaveTypeName === 'Nghỉ bù' && leaveInfo.otLeaveRemain < requestedDays) {
-                    errors.value.leaveTypeID = `Không đủ phép bù tăng ca. Còn lại: ${leaveInfo.otLeaveRemain} ngày, yêu cầu: ${requestedDays} ngày`
+            if (leaveInfo) {
+                const selectedLeaveType = leaveTypes.value.find(type => type.id == formData.value.leaveTypeID)
+                
+                if (selectedLeaveType) {
+                    if (selectedLeaveType.leaveTypeName === 'Phép năm' && leaveInfo.leaveRemain < requestedDays) {
+                        errors.value.leaveTypeID = `Không đủ phép năm. Còn lại: ${leaveInfo.leaveRemain} ngày, yêu cầu: ${requestedDays} ngày`
+                        return false
+                    } else if (selectedLeaveType.leaveTypeName === 'Nghỉ bù' && leaveInfo.otLeaveRemain < requestedDays) {
+                        errors.value.leaveTypeID = `Không đủ phép bù tăng ca. Còn lại: ${leaveInfo.otLeaveRemain} ngày, yêu cầu: ${requestedDays} ngày`
+                        return false
+                    }
                 }
             }
         }
     }
     
-    return Object.keys(errors.value).length === 0
+    errors.value.leaveTypeID = ''
+    return true
+}
+
+const validateWorkShiftID = () => {
+    const value = formData.value.workShiftID
+    if (!value) {
+        errors.value.workShiftID = 'Ca làm việc là bắt buộc'
+        return false
+    }
+    if (!regexPatterns.id.test(String(value))) {
+        errors.value.workShiftID = 'Ca làm việc không hợp lệ'
+        return false
+    }
+    errors.value.workShiftID = ''
+    return true
+}
+
+const validateStartDateTime = () => {
+    const value = formData.value.startDateTime
+    if (!value) {
+        errors.value.startDateTime = 'Ngày bắt đầu là bắt buộc'
+        return false
+    }
+    if (!regexPatterns.dateTimeLocal.test(value)) {
+        errors.value.startDateTime = 'Định dạng ngày giờ không hợp lệ'
+        return false
+    }
+    
+    const startDate = new Date(value)
+    if (isNaN(startDate.getTime())) {
+        errors.value.startDateTime = 'Ngày giờ bắt đầu không hợp lệ'
+        return false
+    }
+    
+    // Validate time range against work shift
+    if (formData.value.workShiftID) {
+        const selectedWorkShift = workshifts.value.find(shift => shift.id == formData.value.workShiftID)
+        if (selectedWorkShift && selectedWorkShift.shiftDetails) {
+            const startDayOfWeek = startDate.getDay()
+            const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+            const startDayName = dayNames[startDayOfWeek]
+            const startDayShiftDetail = selectedWorkShift.shiftDetails.find(detail => detail.dayOfWeek === startDayName)
+            
+            if (startDayShiftDetail && startDayShiftDetail.startTime !== '00:00:00' && startDayShiftDetail.endTime !== '00:00:00') {
+                const startTime = startDate.toTimeString().substring(0, 8)
+                if (startTime < startDayShiftDetail.startTime || startTime > startDayShiftDetail.endTime) {
+                    errors.value.startDateTime = `Giờ bắt đầu phải trong khoảng ${startDayShiftDetail.startTime.substring(0, 5)} - ${startDayShiftDetail.endTime.substring(0, 5)} của ca làm việc`
+                    return false
+                }
+            }
+        }
+    }
+    
+    // Validate start date is before end date
+    if (formData.value.endDateTime) {
+        const endDate = new Date(formData.value.endDateTime)
+        if (!isNaN(endDate.getTime()) && startDate >= endDate) {
+            errors.value.startDateTime = 'Ngày bắt đầu phải trước ngày kết thúc'
+            return false
+        }
+    }
+    
+    errors.value.startDateTime = ''
+    return true
+}
+
+const validateEndDateTime = () => {
+    const value = formData.value.endDateTime
+    if (!value) {
+        errors.value.endDateTime = 'Ngày kết thúc là bắt buộc'
+        return false
+    }
+    if (!regexPatterns.dateTimeLocal.test(value)) {
+        errors.value.endDateTime = 'Định dạng ngày giờ không hợp lệ'
+        return false
+    }
+    
+    const endDate = new Date(value)
+    if (isNaN(endDate.getTime())) {
+        errors.value.endDateTime = 'Ngày giờ kết thúc không hợp lệ'
+        return false
+    }
+    
+    // Validate end date is after start date
+    if (formData.value.startDateTime) {
+        const startDate = new Date(formData.value.startDateTime)
+        if (!isNaN(startDate.getTime()) && startDate >= endDate) {
+            errors.value.endDateTime = 'Ngày kết thúc phải sau ngày bắt đầu'
+            return false
+        }
+    }
+    
+    // Validate time range against work shift
+    if (formData.value.workShiftID) {
+        const selectedWorkShift = workshifts.value.find(shift => shift.id == formData.value.workShiftID)
+        if (selectedWorkShift && selectedWorkShift.shiftDetails) {
+            const endDayOfWeek = endDate.getDay()
+            const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+            const endDayName = dayNames[endDayOfWeek]
+            const endDayShiftDetail = selectedWorkShift.shiftDetails.find(detail => detail.dayOfWeek === endDayName)
+            
+            if (endDayShiftDetail && endDayShiftDetail.startTime !== '00:00:00' && endDayShiftDetail.endTime !== '00:00:00') {
+                const endTime = endDate.toTimeString().substring(0, 8)
+                if (endTime < endDayShiftDetail.startTime || endTime > endDayShiftDetail.endTime) {
+                    errors.value.endDateTime = `Giờ kết thúc phải trong khoảng ${endDayShiftDetail.startTime.substring(0, 5)} - ${endDayShiftDetail.endTime.substring(0, 5)} của ca làm việc`
+                    return false
+                }
+            }
+        }
+    }
+    
+    errors.value.endDateTime = ''
+    return true
+}
+
+const validateReason = () => {
+    const value = formData.value.reason?.trim() || ''
+    if (!value) {
+        errors.value.reason = 'Lý do là bắt buộc'
+        return false
+    }
+    if (value.length < 1 || value.length > 500) {
+        errors.value.reason = 'Lý do phải từ 1 đến 500 ký tự'
+        return false
+    }
+    errors.value.reason = ''
+    return true
+}
+
+// Real-time validation cho các trường input
+const validateField = (fieldName) => {
+    switch (fieldName) {
+        case 'voucherCode':
+            validateVoucherCode()
+            break
+        case 'employeeID':
+            validateEmployeeID()
+            // Validate leave type again when employee changes
+            if (formData.value.leaveTypeID) {
+                validateLeaveTypeID()
+            }
+            break
+        case 'leaveTypeID':
+            validateLeaveTypeID()
+            break
+        case 'workShiftID':
+            validateWorkShiftID()
+            // Re-validate datetime when work shift changes
+            if (formData.value.startDateTime) {
+                validateStartDateTime()
+            }
+            if (formData.value.endDateTime) {
+                validateEndDateTime()
+            }
+            break
+        case 'startDateTime':
+            validateStartDateTime()
+            // Re-validate end date when start date changes
+            if (formData.value.endDateTime) {
+                validateEndDateTime()
+            }
+            // Re-validate leave type when dates change
+            if (formData.value.leaveTypeID) {
+                validateLeaveTypeID()
+            }
+            break
+        case 'endDateTime':
+            validateEndDateTime()
+            // Re-validate start date when end date changes
+            if (formData.value.startDateTime) {
+                validateStartDateTime()
+            }
+            // Re-validate leave type when dates change
+            if (formData.value.leaveTypeID) {
+                validateLeaveTypeID()
+            }
+            break
+        case 'reason':
+            validateReason()
+            break
+    }
+}
+
+// Validate toàn bộ form
+const validateForm = () => {
+    const validations = [
+        validateVoucherCode(),
+        validateEmployeeID(),
+        validateLeaveTypeID(),
+        validateWorkShiftID(),
+        validateStartDateTime(),
+        validateEndDateTime(),
+        validateReason()
+    ]
+    
+    return validations.every(v => v === true)
 }
 
 const handleSubmit = () => {
-    if (validateForm()) {
-        // Convert datetime-local to proper format for API
-        const submitData = {
-            ...formData.value,
-            startDateTime: new Date(formData.value.startDateTime).toISOString(),
-            endDateTime: new Date(formData.value.endDateTime).toISOString()
+    // Validate form trước khi submit
+    if (!validateForm()) {
+        // Scroll đến trường đầu tiên có lỗi
+        const firstErrorField = document.querySelector('.is-invalid')
+        if (firstErrorField) {
+            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            firstErrorField.focus()
         }
-        emit('submit', submitData)
+        return
     }
+    
+    // Convert datetime-local to proper format for API
+    const submitData = {
+        ...formData.value,
+        voucherCode: formData.value.voucherCode.trim(),
+        reason: formData.value.reason.trim(),
+        startDateTime: new Date(formData.value.startDateTime).toISOString(),
+        endDateTime: new Date(formData.value.endDateTime).toISOString()
+    }
+    emit('submit', submitData)
 }
 
 const handleClose = () => emit('close')
 
 const handleSubmitForApproval = () => {
-    if (validateForm()) {
-        // Convert datetime-local to proper format for API
-        const submitData = {
-            ...formData.value,
-            startDateTime: new Date(formData.value.startDateTime).toISOString(),
-            endDateTime: new Date(formData.value.endDateTime).toISOString()
+    // Validate form trước khi submit
+    if (!validateForm()) {
+        // Scroll đến trường đầu tiên có lỗi
+        const firstErrorField = document.querySelector('.is-invalid')
+        if (firstErrorField) {
+            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            firstErrorField.focus()
         }
-        emit('submit-for-approval', submitData.voucherCode)
+        return
     }
+    
+    // Convert datetime-local to proper format for API
+    const submitData = {
+        ...formData.value,
+        voucherCode: formData.value.voucherCode.trim(),
+        reason: formData.value.reason.trim(),
+        startDateTime: new Date(formData.value.startDateTime).toISOString(),
+        endDateTime: new Date(formData.value.endDateTime).toISOString()
+    }
+    emit('submit-for-approval', submitData.voucherCode)
 }
 
 // Load data on mount
@@ -350,13 +536,18 @@ watch(() => props.leave, (newLeave) => {
     <form @submit.prevent="handleSubmit">
         <div class="row g-3">
             <div class="col-md-6">
-                <FormField 
-                    label="Số phiếu" 
+                <label class="form-label">Số phiếu <span class="text-danger">*</span></label>
+                <input 
                     type="text" 
-                    v-model="formData.voucherCode" 
-                    :error="errors.voucherCode"
-                    required 
+                    class="form-control" 
+                    :class="{ 'is-invalid': errors.voucherCode }"
+                    v-model="formData.voucherCode"
+                    @blur="validateField('voucherCode')"
+                    @input="validateField('voucherCode')"
+                    maxlength="50"
+                    placeholder="VD: NP-2024-001"
                 />
+                <div class="invalid-feedback">{{ errors.voucherCode }}</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Nhân viên tạo đơn <span class="text-danger">*</span></label>
@@ -364,15 +555,14 @@ watch(() => props.leave, (newLeave) => {
                     class="form-select" 
                     v-model="formData.employeeID" 
                     :class="{ 'is-invalid': errors.employeeID }"
+                    @change="validateField('employeeID')"
                 >
                     <option value="">Chọn nhân viên</option>
                     <option v-for="emp in employees" :key="emp.id" :value="emp.id">
                         {{ emp.employeeName }}
                     </option>
                 </select>
-                <div v-if="errors.employeeID" class="invalid-feedback">
-                    {{ errors.employeeID }}
-                </div>
+                <div class="invalid-feedback">{{ errors.employeeID }}</div>
             </div>
         </div>
         
@@ -449,15 +639,14 @@ watch(() => props.leave, (newLeave) => {
                     class="form-select" 
                     v-model="formData.leaveTypeID" 
                     :class="{ 'is-invalid': errors.leaveTypeID }"
+                    @change="validateField('leaveTypeID')"
                 >
                     <option value="">Chọn loại nghỉ phép</option>
                     <option v-for="type in leaveTypes" :key="type.id" :value="type.id">
                         {{ type.leaveTypeName }}
                     </option>
                 </select>
-                <div v-if="errors.leaveTypeID" class="invalid-feedback">
-                    {{ errors.leaveTypeID }}
-                </div>
+                <div class="invalid-feedback">{{ errors.leaveTypeID }}</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Ca làm việc <span class="text-danger">*</span></label>
@@ -465,47 +654,58 @@ watch(() => props.leave, (newLeave) => {
                     class="form-select" 
                     v-model="formData.workShiftID" 
                     :class="{ 'is-invalid': errors.workShiftID }"
+                    @change="validateField('workShiftID')"
                 >
                     <option value="">Chọn ca làm việc</option>
                     <option v-for="shift in workshifts" :key="shift.id" :value="shift.id">
                         {{ shift.shiftName }}
                     </option>
                 </select>
-                <div v-if="errors.workShiftID" class="invalid-feedback">
-                    {{ errors.workShiftID }}
-                </div>
+                <div class="invalid-feedback">{{ errors.workShiftID }}</div>
             </div>
         </div>
         
         <div class="row g-3">
             <div class="col-md-6">
-                <FormField 
-                    label="Từ ngày" 
+                <label class="form-label">Từ ngày <span class="text-danger">*</span></label>
+                <input 
                     type="datetime-local" 
-                    v-model="formData.startDateTime" 
-                    :error="errors.startDateTime"
-                    required 
+                    class="form-control" 
+                    :class="{ 'is-invalid': errors.startDateTime }"
+                    v-model="formData.startDateTime"
+                    @blur="validateField('startDateTime')"
+                    @change="validateField('startDateTime')"
                 />
+                <div class="invalid-feedback">{{ errors.startDateTime }}</div>
             </div>
             <div class="col-md-6">
-                <FormField 
-                    label="Đến ngày" 
+                <label class="form-label">Đến ngày <span class="text-danger">*</span></label>
+                <input 
                     type="datetime-local" 
-                    v-model="formData.endDateTime" 
-                    :error="errors.endDateTime"
-                    required 
+                    class="form-control" 
+                    :class="{ 'is-invalid': errors.endDateTime }"
+                    v-model="formData.endDateTime"
+                    @blur="validateField('endDateTime')"
+                    @change="validateField('endDateTime')"
                 />
+                <div class="invalid-feedback">{{ errors.endDateTime }}</div>
             </div>
         </div>
         <div class="row g-3">
             <div class="col-md-12">
-                <FormField 
-                    label="Lý do" 
-                    type="textarea" 
-                    v-model="formData.reason" 
-                    :error="errors.reason"
-                    required 
-                />
+                <label class="form-label">Lý do <span class="text-danger">*</span></label>
+                <textarea 
+                    class="form-control" 
+                    :class="{ 'is-invalid': errors.reason }"
+                    v-model="formData.reason"
+                    @blur="validateField('reason')"
+                    @input="validateField('reason')"
+                    rows="3"
+                    maxlength="500"
+                    placeholder="Nhập lý do nghỉ phép (tối đa 500 ký tự)..."
+                ></textarea>
+                <div class="invalid-feedback">{{ errors.reason }}</div>
+                <small class="form-text text-muted">{{ (formData.reason || '').length }}/500 ký tự</small>
             </div>
         </div>
         <div class="mt-4 d-flex justify-content-end gap-2">

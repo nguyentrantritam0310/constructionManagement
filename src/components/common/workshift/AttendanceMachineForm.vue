@@ -24,7 +24,27 @@ const formData = ref({
   attendanceMachineName: '',
   longitude: '',
   latitude: '',
-  allowedRadius: 0
+  allowedRadius: ''
+})
+
+// Regex patterns cho validation
+const regexPatterns = {
+  // Tên máy chấm công: chữ cái, số, khoảng trắng, dấu tiếng Việt, dấu gạch ngang và gạch dưới, độ dài 1-100
+  attendanceMachineName: /^[a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s_-]{1,100}$/,
+  // Kinh độ: số thập phân từ -180 đến 180, tối đa 6 chữ số thập phân
+  longitude: /^-?(?:180(?:\.0{1,6})?|(?:1[0-7]\d|[0-9]?\d)(?:\.\d{1,6})?)$/,
+  // Vĩ độ: số thập phân từ -90 đến 90, tối đa 6 chữ số thập phân
+  latitude: /^-?(?:90(?:\.0{1,6})?|[0-8]?\d(?:\.\d{1,6})?)$/,
+  // Bán kính: số dương, tối đa 10000 mét
+  allowedRadius: /^\d+(\.\d{1,2})?$/
+}
+
+// Validation errors
+const errors = ref({
+  attendanceMachineName: '',
+  longitude: '',
+  latitude: '',
+  allowedRadius: ''
 })
 
 // State cho bản đồ
@@ -50,9 +70,9 @@ const circleData = computed(() => {
 const initFormData = () => {
   if (props.mode === 'update' && props.attendancemachine) {
     formData.value.attendanceMachineName = props.attendancemachine.attendanceMachineName || ''
-    formData.value.longitude = props.attendancemachine.longitude || ''
-    formData.value.latitude = props.attendancemachine.latitude || ''
-    formData.value.allowedRadius = props.attendancemachine.allowedRadius || 0
+    formData.value.longitude = String(props.attendancemachine.longitude || '')
+    formData.value.latitude = String(props.attendancemachine.latitude || '')
+    formData.value.allowedRadius = String(props.attendancemachine.allowedRadius || '0')
 
     // Nếu có dữ liệu, canh giữa bản đồ vào vị trí đó
     const lat = parseFloat(props.attendancemachine.latitude)
@@ -87,6 +107,9 @@ const getCurrentLocation = () => {
       (position) => {
         formData.value.latitude = position.coords.latitude.toFixed(6)
         formData.value.longitude = position.coords.longitude.toFixed(6)
+        // Validate after getting location
+        validateField('latitude')
+        validateField('longitude')
       },
       (error) => {
         console.error("Error getting location: ", error);
@@ -102,11 +125,177 @@ const handleMapClick = (event) => {
   if (event.latlng) {
     formData.value.latitude = event.latlng.lat.toFixed(6)
     formData.value.longitude = event.latlng.lng.toFixed(6)
+    // Validate after map click
+    validateField('latitude')
+    validateField('longitude')
   }
 }
 
+// Validation functions
+const validateAttendanceMachineName = () => {
+  const value = formData.value.attendanceMachineName?.trim()
+  if (!value) {
+    errors.value.attendanceMachineName = 'Tên máy chấm công không được để trống'
+    return false
+  }
+  if (!regexPatterns.attendanceMachineName.test(value)) {
+    errors.value.attendanceMachineName = 'Tên máy chấm công chỉ được chứa chữ cái, số, khoảng trắng, dấu tiếng Việt và các ký tự đặc biệt (gạch ngang, gạch dưới) (tối đa 100 ký tự)'
+    return false
+  }
+  errors.value.attendanceMachineName = ''
+  return true
+}
+
+const validateLongitude = () => {
+  const value = formData.value.longitude?.trim()
+  if (!value) {
+    errors.value.longitude = 'Kinh độ không được để trống'
+    return false
+  }
+  
+  const longNum = parseFloat(value)
+  if (isNaN(longNum)) {
+    errors.value.longitude = 'Kinh độ phải là số'
+    return false
+  }
+  
+  if (longNum < -180 || longNum > 180) {
+    errors.value.longitude = 'Kinh độ phải nằm trong khoảng -180 đến 180'
+    return false
+  }
+  
+  if (!regexPatterns.longitude.test(value)) {
+    errors.value.longitude = 'Định dạng kinh độ không hợp lệ (tối đa 6 chữ số thập phân)'
+    return false
+  }
+  
+  errors.value.longitude = ''
+  return true
+}
+
+const validateLatitude = () => {
+  const value = formData.value.latitude?.trim()
+  if (!value) {
+    errors.value.latitude = 'Vĩ độ không được để trống'
+    return false
+  }
+  
+  const latNum = parseFloat(value)
+  if (isNaN(latNum)) {
+    errors.value.latitude = 'Vĩ độ phải là số'
+    return false
+  }
+  
+  if (latNum < -90 || latNum > 90) {
+    errors.value.latitude = 'Vĩ độ phải nằm trong khoảng -90 đến 90'
+    return false
+  }
+  
+  if (!regexPatterns.latitude.test(value)) {
+    errors.value.latitude = 'Định dạng vĩ độ không hợp lệ (tối đa 6 chữ số thập phân)'
+    return false
+  }
+  
+  errors.value.latitude = ''
+  return true
+}
+
+const validateAllowedRadius = () => {
+  const value = formData.value.allowedRadius
+  if (value === null || value === undefined || value === '') {
+    errors.value.allowedRadius = 'Bán kính cho phép không được để trống'
+    return false
+  }
+  
+  const radiusNum = parseFloat(value)
+  if (isNaN(radiusNum)) {
+    errors.value.allowedRadius = 'Bán kính cho phép phải là số'
+    return false
+  }
+  
+  if (radiusNum < 0) {
+    errors.value.allowedRadius = 'Bán kính cho phép không được âm'
+    return false
+  }
+  
+  if (radiusNum > 10000) {
+    errors.value.allowedRadius = 'Bán kính cho phép không được vượt quá 10000 mét'
+    return false
+  }
+  
+  const valueStr = String(value)
+  if (!regexPatterns.allowedRadius.test(valueStr)) {
+    errors.value.allowedRadius = 'Bán kính cho phép không đúng định dạng'
+    return false
+  }
+  
+  // Validate decimal places
+  const decimalPlaces = (valueStr.split('.')[1] || '').length
+  if (decimalPlaces > 2) {
+    errors.value.allowedRadius = 'Bán kính cho phép chỉ được có tối đa 2 chữ số thập phân'
+    return false
+  }
+  
+  errors.value.allowedRadius = ''
+  return true
+}
+
+// Real-time validation cho các trường input
+const validateField = (fieldName) => {
+  switch (fieldName) {
+    case 'attendanceMachineName':
+      validateAttendanceMachineName()
+      break
+    case 'longitude':
+      validateLongitude()
+      break
+    case 'latitude':
+      validateLatitude()
+      break
+    case 'allowedRadius':
+      validateAllowedRadius()
+      break
+  }
+}
+
+// Validate toàn bộ form
+const validateForm = () => {
+  const validations = [
+    validateAttendanceMachineName(),
+    validateLongitude(),
+    validateLatitude(),
+    validateAllowedRadius()
+  ]
+  
+  return validations.every(v => v === true)
+}
+
 const handleSubmit = () => {
-  emit('submit', formData.value)
+  // Validate form trước khi submit
+  if (!validateForm()) {
+    // Scroll đến trường đầu tiên có lỗi
+    const firstErrorField = document.querySelector('.is-invalid')
+    if (firstErrorField) {
+      firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      firstErrorField.focus()
+    }
+    return
+  }
+  
+  // Backend yêu cầu longitude, latitude, allowedRadius là string
+  const submitData = {
+    attendanceMachineName: formData.value.attendanceMachineName.trim(),
+    longitude: String(formData.value.longitude).trim(),
+    latitude: String(formData.value.latitude).trim(),
+    allowedRadius: String(formData.value.allowedRadius).trim()
+  }
+  
+  // Thêm ID nếu là update mode
+  if (props.mode === 'update' && props.attendancemachine) {
+    submitData.ID = props.attendancemachine.id || props.attendancemachine.ID
+  }
+  
+  emit('submit', submitData)
 }
 
 const handleClose = () => emit('close')
@@ -116,19 +305,66 @@ const handleClose = () => emit('close')
   <form @submit.prevent="handleSubmit" class="p-4 bg-white rounded shadow-sm">
     <div class="row g-3 mb-4">
       <div class="col-md-12">
-        <FormField label="Tên máy chấm công" type="text" v-model="formData.attendanceMachineName" required />
+        <label class="form-label">Tên máy chấm công <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.attendanceMachineName }"
+          v-model="formData.attendanceMachineName"
+          @blur="validateField('attendanceMachineName')"
+          @input="validateField('attendanceMachineName')"
+          maxlength="100"
+          placeholder="VD: Máy chấm công 01"
+        />
+        <div class="invalid-feedback">{{ errors.attendanceMachineName }}</div>
       </div>
       <div class="col-md-6">
-        <FormField label="Kinh độ (Longitude)" type="text" v-model="formData.longitude" required />
+        <label class="form-label">Kinh độ (Longitude) <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.longitude }"
+          v-model="formData.longitude"
+          @blur="validateField('longitude')"
+          @input="validateField('longitude')"
+          placeholder="VD: 105.804817"
+          step="0.000001"
+        />
+        <div class="invalid-feedback">{{ errors.longitude }}</div>
+        <small class="form-text text-muted">Giá trị từ -180 đến 180</small>
       </div>
       <div class="col-md-6">
-        <FormField label="Vĩ độ (Latitude)" type="text" v-model="formData.latitude" required />
+        <label class="form-label">Vĩ độ (Latitude) <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.latitude }"
+          v-model="formData.latitude"
+          @blur="validateField('latitude')"
+          @input="validateField('latitude')"
+          placeholder="VD: 21.028511"
+          step="0.000001"
+        />
+        <div class="invalid-feedback">{{ errors.latitude }}</div>
+        <small class="form-text text-muted">Giá trị từ -90 đến 90</small>
       </div>
       <div class="col-md-6">
-        <FormField label="Bán kính cho phép (m)" type="number" v-model="formData.allowedRadius" min="0" required />
+        <label class="form-label">Bán kính cho phép (m) <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.allowedRadius }"
+          v-model="formData.allowedRadius"
+          @blur="validateField('allowedRadius')"
+          @input="validateField('allowedRadius')"
+          placeholder="VD: 100"
+        />
+        <div class="invalid-feedback">{{ errors.allowedRadius }}</div>
+        <small class="form-text text-muted">Tối đa 10000 mét</small>
       </div>
-      <div class="col-md-6 d-flex align-items-end">
-        <button type="button" class="btn btn-outline-primary w-100" @click="getCurrentLocation">
+      <div class="col-md-6">
+        <label class="form-label d-block">&nbsp;</label>
+        <button type="button" class="btn btn-outline-primary w-100 location-btn" @click="getCurrentLocation">
           <i class="fas fa-map-marker-alt me-2"></i> Lấy vị trí hiện tại
         </button>
       </div>
@@ -155,3 +391,51 @@ const handleClose = () => emit('close')
     </div>
   </form>
 </template>
+
+<style scoped>
+.location-btn {
+  height: calc(1.5em + 0.75rem + 2px); /* Match input height */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.form-control {
+  height: calc(1.5em + 0.75rem + 2px);
+}
+
+.form-label {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.invalid-feedback {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  font-size: 0.875em;
+  color: #dc3545;
+}
+
+.is-invalid {
+  border-color: #dc3545;
+  padding-right: calc(1.5em + 0.75rem);
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' fill='none' stroke='%23dc3545'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath d='m5.8 3.6 .4.4.4-.4m0 4.8-.4-.4-.4.4'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right calc(0.375em + 0.1875rem) center;
+  background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+}
+
+.btn-gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+}
+
+.btn-gradient:hover {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  color: white;
+}
+</style>

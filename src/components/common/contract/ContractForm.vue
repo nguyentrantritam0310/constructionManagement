@@ -45,6 +45,35 @@ const formData = ref({
   }))
 })
 
+// Regex patterns cho validation
+const regexPatterns = {
+  // Số hợp đồng: chữ cái, số, dấu gạch ngang và gạch dưới, độ dài 1-50
+  contractNumber: /^[A-Za-z0-9_-]{1,50}$/,
+  // Ngày: định dạng YYYY-MM-DD
+  date: /^\d{4}-\d{2}-\d{2}$/,
+  // ID: chỉ số nguyên dương
+  id: /^[1-9]\d*$/,
+  // Lương: số dương, có thể có số thập phân (2 chữ số)
+  salary: /^[1-9]\d{0,9}(\.\d{1,2})?$|^0\.\d{1,2}$/,
+  // Hiệu lực: 3, 6, 12, 24, 36 tháng
+  validityPeriod: /^(3|6|12|24|36)$/,
+  // Giá trị phụ cấp: số dương hoặc 0, có thể có số thập phân
+  allowanceValue: /^\d+(\.\d{1,2})?$/
+}
+
+// Validation errors
+const errors = ref({
+  contractNumber: '',
+  contractTypeID: '',
+  employeeID: '',
+  startDate: '',
+  endDate: '',
+  contractSalary: '',
+  insuranceSalary: '',
+  validityPeriod: '',
+  allowances: ''
+})
+
 
 const approveStatusOptions = [
   { value: 'Tạo mới', text: 'Tạo mới' },
@@ -177,100 +206,367 @@ watch(() => formData.value.contractTypeID, (newContractTypeID) => {
   }
 })
 
-const handleSubmit = () => {
-  // Basic validation
-  if (!formData.value.contractNumber || !formData.value.contractTypeID || 
-      !formData.value.employeeID ||
-      !formData.value.startDate || !formData.value.contractSalary || !formData.value.insuranceSalary) {
-    alert('Vui lòng điền đầy đủ thông tin bắt buộc')
-    return
+// Validation functions
+const validateContractNumber = () => {
+  const value = formData.value.contractNumber?.trim()
+  if (!value) {
+    errors.value.contractNumber = 'Số hợp đồng không được để trống'
+    return false
   }
+  if (!regexPatterns.contractNumber.test(value)) {
+    errors.value.contractNumber = 'Số hợp đồng chỉ được chứa chữ cái, số, dấu gạch ngang và gạch dưới (tối đa 50 ký tự)'
+    return false
+  }
+  errors.value.contractNumber = ''
+  return true
+}
 
-  // Validation for determined term contracts
-  if (isDeterminedTermContract.value) {
-    if (!formData.value.validityPeriod) {
-      alert('Vui lòng chọn hiệu lực hợp đồng')
-      return
-    }
-    if (!formData.value.endDate) {
-      alert('Ngày kết thúc không được để trống')
-      return
+const validateContractTypeID = () => {
+  const value = formData.value.contractTypeID
+  if (!value) {
+    errors.value.contractTypeID = 'Vui lòng chọn loại hợp đồng'
+    return false
+  }
+  if (!regexPatterns.id.test(String(value))) {
+    errors.value.contractTypeID = 'Loại hợp đồng không hợp lệ'
+    return false
+  }
+  errors.value.contractTypeID = ''
+  return true
+}
+
+const validateEmployeeID = () => {
+  const value = formData.value.employeeID
+  if (!value) {
+    errors.value.employeeID = 'Vui lòng chọn nhân viên'
+    return false
+  }
+  errors.value.employeeID = ''
+  return true
+}
+
+const validateStartDate = () => {
+  const value = formData.value.startDate
+  if (!value) {
+    errors.value.startDate = 'Ngày bắt đầu không được để trống'
+    return false
+  }
+  if (!regexPatterns.date.test(value)) {
+    errors.value.startDate = 'Định dạng ngày bắt đầu không hợp lệ'
+    return false
+  }
+  
+  const startDate = new Date(value)
+  if (isNaN(startDate.getTime())) {
+    errors.value.startDate = 'Ngày bắt đầu không hợp lệ'
+    return false
+  }
+  
+  // Ngày bắt đầu không được quá tương lai
+  if (startDate > new Date()) {
+    errors.value.startDate = 'Ngày bắt đầu không được lớn hơn ngày hiện tại'
+    return false
+  }
+  
+  // Validate end date when start date changes
+  if (formData.value.endDate && !isIndeterminateTermContract.value) {
+    const endDate = new Date(formData.value.endDate)
+    if (!isNaN(endDate.getTime()) && startDate >= endDate) {
+      errors.value.startDate = 'Ngày bắt đầu phải trước ngày kết thúc'
+      return false
     }
   }
+  
+  errors.value.startDate = ''
+  return true
+}
 
-  // Validation for probation contracts
-  if (isProbationContract.value) {
-    if (!formData.value.endDate) {
-      alert('Ngày kết thúc không được để trống')
-      return
-    }
+const validateEndDate = () => {
+  const value = formData.value.endDate
+  
+  // End date is optional for indeterminate term contracts
+  if (isIndeterminateTermContract.value && !value) {
+    errors.value.endDate = ''
+    return true
   }
-
-  // Validation for indeterminate term contracts
-  if (isIndeterminateTermContract.value) {
-    // End date is not required for indeterminate term contracts
-    // But if provided, it should be after start date
-    if (formData.value.endDate) {
+  
+  if (!value && !isIndeterminateTermContract.value) {
+    errors.value.endDate = 'Ngày kết thúc không được để trống'
+    return false
+  }
+  
+  if (value && !regexPatterns.date.test(value)) {
+    errors.value.endDate = 'Định dạng ngày kết thúc không hợp lệ'
+    return false
+  }
+  
+  if (value) {
+    const endDate = new Date(value)
+    if (isNaN(endDate.getTime())) {
+      errors.value.endDate = 'Ngày kết thúc không hợp lệ'
+      return false
+    }
+    
+    // Validate end date is after start date
+    if (formData.value.startDate) {
       const startDate = new Date(formData.value.startDate)
-      const endDate = new Date(formData.value.endDate)
+      if (!isNaN(startDate.getTime()) && startDate >= endDate) {
+        errors.value.endDate = 'Ngày kết thúc phải sau ngày bắt đầu'
+        return false
+      }
+    }
+    
+    // Probation contract duration validation (max 2 months)
+    if (isProbationContract.value && formData.value.startDate) {
+      const startDate = new Date(formData.value.startDate)
+      const durationInMonths = ((endDate.getFullYear() - startDate.getFullYear()) * 12) + (endDate.getMonth() - startDate.getMonth())
       
-      if (startDate >= endDate) {
-        alert('Ngày kết thúc phải sau ngày bắt đầu')
-        return
+      if (durationInMonths > 2) {
+        errors.value.endDate = 'Hợp đồng thử việc không được vượt quá 2 tháng'
+        return false
       }
     }
   }
+  
+  errors.value.endDate = ''
+  return true
+}
 
-  // Validation for other contract types (excluding determined term, indeterminate term, and probation)
-  if (!isDeterminedTermContract.value && !isIndeterminateTermContract.value && !isProbationContract.value) {
-    if (!formData.value.endDate) {
-      alert('Ngày kết thúc không được để trống')
-      return
-    }
+const validateContractSalary = () => {
+  const value = formData.value.contractSalary
+  if (!value && value !== 0) {
+    errors.value.contractSalary = 'Lương hợp đồng không được để trống'
+    return false
+  }
+  
+  const salaryNum = parseFloat(value)
+  if (isNaN(salaryNum)) {
+    errors.value.contractSalary = 'Lương hợp đồng phải là số'
+    return false
+  }
+  
+  if (salaryNum <= 0) {
+    errors.value.contractSalary = 'Lương hợp đồng phải lớn hơn 0'
+    return false
+  }
+  
+  // Validate format: tối đa 10 chữ số, 2 chữ số thập phân
+  const valueStr = String(value)
+  if (!regexPatterns.salary.test(valueStr)) {
+    errors.value.contractSalary = 'Lương hợp đồng không đúng định dạng'
+    return false
+  }
+  
+  // Giới hạn: 0.01 đến 999,999,999,999.99
+  if (salaryNum > 999999999999.99) {
+    errors.value.contractSalary = 'Lương hợp đồng không được vượt quá 999,999,999,999.99'
+    return false
+  }
+  
+  errors.value.contractSalary = ''
+  return true
+}
+
+const validateInsuranceSalary = () => {
+  const value = formData.value.insuranceSalary
+  if (!value && value !== 0) {
+    errors.value.insuranceSalary = 'Lương bảo hiểm không được để trống'
+    return false
+  }
+  
+  const salaryNum = parseFloat(value)
+  if (isNaN(salaryNum)) {
+    errors.value.insuranceSalary = 'Lương bảo hiểm phải là số'
+    return false
+  }
+  
+  if (salaryNum <= 0) {
+    errors.value.insuranceSalary = 'Lương bảo hiểm phải lớn hơn 0'
+    return false
+  }
+  
+  // Validate format
+  const valueStr = String(value)
+  if (!regexPatterns.salary.test(valueStr)) {
+    errors.value.insuranceSalary = 'Lương bảo hiểm không đúng định dạng'
+    return false
+  }
+  
+  // Giới hạn
+  if (salaryNum > 999999999999.99) {
+    errors.value.insuranceSalary = 'Lương bảo hiểm không được vượt quá 999,999,999,999.99'
+    return false
+  }
+  
+  errors.value.insuranceSalary = ''
+  return true
+}
+
+const validateValidityPeriod = () => {
+  // Validity period only required for determined term contracts
+  if (!isDeterminedTermContract.value && !isProbationContract.value) {
+    errors.value.validityPeriod = ''
+    return true
+  }
+  
+  const value = formData.value.validityPeriod
+  if (!value) {
+    errors.value.validityPeriod = 'Vui lòng chọn hiệu lực hợp đồng'
+    return false
+  }
+  
+  if (!regexPatterns.validityPeriod.test(value)) {
+    errors.value.validityPeriod = 'Hiệu lực hợp đồng không hợp lệ (phải là 3, 6, 12, 24 hoặc 36 tháng)'
+    return false
+  }
+  
+  errors.value.validityPeriod = ''
+  return true
+}
+
+const validateAllowances = () => {
+  // Validate each allowance in the array
+  for (let i = 0; i < formData.value.allowances.length; i++) {
+    const allowance = formData.value.allowances[i]
     
-    const startDate = new Date(formData.value.startDate)
-    const endDate = new Date(formData.value.endDate)
-    
-    if (startDate >= endDate) {
-      alert('Ngày kết thúc phải sau ngày bắt đầu')
-      return
+    // If allowanceID or value is filled, both must be filled
+    if (allowance.allowanceID || allowance.value || allowance.value === 0) {
+      if (!allowance.allowanceID) {
+        errors.value.allowances = `Phụ cấp ${i + 1}: Vui lòng chọn loại phụ cấp`
+        return false
+      }
+      
+      if (!regexPatterns.id.test(String(allowance.allowanceID))) {
+        errors.value.allowances = `Phụ cấp ${i + 1}: ID phụ cấp không hợp lệ`
+        return false
+      }
+      
+      if (allowance.value === null || allowance.value === undefined || allowance.value === '') {
+        errors.value.allowances = `Phụ cấp ${i + 1}: Giá trị không được để trống`
+        return false
+      }
+      
+      const valueNum = parseFloat(allowance.value)
+      if (isNaN(valueNum)) {
+        errors.value.allowances = `Phụ cấp ${i + 1}: Giá trị phải là số`
+        return false
+      }
+      
+      if (valueNum < 0) {
+        errors.value.allowances = `Phụ cấp ${i + 1}: Giá trị không được âm`
+        return false
+      }
+      
+      // Validate format
+      const valueStr = String(allowance.value)
+      if (!regexPatterns.allowanceValue.test(valueStr)) {
+        errors.value.allowances = `Phụ cấp ${i + 1}: Giá trị không đúng định dạng`
+        return false
+      }
+      
+      // Giới hạn số thập phân
+      const decimalPlaces = (valueStr.split('.')[1] || '').length
+      if (decimalPlaces > 2) {
+        errors.value.allowances = `Phụ cấp ${i + 1}: Giá trị chỉ được có tối đa 2 chữ số thập phân`
+        return false
+      }
     }
   }
+  
+  errors.value.allowances = ''
+  return true
+}
 
-  // Salary validation
-  if (parseFloat(formData.value.contractSalary) <= 0 || parseFloat(formData.value.insuranceSalary) <= 0) {
-    alert('Lương hợp đồng và lương bảo hiểm phải lớn hơn 0')
+// Real-time validation cho các trường input
+const validateField = (fieldName) => {
+  switch (fieldName) {
+    case 'contractNumber':
+      validateContractNumber()
+      break
+    case 'contractTypeID':
+      validateContractTypeID()
+      // Re-validate validity period when contract type changes
+      if (isDeterminedTermContract.value || isProbationContract.value) {
+        validateValidityPeriod()
+      }
+      break
+    case 'employeeID':
+      validateEmployeeID()
+      break
+    case 'startDate':
+      validateStartDate()
+      // Re-validate end date when start date changes
+      if (formData.value.endDate) {
+        validateEndDate()
+      }
+      break
+    case 'endDate':
+      validateEndDate()
+      // Re-validate start date when end date changes
+      if (formData.value.startDate) {
+        validateStartDate()
+      }
+      break
+    case 'contractSalary':
+      validateContractSalary()
+      break
+    case 'insuranceSalary':
+      validateInsuranceSalary()
+      break
+    case 'validityPeriod':
+      validateValidityPeriod()
+      break
+    case 'allowances':
+      validateAllowances()
+      break
+  }
+}
+
+// Validate toàn bộ form
+const validateForm = () => {
+  const validations = [
+    validateContractNumber(),
+    validateContractTypeID(),
+    validateEmployeeID(),
+    validateStartDate(),
+    validateEndDate(),
+    validateContractSalary(),
+    validateInsuranceSalary(),
+    validateValidityPeriod(),
+    validateAllowances()
+  ]
+  
+  return validations.every(v => v === true)
+}
+
+const handleSubmit = () => {
+  // Validate form trước khi submit
+  if (!validateForm()) {
+    // Scroll đến trường đầu tiên có lỗi
+    const firstErrorField = document.querySelector('.is-invalid')
+    if (firstErrorField) {
+      firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      firstErrorField.focus()
+    }
     return
-  }
-
-  // Probation contract duration validation
-  if (isProbationContract.value && formData.value.startDate && formData.value.endDate) {
-    const startDate = new Date(formData.value.startDate)
-    const endDate = new Date(formData.value.endDate)
-    const durationInMonths = ((endDate.getFullYear() - startDate.getFullYear()) * 12) + (endDate.getMonth() - startDate.getMonth())
-    
-    if (durationInMonths > 2) {
-      alert('Hợp đồng thử việc không được vượt quá 2 tháng')
-      return
-    }
   }
 
   // Format data for API submission - keep Vietnamese string status
   const submitData = {
-    ...formData.value
+    ...formData.value,
+    contractNumber: formData.value.contractNumber.trim(),
+    contractSalary: parseFloat(formData.value.contractSalary),
+    insuranceSalary: parseFloat(formData.value.insuranceSalary),
+    allowances: formData.value.allowances
+      .filter(a => a.allowanceID && (a.value !== null && a.value !== undefined && a.value !== ''))
+      .map(a => ({
+        allowanceID: parseInt(a.allowanceID),
+        value: parseFloat(a.value)
+      }))
   }
 
   // Remove ValidityPeriod from submit data as it's not in the backend entity
   delete submitData.validityPeriod
-
-  console.log('=== CONTRACT FORM SUBMIT DEBUG ===')
-  console.log('Form mode:', props.mode)
-  console.log('Form data:', formData.value)
-  console.log('ApproveStatus:', formData.value.approveStatus, 'Type:', typeof formData.value.approveStatus)
-  console.log('Submit data:', submitData)
-  console.log('Submit data keys:', Object.keys(submitData))
-  console.log('Submit data values:', Object.values(submitData))
-  console.log('=== END SUBMIT DEBUG ===')
 
   emit('submit', submitData)
 }
@@ -358,33 +654,49 @@ watch(() => props.mode, (newMode) => {
         </h6>
         <div class="row g-4">
           <div class="col-md-4">
-            <FormField 
-              label="Số hợp đồng" 
+            <label class="form-label">Số hợp đồng <span class="text-danger">*</span></label>
+            <input 
               type="text" 
-              v-model="formData.contractNumber" 
-              required 
-              placeholder="Nhập số hợp đồng"
+              class="form-control" 
+              :class="{ 'is-invalid': errors.contractNumber }"
+              v-model="formData.contractNumber"
+              @blur="validateField('contractNumber')"
+              @input="validateField('contractNumber')"
+              maxlength="50"
+              placeholder="VD: HD-2024-001"
             />
+            <div class="invalid-feedback">{{ errors.contractNumber }}</div>
           </div>
           <div class="col-md-4">
             <label class="form-label">Nhân viên <span class="text-danger">*</span></label>
-            <select class="form-select" v-model="formData.employeeID" required>
+            <select 
+              class="form-select" 
+              :class="{ 'is-invalid': errors.employeeID }"
+              v-model="formData.employeeID"
+              @change="validateField('employeeID')"
+            >
               <option value="">Chọn nhân viên</option>
-              <option v-for="employee in employees" :key="employee.id" :value="employee.id" 
-                      :selected="formData.employeeID === employee.id">
+              <option v-for="employee in employees" :key="employee.id" :value="employee.id">
                 {{ employee.firstName }} {{ employee.lastName }} - {{ employee.employeeCode }}
               </option>
             </select>
+            <div class="invalid-feedback">{{ errors.employeeID }}</div>
           </div>
           <div class="col-md-4">
             <label class="form-label">Loại hợp đồng <span class="text-danger">*</span></label>
-            <select class="form-select" v-model="formData.contractTypeID" required :disabled="loading">
+            <select 
+              class="form-select" 
+              :class="{ 'is-invalid': errors.contractTypeID }"
+              v-model="formData.contractTypeID"
+              @change="validateField('contractTypeID')"
+              :disabled="loading"
+            >
               <option value="">{{ loading ? 'Đang tải...' : 'Chọn loại hợp đồng' }}</option>
-              <option v-for="type in contractTypes" :key="type.id" :value="type.id" 
-                      :selected="formData.contractTypeID == type.id">
+              <option v-for="type in contractTypes" :key="type.id" :value="type.id">
                 {{ type.contractTypeName }}
               </option>
             </select>
+            <div class="invalid-feedback">{{ errors.contractTypeID }}</div>
           </div>
         </div>
       </div>
@@ -397,38 +709,57 @@ watch(() => props.mode, (newMode) => {
         </h6>
         <div class="row g-4">
           <!-- Hiệu lực hợp đồng cho hợp đồng xác định thời hạn -->
-          <div v-if="isDeterminedTermContract" class="col-md-4">
+          <div v-if="isDeterminedTermContract || isProbationContract" class="col-md-4">
             <label class="form-label">Hiệu lực <span class="text-danger">*</span></label>
-            <select class="form-select" v-model="formData.validityPeriod" required>
+            <select 
+              class="form-select" 
+              :class="{ 'is-invalid': errors.validityPeriod }"
+              v-model="formData.validityPeriod"
+              @change="validateField('validityPeriod')"
+            >
               <option value="">Chọn hiệu lực</option>
               <option v-for="validity in validityOptions" :key="validity.value" :value="validity.value">
                 {{ validity.text }}
               </option>
             </select>
+            <div class="invalid-feedback">{{ errors.validityPeriod }}</div>
           </div>
           
           <div class="col-md-4">
-            <FormField 
-              label="Từ ngày" 
+            <label class="form-label">Từ ngày <span class="text-danger">*</span></label>
+            <input 
               type="date" 
-              v-model="formData.startDate" 
-              required 
+              class="form-control" 
+              :class="{ 'is-invalid': errors.startDate }"
+              v-model="formData.startDate"
+              @blur="validateField('startDate')"
+              @change="validateField('startDate')"
+              :max="new Date().toISOString().split('T')[0]"
             />
+            <div class="invalid-feedback">{{ errors.startDate }}</div>
           </div>
           
           <div class="col-md-4">
-            <FormField 
-              label="Đến ngày" 
+            <label class="form-label">
+              Đến ngày 
+              <span v-if="!isIndeterminateTermContract" class="text-danger">*</span>
+            </label>
+            <input 
               type="date" 
-              v-model="formData.endDate" 
-              :required="!isIndeterminateTermContract"
+              class="form-control" 
+              :class="{ 'is-invalid': errors.endDate }"
+              v-model="formData.endDate"
+              @blur="validateField('endDate')"
+              @change="validateField('endDate')"
               :readonly="isDeterminedTermContract || isProbationContract"
+              :required="!isIndeterminateTermContract"
             />
+            <div class="invalid-feedback">{{ errors.endDate }}</div>
             <small v-if="isDeterminedTermContract || isProbationContract" class="form-text text-muted">
               Tự động tính dựa trên từ ngày và hiệu lực
             </small>
             <small v-else-if="isIndeterminateTermContract" class="form-text text-muted">
-              Hợp đồng không xác định thời hạn
+              Hợp đồng không xác định thời hạn (tùy chọn)
             </small>
           </div>
         </div>
@@ -452,30 +783,39 @@ watch(() => props.mode, (newMode) => {
         </h6>
         <div class="row g-4">
           <div class="col-md-4">
-            <FormField 
-              label="Lương hợp đồng" 
+            <label class="form-label">Lương hợp đồng <span class="text-danger">*</span></label>
+            <input 
               type="number" 
-              v-model="formData.contractSalary" 
-              required 
-              placeholder="Nhập lương hợp đồng"
-              step="1000"
+              class="form-control" 
+              :class="{ 'is-invalid': errors.contractSalary }"
+              v-model.number="formData.contractSalary"
+              @blur="validateField('contractSalary')"
+              @input="validateField('contractSalary')"
+              step="0.01"
+              min="0.01"
+              placeholder="VD: 10000000"
             />
+            <div class="invalid-feedback">{{ errors.contractSalary }}</div>
           </div>
           <div class="col-md-4">
-            <FormField 
-              label="Lương bảo hiểm" 
+            <label class="form-label">Lương bảo hiểm <span class="text-danger">*</span></label>
+            <input 
               type="number" 
-              v-model="formData.insuranceSalary" 
-              required 
-              placeholder="Nhập lương bảo hiểm"
-              step="1000"
+              class="form-control" 
+              :class="{ 'is-invalid': errors.insuranceSalary }"
+              v-model.number="formData.insuranceSalary"
+              @blur="validateField('insuranceSalary')"
+              @input="validateField('insuranceSalary')"
+              step="0.01"
+              min="0.01"
+              placeholder="VD: 8000000"
             />
+            <div class="invalid-feedback">{{ errors.insuranceSalary }}</div>
           </div>
           <div class="col-md-4">
             <label class="form-label">Trạng thái duyệt</label>
             <select class="form-select" v-model="formData.approveStatus">
-              <option v-for="status in approveStatusOptions" :key="status.value" :value="status.value" 
-                      :selected="formData.approveStatus === status.value">
+              <option v-for="status in approveStatusOptions" :key="status.value" :value="status.value">
                 {{ status.text }}
               </option>
             </select>
@@ -495,6 +835,12 @@ watch(() => props.mode, (newMode) => {
           </button>
         </div>
         <div class="row g-4">
+          <div v-if="errors.allowances" class="col-12">
+            <div class="alert alert-danger mb-3" role="alert">
+              <i class="fas fa-exclamation-circle me-2"></i>{{ errors.allowances }}
+            </div>
+          </div>
+          
           <div v-if="formData.allowances.length === 0" class="col-12">
             <div class="text-muted text-center py-3">
               Chưa có phụ cấp nào
@@ -505,7 +851,13 @@ watch(() => props.mode, (newMode) => {
             <div class="row g-3">
               <div class="col-md-5">
                 <label class="form-label">Loại phụ cấp</label>
-                <select class="form-select" v-model="allowance.allowanceID" :disabled="loading">
+                <select 
+                  class="form-select" 
+                  :class="{ 'is-invalid': errors.allowances && !allowance.allowanceID && (allowance.value || allowance.value === 0) }"
+                  v-model="allowance.allowanceID"
+                  @change="validateField('allowances')"
+                  :disabled="loading"
+                >
                   <option value="">{{ loading ? 'Đang tải...' : 'Chọn phụ cấp' }}</option>
                   <option v-for="allow in allowances" :key="allow.id" :value="allow.id">
                     {{ allow.allowanceName }}
@@ -517,13 +869,21 @@ watch(() => props.mode, (newMode) => {
                 <input 
                   type="number" 
                   class="form-control" 
-                  v-model="allowance.value" 
-                  placeholder="Nhập giá trị phụ cấp"
-                  step="1000"
+                  :class="{ 'is-invalid': errors.allowances && (!allowance.value && allowance.value !== 0) && allowance.allowanceID }"
+                  v-model.number="allowance.value"
+                  @blur="validateField('allowances')"
+                  @input="validateField('allowances')"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
                 />
               </div>
               <div class="col-md-2 d-flex align-items-end">
-                <button type="button" class="btn btn-outline-danger btn-sm" @click="removeAllowance(index)">
+                <button 
+                  type="button" 
+                  class="btn btn-outline-danger btn-sm" 
+                  @click="removeAllowance(index); validateField('allowances')"
+                >
                   <i class="fas fa-trash"></i>
                 </button>
               </div>

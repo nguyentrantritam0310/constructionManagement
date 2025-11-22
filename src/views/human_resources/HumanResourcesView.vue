@@ -66,6 +66,39 @@ const closeEmployeeModal = () => {
     selectedEmployeeForm.value = null
 }
 
+const handleEmployeeSubmit = async (data) => {
+    try {
+        const formattedData = formatEmployeeForSubmit(data)
+        
+        if (employeeFormMode.value === 'create') {
+            await createEmployee(formattedData)
+            showMessage('Thêm nhân viên thành công!', 'success')
+        } else {
+            await updateEmployee(formattedData)
+            showMessage('Cập nhật nhân viên thành công!', 'success')
+        }
+        
+        closeEmployeeModal()
+        await fetchAllEmployees() // Refresh the list
+    } catch (err) {
+        showMessage(`Lỗi: ${err.message || 'Có lỗi xảy ra khi lưu nhân viên'}`, 'error')
+    }
+}
+
+const handleDeleteEmployee = async (id) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) {
+        return
+    }
+    
+    try {
+        await deleteEmployee(id)
+        showMessage('Xóa nhân viên thành công!', 'success')
+        await fetchAllEmployees() // Refresh the list
+    } catch (err) {
+        showMessage(`Lỗi: ${err.message || 'Có lỗi xảy ra khi xóa nhân viên'}`, 'error')
+    }
+}
+
 onMounted(async () => {
     await Promise.all([
         fetchAllEmployees(),
