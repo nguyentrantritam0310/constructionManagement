@@ -63,24 +63,14 @@ const setActiveTab = async (key) => {
   }
 }
 
-// Computed property for personal salary data
 const personalSalaryData = computed(() => {
   if (!currentUser.value || !salaryTableData.value) return []
   
-  // Filter salary data for current user only
-  const userSalaryData = salaryTableData.value.filter(item => {
-    return item.empId === currentUser.value.id || 
-           item.empId === String(currentUser.value.id) ||
-           String(item.empId) === currentUser.value.id
+  return salaryTableData.value.filter(item => {
+    const userId = String(currentUser.value.id)
+    const empId = String(item.empId)
+    return empId === userId
   })
-  
-  console.log('Personal salary data:', {
-    currentUser: currentUser.value,
-    userSalaryData: userSalaryData,
-    totalSalaryData: salaryTableData.value.length
-  })
-  
-  return userSalaryData
 })
 
 // Định dạng tiền
@@ -94,13 +84,10 @@ onMounted(async () => {
   await fetchClosingStatus(selectedYear.value, selectedMonth.value)
 })
 
-// Xử lý thay đổi thời gian
 const handleTimeChange = async (year, month) => {
   await fetchSalaryData(year, month)
-  await fetchClosingStatus(year, month)
 }
 
-// Xử lý tính lại lương
 const handleRecalculateSalaries = async () => {
   try {
     await recalculateAllSalaries(selectedYear.value, selectedMonth.value)
@@ -110,7 +97,6 @@ const handleRecalculateSalaries = async () => {
   }
 }
 
-// Xử lý xuất Excel
 const handleExportToExcel = async (type) => {
   try {
     await exportToExcel(type)
@@ -120,79 +106,22 @@ const handleExportToExcel = async (type) => {
   }
 }
 
-// Xử lý chốt lương
-const handleClosePayroll = async () => {
-  if (!currentUser.value) {
-    showMessage('Vui lòng đăng nhập để thực hiện chốt lương', 'error')
-    return
-  }
-
-  const confirmed = confirm(`Bạn có chắc chắn muốn chốt bảng lương cho TẤT CẢ nhân viên tháng ${selectedMonth.value}/${selectedYear.value}?\n\nSau khi chốt, dữ liệu sẽ không thể thay đổi.`)
-  
-  if (confirmed) {
-    const success = await closeAllPayrolls(selectedYear.value, selectedMonth.value)
-    if (success) {
-      // Refresh data after closing
-      await fetchSalaryData()
-    }
-  }
-}
-
-// Xử lý chốt tất cả bảng
-const handleCloseAllSheets = async () => {
-  if (!currentUser.value) {
-    showMessage('Vui lòng đăng nhập để thực hiện chốt bảng', 'error')
-    return
-  }
-
-  const confirmed = confirm(`Bạn có chắc chắn muốn chốt tất cả bảng (công, lương, tăng ca) tháng ${selectedMonth.value}/${selectedYear.value}?\n\nSau khi chốt, dữ liệu sẽ không thể thay đổi.`)
-  
-  if (confirmed) {
-    const success = await closeAllSheets(selectedYear.value, selectedMonth.value)
-    if (success) {
-      // Refresh data after closing
-      await fetchSalaryData()
-    }
-  }
-}
-
-// Year navigation methods for tax finalization tab
-const goToPreviousYear = () => {
-  selectedYear.value--
-  handleTimeChange(selectedYear.value, selectedMonth.value)
-}
-
-const goToNextYear = () => {
-  selectedYear.value++
-  handleTimeChange(selectedYear.value, selectedMonth.value)
-}
-
-const goToCurrentYear = () => {
-  const now = new Date()
-  selectedYear.value = now.getFullYear()
-  handleTimeChange(selectedYear.value, selectedMonth.value)
-}
-
-// Month navigation methods for other tabs
-const goToPreviousMonth = () => {
-  if (selectedMonth.value === 1) {
+const adjustMonth = (delta) => {
+  const newMonth = selectedMonth.value + delta
+  if (newMonth < 1) {
     selectedMonth.value = 12
     selectedYear.value--
-  } else {
-    selectedMonth.value--
-  }
-  handleTimeChange(selectedYear.value, selectedMonth.value)
-}
-
-const goToNextMonth = () => {
-  if (selectedMonth.value === 12) {
+  } else if (newMonth > 12) {
     selectedMonth.value = 1
     selectedYear.value++
   } else {
-    selectedMonth.value++
+    selectedMonth.value = newMonth
   }
   handleTimeChange(selectedYear.value, selectedMonth.value)
 }
+
+const goToPreviousMonth = () => adjustMonth(-1)
+const goToNextMonth = () => adjustMonth(1)
 
 const goToCurrentMonth = () => {
   const now = new Date()
@@ -201,7 +130,19 @@ const goToCurrentMonth = () => {
   handleTimeChange(selectedYear.value, selectedMonth.value)
 }
 
-// Overtime detail modal
+const adjustYear = (delta) => {
+  selectedYear.value += delta
+  handleTimeChange(selectedYear.value, selectedMonth.value)
+}
+
+const goToPreviousYear = () => adjustYear(-1)
+const goToNextYear = () => adjustYear(1)
+
+const goToCurrentYear = () => {
+  selectedYear.value = new Date().getFullYear()
+  handleTimeChange(selectedYear.value, selectedMonth.value)
+}
+
 const showOvertimeModal = ref(false)
 const selectedOvertimeEmployee = ref(null)
 
@@ -253,7 +194,6 @@ const salaryColumns = [
   { key: 'netSalary', label: 'Thực lãnh' }
 ]
 
-// Pagination for salary
 const salaryCurrentPage = ref(1)
 const salaryItemsPerPage = ref(8)
 const paginatedSalaryData = computed(() => {
@@ -261,7 +201,6 @@ const paginatedSalaryData = computed(() => {
   return salaryTableData.value.slice(start, start + salaryItemsPerPage.value)
 })
 
-// Pagination for insurance
 const insuranceCurrentPage = ref(1)
 const insuranceItemsPerPage = ref(8)
 const paginatedInsuranceData = computed(() => {
@@ -269,7 +208,6 @@ const paginatedInsuranceData = computed(() => {
   return insuranceTableData.value.slice(start, start + insuranceItemsPerPage.value)
 })
 
-// Pagination for tax
 const taxCurrentPage = ref(1)
 const taxItemsPerPage = ref(8)
 const paginatedTaxData = computed(() => {
@@ -305,14 +243,6 @@ const taxColumns = [
   { key: 'insuranceEmployee', label: 'BH NV đóng' },
   { key: 'taxableIncome', label: 'Tổng thu nhập chịu thuế' },
   { key: 'pitTax', label: 'Thuế TNCN' }
-]
-
-const taxFinalizationGroups = [
-  { label: 'Quyết toán thuế', colspan: 7 },
-  ...Array.from({ length: 12 }, (_, i) => ({
-    label: `Tháng ${i + 1}`,
-    colspan: 6
-  }))
 ]
 
 const taxFinalizationColumns = [
@@ -386,7 +316,6 @@ const paginatedTaxFinalizationData = computed(() => {
   return taxFinalizationTableData.value.slice(start, start + taxFinalizationItemsPerPage.value)
 })
 
-// Export Excel function for tax finalization
 const exportTaxFinalizationToExcel = async () => {
   try {
     const workbook = new ExcelJS.Workbook()
@@ -471,7 +400,6 @@ const exportTaxFinalizationToExcel = async () => {
   }
 }
 
-// Print report functions for other tabs
 const printSalaryReport = () => {
   try {
     const printWindow = window.open('', '_blank')
@@ -924,17 +852,6 @@ const printTaxFinalizationReport = () => {
       <div class="d-flex justify-content-between align-items-center mb-3">
         <div class="text-muted">
           <small>Tổng số nhân viên: {{ salaryTableData.length }}</small>
-          <!-- Closing Details -->
-          <div v-if="isAnySheetClosed" class="closing-details mt-2">
-            <small class="text-muted">
-              <i class="fas fa-info-circle me-1"></i>
-              <span v-if="closingStatus.isPayrollClosed">
-                Bảng lương đã chốt: {{ formatClosingDate(closingStatus.payrollClosedAt) }}
-                <span v-if="closingStatus.payrollClosedBy"> bởi {{ closingStatus.payrollClosedBy }}</span>
-              </span>
-              <span v-else>Bảng lương chưa chốt</span>
-            </small>
-          </div>
         </div>
       </div>
       <div class="table-responsive salary-table">

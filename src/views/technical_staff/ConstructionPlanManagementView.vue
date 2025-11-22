@@ -73,9 +73,7 @@ const showFilter = ref(false)
 const resetFilters = () => {
   searchQuery.value = ''
   statusFilter.value = ''
-  levelFilter.value = ''
-  problemTypeFilter.value = ''
-  dateRange.value = { start: '', end: '' }
+  dateRange.value = { start: null, end: null }
 }
 
 const currentPage = ref(1)
@@ -109,7 +107,7 @@ const handleUpdateStatus = async ({ plan, newStatus }) => {
     // Load lại dữ liệu
     await fetchPlans()
   } catch (error) {
-    console.error('Error reloading plans:', error)
+    // Error handled by service
   }
 }
 

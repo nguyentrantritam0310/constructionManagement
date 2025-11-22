@@ -17,7 +17,6 @@ import * as XLSX from 'xlsx'
 const {
   payrollAdjustments,
   loading,
-  error,
   fetchPayrollAdjustments,
   createPayrollAdjustment,
   updatePayrollAdjustment,
@@ -28,9 +27,7 @@ const {
   returnPayrollAdjustment
 } = usePayrollAdjustment()
 
-// Permissions composable for centralized permission management
 const { 
-  canView, 
   canCreate, 
   canEditItem, 
   canDeleteItem,
@@ -93,7 +90,7 @@ const handleCreate = async (formData) => {
     await createPayrollAdjustment(formData)
     showCreateForm.value = false
   } catch (error) {
-    console.error('Error creating adjustment:', error)
+    // Error handling is done by composable
   }
 }
 
@@ -102,7 +99,7 @@ const handleUpdate = async (formData) => {
     await updatePayrollAdjustment(formData.voucherNo, formData)
     showUpdateForm.value = false
   } catch (error) {
-    console.error('Error updating adjustment:', error)
+    // Error handling is done by composable
   }
 }
 
@@ -144,7 +141,7 @@ const handleApprovalConfirm = async (notes) => {
     pendingVoucherNo.value = ''
     pendingAction.value = ''
   } catch (error) {
-    console.error(`Error ${pendingAction.value} adjustment:`, error)
+    // Error handling is done by composable
   }
 }
 
@@ -179,7 +176,7 @@ const handleDelete = async (voucherNo) => {
     try {
       await deletePayrollAdjustment(voucherNo)
     } catch (error) {
-      console.error('Error deleting adjustment:', error)
+      // Error handling is done by composable
     }
   }
 }
@@ -222,13 +219,7 @@ const downloadExcelTemplate = async () => {
   ]
   dataSheet.columns = headers
 
-  // Style header
-  dataSheet.getRow(1).eachCell(cell => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
-    cell.alignment = { vertical: 'middle', horizontal: 'center' }
-    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
-  })
+  applyHeaderStyle(dataSheet.getRow(1))
 
   // Add example row
   dataSheet.addRow({
@@ -250,13 +241,7 @@ const downloadExcelTemplate = async () => {
   ]
   employeeSheet.columns = employeeHeaders
 
-  // Style header
-  employeeSheet.getRow(1).eachCell(cell => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
-    cell.alignment = { vertical: 'middle', horizontal: 'center' }
-    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
-  })
+  applyHeaderStyle(employeeSheet.getRow(1))
 
   // Add example employees
   employeeSheet.addRows([
@@ -273,13 +258,7 @@ const downloadExcelTemplate = async () => {
   ]
   adjustmentTypeSheet.columns = adjustmentTypeHeaders
 
-  // Style header
-  adjustmentTypeSheet.getRow(1).eachCell(cell => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
-    cell.alignment = { vertical: 'middle', horizontal: 'center' }
-    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
-  })
+  applyHeaderStyle(adjustmentTypeSheet.getRow(1))
 
   // Add example adjustment types
   adjustmentTypeSheet.addRows([
@@ -297,13 +276,7 @@ const downloadExcelTemplate = async () => {
   ]
   adjustmentItemSheet.columns = adjustmentItemHeaders
 
-  // Style header
-  adjustmentItemSheet.getRow(1).eachCell(cell => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
-    cell.alignment = { vertical: 'middle', horizontal: 'center' }
-    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
-  })
+  applyHeaderStyle(adjustmentItemSheet.getRow(1))
 
   // Add example adjustment items
   adjustmentItemSheet.addRows([
@@ -412,37 +385,20 @@ const processImport = () => {
         return
       }
 
-      // Create adjustments with employees
-      for (const adjustment of adjustmentsToCreate) {
-        await createPayrollAdjustment(adjustment)
-      }
+      await Promise.all(adjustmentsToCreate.map(adjustment => createPayrollAdjustment(adjustment)))
 
       alert(`Đã nhập thành công ${adjustmentsToCreate.length} khoản cộng trừ với ${employeeData.length} nhân viên.`)
       file.value = null
       showImportModal.value = false
     } catch (error) {
-      console.error('Lỗi khi xử lý file Excel:', error)
       alert('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.')
     }
   }
   reader.readAsArrayBuffer(file.value)
 }
 
-// Excel export function
-const exportToExcel = async (type) => {
-  const workbook = new ExcelJS.Workbook()
-  const worksheet = workbook.addWorksheet('PayrollAdjustments')
-
-  // Thêm header
-  worksheet.columns = adjustmentColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
-
-  // Thêm dữ liệu
-  adjustmentData.value.forEach((row, index) => {
-    worksheet.addRow(row)
-  })
-
-  // Style header
-  worksheet.getRow(1).eachCell(cell => {
+const applyHeaderStyle = (row) => {
+  row.eachCell(cell => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
     cell.alignment = { vertical: 'middle', horizontal: 'center' }
@@ -453,31 +409,48 @@ const exportToExcel = async (type) => {
       right: { style: 'thin' }
     }
   })
+}
 
-  // Style dữ liệu
-  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    row.eachCell(cell => {
-      if (rowNumber !== 1) { // skip header
-        cell.alignment = { vertical: 'middle', horizontal: 'center' }
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        }
-      }
-    })
-  })
+const applyDataStyle = (cell) => {
+  cell.alignment = { vertical: 'middle', horizontal: 'center' }
+  cell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  }
+}
 
-  // Auto-fit chiều ngang cho từng cột
+const autoFitColumns = (worksheet) => {
   worksheet.columns.forEach(column => {
     let maxLength = 0
     column.eachCell({ includeEmpty: true }, cell => {
       const val = cell.value ? cell.value.toString() : ''
       maxLength = Math.max(maxLength, val.length)
     })
-    column.width = maxLength + 2 // padding để text không sát
+    column.width = maxLength + 2
   })
+}
+
+const exportToExcel = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('PayrollAdjustments')
+
+  worksheet.columns = adjustmentColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+
+  adjustmentData.value.forEach(row => {
+    worksheet.addRow(row)
+  })
+
+  applyHeaderStyle(worksheet.getRow(1))
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber !== 1) {
+      row.eachCell(applyDataStyle)
+    }
+  })
+
+  autoFitColumns(worksheet)
 
   const buf = await workbook.xlsx.writeBuffer()
   saveAs(new Blob([buf]), 'PayrollAdjustments.xlsx')
@@ -500,7 +473,7 @@ const exportToExcel = async (type) => {
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
           Lọc
         </ActionButton>
-        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('adjustment')">
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
           Xuất Excel
         </ActionButton>
         <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">

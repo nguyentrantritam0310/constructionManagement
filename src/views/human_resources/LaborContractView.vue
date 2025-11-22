@@ -14,7 +14,7 @@
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
           Lọc
         </ActionButton>
-        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('contracts')">
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
           Xuất Excel
         </ActionButton>
         <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
@@ -287,8 +287,6 @@ import { useRouter } from 'vue-router'
 import TabBar from '../../components/common/TabBar.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
-import UpdateButton from '@/components/common/UpdateButton.vue'
-import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import ContractForm from '../../components/common/contract/ContractForm.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
@@ -299,9 +297,9 @@ import { useContract } from '../../composables/useContract.js'
 import { useEmployee } from '../../composables/useEmployee.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
 import { usePermissions } from '../../composables/usePermissions.js'
-// Dữ liệu hardcode cho các loại hợp đồng, hình thức và phụ cấp
 import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
-import { CONTRACT_STATUS, CONTRACT_STATUS_LABELS, CONTRACT_APPROVE_STATUS } from '../../constants/status.js'
+import { contractService } from '../../services/contractService'
+import { employeeService } from '../../services/employeeService'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -317,7 +315,6 @@ const {
   contracts,
   employeesWithoutContract,
   loading,
-  error,
   fetchAllContracts,
   calculateEmployeesWithoutContract,
   deleteContract: deleteContractFromStore,
@@ -332,9 +329,7 @@ const { showMessage } = useGlobalMessage()
 // Router for navigation
 const router = useRouter()
 
-// Permissions composable for centralized permission management
 const { 
-  canView, 
   canCreate, 
   canEditItem, 
   canDeleteItem,
@@ -342,20 +337,13 @@ const {
   canApproveItem
 } = usePermissions()
 
-// Data is now fetched from API in ContractForm component
-
-// Import contract service
-import { contractService } from '../../services/contractService'
-import { employeeService } from '../../services/employeeService'
-
-// Thêm các hàm còn thiếu cho contract operations
+// Contract operations
 const createContract = async (contractData) => {
   try {
     const response = await contractService.createContract(contractData)
-    await fetchAllContracts() // Refresh data
+    await fetchAllContracts()
     return response
   } catch (error) {
-    console.error('Error creating contract:', error)
     throw error
   }
 }
@@ -363,10 +351,9 @@ const createContract = async (contractData) => {
 const updateContract = async (contractData) => {
   try {
     const response = await contractService.updateContract(contractData)
-    await fetchAllContracts() // Refresh data
+    await fetchAllContracts()
     return response
   } catch (error) {
-    console.error('Error updating contract:', error)
     throw error
   }
 }
@@ -413,12 +400,12 @@ const handleApprovalConfirm = async (notes) => {
         break
     }
     
-    await fetchAllContracts() // Refresh data
+    await fetchAllContracts()
     showApprovalModal.value = false
     pendingContractId.value = null
     pendingAction.value = ''
   } catch (error) {
-    console.error(`Error ${pendingAction.value} contract:`, error)
+    // Error handling is done by composable
   }
 }
 
@@ -476,7 +463,6 @@ const formatContractForSubmit = (data) => {
     formattedData.id = parseInt(data.id)
   }
 
-  // Remove fields that don't exist in ContractDTOPUT
   delete formattedData.contractTypeName
   delete formattedData.employeeName
   delete formattedData.validityStatus
@@ -484,46 +470,31 @@ const formatContractForSubmit = (data) => {
   delete formattedData.startDateFormatted
   delete formattedData.endDateFormatted
 
-  console.log('=== FORMAT CONTRACT FOR SUBMIT DEBUG ===')
-  console.log('Original data:', data)
-  console.log('Formatted data:', formattedData)
-  console.log('ID type:', typeof formattedData.id, 'value:', formattedData.id)
-  console.log('ContractTypeID type:', typeof formattedData.contractTypeID, 'value:', formattedData.contractTypeID)
-  console.log('Allowances:', formattedData.allowances)
-  console.log('=== END FORMAT DEBUG ===')
-
   return formattedData
 }
+
 onMounted(async () => {
   await Promise.all([
     fetchAllContracts(),
     fetchAllEmployees()
   ])
 })
-const today = new Date()
-const endDt = null
+
 const contractsData = computed(() => {
   const today = new Date()
   return contracts.value.map((c, index) => {
     const end = new Date(c.endDate)
     const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24))
-
-    // Calculate validity status based on date
     const validityStatus = end > today ? 'Còn hiệu lực' : 'Hết hiệu lực'
-
-    // Find employee status from employees list
     const employee = employees.value.find(emp => emp.id === c.employeeID)
     const employeeStatus = employee ? employee.status : 'Unknown'
-    
-    console.log(`Contract ${c.contractNumber}: employeeID=${c.employeeID}, found employee:`, !!employee, 'status:', employeeStatus)
 
     return {
       ...c,
       stt: index + 1,
       daysToExpire: daysLeft,
-      validityStatus: validityStatus,
-      employeeStatus: employeeStatus,
-      // Format dates for display
+      validityStatus,
+      employeeStatus,
       startDateFormatted: formatDateTime(c.startDate),
       endDateFormatted: formatDateTime(c.endDate)
     }
@@ -566,47 +537,23 @@ const getDaysToExpireIcon = (days) => {
   return 'fas fa-calendar-alt'
 }
 
-const employeesData = computed(() => {
-  return employees.value.map((machine, index) => ({
-    ...machine,
-    stt: index + 1,
-  }))
-})
-
-
-// Sử dụng contractsData để có trường daysToExpire cho bảng
 const expiredContracts = computed(() => {
-  const filtered = contractsData.value.filter(c => {
-    // Lọc hợp đồng hết hạn (<= 10 ngày) và chỉ hiển thị nhân viên đang làm việc
-    const isExpired = c.daysToExpire <= 10
-    const isActive = c.employeeStatus === 'Active'
-    
-    console.log(`Contract ${c.contractNumber}: daysToExpire=${c.daysToExpire}, employeeStatus=${c.employeeStatus}, isExpired=${isExpired}, isActive=${isActive}`)
-    
-    return isExpired && isActive
-  })
-  
-  console.log('Expired contracts (Active employees only):', filtered.length)
-  return filtered
+  return contractsData.value.filter(c => 
+    c.daysToExpire <= 10 && c.employeeStatus === 'Active'
+  )
 })
 
 const notCreatedContracts = computed(() => {
-  // Tính toán nhân viên chưa có hợp đồng từ dữ liệu local
   const employeesWithoutContractData = calculateEmployeesWithoutContract(employees.value)
-
-  return employeesWithoutContractData.map((employee, index) => {
-    const processedEmployee = {
-      id: employee.id || employee.employeeID || `emp_${index}`, // Fallback cho id
-      employeeName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
-      email: employee.email || '',
-      phone: employee.phone || '',
-      birthday: employee.birthday ? new Date(employee.birthday).toLocaleDateString('vi-VN') : '',
-      joinDate: employee.joinDate ? new Date(employee.joinDate).toLocaleDateString('vi-VN') : '',
-      stt: index + 1,
-    }
-    
-    return processedEmployee
-  })
+  return employeesWithoutContractData.map((employee, index) => ({
+    id: employee.id || employee.employeeID || `emp_${index}`,
+    employeeName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
+    email: employee.email || '',
+    phone: employee.phone || '',
+    birthday: employee.birthday ? new Date(employee.birthday).toLocaleDateString('vi-VN') : '',
+    joinDate: employee.joinDate ? new Date(employee.joinDate).toLocaleDateString('vi-VN') : '',
+    stt: index + 1
+  }))
 })
 
 const contractColumns = [
@@ -672,35 +619,8 @@ const handleCellClick = (item, column) => {
   }
 }
 
-// Excel export function
-const exportToExcel = async (type) => {
-  const workbook = new ExcelJS.Workbook()
-  let worksheet, dataToExport, columnsToExport
-
-  if (activeTab.value === 'allContracts') {
-    worksheet = workbook.addWorksheet('LaborContracts')
-    dataToExport = contractsData.value
-    columnsToExport = contractColumns
-  } else if (activeTab.value === 'notCreated') {
-    worksheet = workbook.addWorksheet('EmployeesWithoutContract')
-    dataToExport = notCreatedContracts.value
-    columnsToExport = notCreatedColumns
-  } else if (activeTab.value === 'expired') {
-    worksheet = workbook.addWorksheet('ExpiredContracts')
-    dataToExport = expiredContracts.value
-    columnsToExport = expiredColumns
-  }
-
-  // Thêm header
-  worksheet.columns = columnsToExport.map(c => ({ header: c.label, key: c.key, width: 15 }))
-
-  // Thêm dữ liệu
-  dataToExport.forEach((row, index) => {
-    worksheet.addRow(row)
-  })
-
-  // Style header
-  worksheet.getRow(1).eachCell(cell => {
+const applyHeaderStyle = (row) => {
+  row.eachCell(cell => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
     cell.alignment = { vertical: 'middle', horizontal: 'center' }
@@ -711,37 +631,76 @@ const exportToExcel = async (type) => {
       right: { style: 'thin' }
     }
   })
+}
 
-  // Style dữ liệu
-  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    row.eachCell(cell => {
-      if (rowNumber !== 1) { // skip header
-        cell.alignment = { vertical: 'middle', horizontal: 'center' }
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        }
-      }
-    })
-  })
+const applyDataStyle = (cell) => {
+  cell.alignment = { vertical: 'middle', horizontal: 'center' }
+  cell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  }
+}
 
-  // Auto-fit chiều ngang cho từng cột
+const autoFitColumns = (worksheet) => {
   worksheet.columns.forEach(column => {
     let maxLength = 0
     column.eachCell({ includeEmpty: true }, cell => {
       const val = cell.value ? cell.value.toString() : ''
       maxLength = Math.max(maxLength, val.length)
     })
-    column.width = maxLength + 2 // padding để text không sát
+    column.width = maxLength + 2
+  })
+}
+
+const getExportConfig = () => {
+  const configs = {
+    allContracts: {
+      sheetName: 'LaborContracts',
+      data: contractsData.value,
+      columns: contractColumns,
+      fileName: 'LaborContracts.xlsx'
+    },
+    notCreated: {
+      sheetName: 'EmployeesWithoutContract',
+      data: notCreatedContracts.value,
+      columns: notCreatedColumns,
+      fileName: 'EmployeesWithoutContract.xlsx'
+    },
+    expired: {
+      sheetName: 'ExpiredContracts',
+      data: expiredContracts.value,
+      columns: expiredColumns,
+      fileName: 'ExpiredContracts.xlsx'
+    }
+  }
+  return configs[activeTab.value] || configs.allContracts
+}
+
+const exportToExcel = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const config = getExportConfig()
+  const worksheet = workbook.addWorksheet(config.sheetName)
+
+  worksheet.columns = config.columns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+
+  config.data.forEach(row => {
+    worksheet.addRow(row)
   })
 
+  applyHeaderStyle(worksheet.getRow(1))
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber !== 1) {
+      row.eachCell(applyDataStyle)
+    }
+  })
+
+  autoFitColumns(worksheet)
+
   const buf = await workbook.xlsx.writeBuffer()
-  const fileName = activeTab.value === 'allContracts' ? 'LaborContracts.xlsx' :
-    activeTab.value === 'notCreated' ? 'EmployeesWithoutContract.xlsx' :
-      'ExpiredContracts.xlsx'
-  saveAs(new Blob([buf]), fileName)
+  saveAs(new Blob([buf]), config.fileName)
 }
 
 const showContractModal = ref(false)
@@ -776,13 +735,7 @@ const downloadExcelTemplate = async () => {
   ]
   dataSheet.columns = headers
 
-  // Style header
-  dataSheet.getRow(1).eachCell(cell => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
-    cell.alignment = { vertical: 'middle', horizontal: 'center' }
-    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
-  })
+  applyHeaderStyle(dataSheet.getRow(1))
 
   // Add example row
   dataSheet.addRow({
@@ -803,13 +756,7 @@ const downloadExcelTemplate = async () => {
   ]
   contractTypeSheet.columns = contractTypeHeaders
 
-  // Style header
-  contractTypeSheet.getRow(1).eachCell(cell => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
-    cell.alignment = { vertical: 'middle', horizontal: 'center' }
-    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
-  })
+  applyHeaderStyle(contractTypeSheet.getRow(1))
 
   // Add example contract types
   contractTypeSheet.addRows([
@@ -895,16 +842,12 @@ const processImport = () => {
         return
       }
 
-      // Create contracts
-      for (const contract of contractsToCreate) {
-        await createContract(contract)
-      }
+      await Promise.all(contractsToCreate.map(contract => createContract(contract)))
 
       alert(`Đã nhập thành công ${contractsToCreate.length} hợp đồng lao động.`)
       file.value = null
       showImportModal.value = false
     } catch (error) {
-      console.error('Lỗi khi xử lý file Excel:', error)
       alert('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.')
     }
   }
@@ -948,7 +891,6 @@ const handleContractSubmit = async (data) => {
 
     closeContractModal()
   } catch (err) {
-    console.error('Error submitting contract:', err)
     showMessage(`Lỗi: ${err.message}`, 'error')
   }
 }
@@ -966,7 +908,6 @@ const deleteContract = async () => {
     }
     closeDeleteModal()
   } catch (err) {
-    console.error('Error deleting contract:', err)
     showMessage(`Lỗi: ${err.message}`, 'error')
   }
 }
@@ -976,23 +917,6 @@ const closeDeleteModal = () => {
   contractToDelete.value = null
 }
 
-// Status change functions
-const showStatusModal = ref(false)
-const contractToUpdateStatus = ref(null)
-
-const openStatusDialog = (contract) => {
-  contractToUpdateStatus.value = contract
-  showStatusModal.value = true
-}
-
-// Validity status is now calculated based on date, no need for manual update
-
-const closeStatusModal = () => {
-  showStatusModal.value = false
-  contractToUpdateStatus.value = null
-}
-
-// Create contract for employee without contract
 const createContractForEmployee = (employee) => {
   selectedContractForm.value = {
     employeeID: employee.id,
@@ -1029,7 +953,6 @@ const handleExtendContract = async () => {
     }
     closeExtendModal()
   } catch (err) {
-    console.error('Error extending contract:', err)
     showMessage(`Lỗi: ${err.message}`, 'error')
   }
 }
@@ -1057,21 +980,12 @@ const terminateEmployee = (contract) => {
 const handleTerminateEmployee = async () => {
   try {
     if (employeeToTerminate.value) {
-      console.log('=== TERMINATE EMPLOYEE DEBUG ===')
-      console.log('Employee to terminate:', employeeToTerminate.value)
-      console.log('Employee ID:', employeeToTerminate.value.employeeID)
-      console.log('=== END TERMINATE EMPLOYEE DEBUG ===')
-      
-      // Chỉ cập nhật trạng thái nhân viên thành "Nghỉ việc"
       await employeeService.updateEmployeeStatus(employeeToTerminate.value.employeeID, 'Resigned')
       showMessage('Cho nhân viên nghỉ việc thành công! Trạng thái nhân viên đã được cập nhật.', 'success')
-      
-      // Refresh danh sách nhân viên để cập nhật trạng thái
       await fetchAllEmployees()
     }
     closeTerminateModal()
   } catch (err) {
-    console.error('Error terminating employee:', err)
     showMessage(`Lỗi: ${err.message}`, 'error')
   }
 }

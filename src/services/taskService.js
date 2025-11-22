@@ -1,12 +1,10 @@
-import axios from 'axios'
-
-const API_URL = 'http://160.250.132.226/api'
+import api from '../api'
 
 export const taskService = {
   // Lấy danh sách task theo plan ID
   getTasksByPlanId: async (planId) => {
     try {
-      const response = await axios.get(`/ConstructionTask/${planId}`)
+      const response = await api.get(`/ConstructionTask/${planId}`)
       return response.data
     } catch (error) {
       console.error('Error fetching tasks:', error)
@@ -17,7 +15,7 @@ export const taskService = {
   // Lấy danh sách task theo item (hạng mục) ID
   getTasksByItemId: async (itemId) => {
     try {
-      const response = await axios.get(`${API_URL}/ConstructionTask/item/${itemId}`)
+      const response = await api.get(`/ConstructionTask/item/${itemId}`)
       return response.data
     } catch (error) {
       console.error('Error fetching tasks by item:', error)
@@ -28,7 +26,7 @@ export const taskService = {
   // Thêm nhiệm vụ mới
   createTask: async (taskData) => {
     try {
-      const response = await axios.post(`${API_URL}/ConstructionTask`, taskData)
+      const response = await api.post('/ConstructionTask', taskData)
       return response.data
     } catch (error) {
       console.error('Error creating task:', error)
@@ -39,7 +37,7 @@ export const taskService = {
   // Sửa nhiệm vụ
   updateTask: async (id, taskData) => {
     try {
-      const response = await axios.put(`${API_URL}/ConstructionTask/${id}`, taskData)
+      const response = await api.put(`/ConstructionTask/${id}`, taskData)
       return response.data
     } catch (error) {
       console.error('Error updating task:', error)
@@ -50,7 +48,7 @@ export const taskService = {
   // Chuyển trạng thái nhiệm vụ
   changeTaskStatus: async (id, status) => {
     try {
-      const response = await axios.patch(`${API_URL}/ConstructionTask/${id}/status`, { status })
+      const response = await api.patch(`/ConstructionTask/${id}/status`, { status })
       return response.data
     } catch (error) {
       console.error('Error changing task status:', error)
@@ -61,10 +59,7 @@ export const taskService = {
   // Cập nhật actualWorkload cho task
   updateActualWorkload: async (id, actualWorkload) => {
     try {
-      const response = await axios.patch(
-        import.meta.env.VITE_API_URL + `/api/ConstructionTask/${id}/actual`,
-        { actualWorkload }
-      )
+      const response = await api.patch(`/ConstructionTask/${id}/actual`, { actualWorkload })
       return response.data
     } catch (error) {
       console.error('Error updating actualWorkload:', error)

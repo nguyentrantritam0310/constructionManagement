@@ -6,72 +6,14 @@ import Pagination from '../../components/common/Pagination.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import EmployeeForm from '../../components/common/employee/EmployeeForm.vue'
 import FamilyRelationForm from '../../components/common/family/FamilyRelationForm.vue'
-// ...existing code...
-const showEmployeeModal = ref(false)
-const selectedEmployeeForm = ref(null)
-const employeeFormMode = ref('create')
-// roles will be loaded from API
-
-const openAddEmployeeForm = () => {
-    selectedEmployeeForm.value = null
-    employeeFormMode.value = 'create'
-    showEmployeeModal.value = true
-}
-
-const openUpdateForm = (id) => {
-    const emp = employees.value.find(e => e.id === id)
-    selectedEmployeeForm.value = emp
-    employeeFormMode.value = 'update'
-    showEmployeeModal.value = true
-}
-
-const closeEmployeeModal = () => {
-    showEmployeeModal.value = false
-    selectedEmployeeForm.value = null
-}
-
-const handleEmployeeSubmit = async (data) => {
-    try {
-        const formattedData = formatEmployeeForSubmit(data)
-        
-        if (employeeFormMode.value === 'create') {
-            await createEmployee(formattedData)
-            showMessage('Tạo nhân viên thành công!', 'success')
-        } else {
-            await updateEmployee(formattedData)
-            showMessage('Cập nhật nhân viên thành công!', 'success')
-        }
-        
-        closeEmployeeModal()
-    } catch (err) {
-        console.error('Error submitting employee:', err)
-        showMessage(`Lỗi: ${err.message}`, 'error')
-    }
-}
-
-const handleDeleteEmployee = async (id) => {
-    if (confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) {
-        try {
-            await deleteEmployee(id)
-            showMessage('Xóa nhân viên thành công!', 'success')
-        } catch (err) {
-            console.error('Error deleting employee:', err)
-            showMessage(`Lỗi: ${err.message}`, 'error')
-        }
-    }
-}
 import { useEmployee } from '../../composables/useEmployee'
 import { useFamilyRelation } from '../../composables/useFamilyRelation'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
-import { useAuth } from '../../composables/useAuth'
 import { usePermissions } from '../../composables/usePermissions'
 import ActionButton from '@/components/common/ActionButton.vue'
-import UpdateButton from '@/components/common/UpdateButton.vue'
-import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import * as XLSX from 'xlsx'
 
 const {
     employees,
@@ -99,12 +41,30 @@ const {
 
 const { showMessage } = useGlobalMessage()
 
-// Router for navigation
 const router = useRouter()
+const { canCreate, canEditItem, canDeleteItem, filterDataByPermission } = usePermissions()
 
-// Auth and permissions composables
-const { currentUser } = useAuth()
-const { canView, canCreate, canEditItem, canDeleteItem, filterDataByPermission } = usePermissions()
+const showEmployeeModal = ref(false)
+const selectedEmployeeForm = ref(null)
+const employeeFormMode = ref('create')
+
+const openAddEmployeeForm = () => {
+    selectedEmployeeForm.value = null
+    employeeFormMode.value = 'create'
+    showEmployeeModal.value = true
+}
+
+const openUpdateForm = (id) => {
+    const emp = employees.value.find(e => e.id === id)
+    selectedEmployeeForm.value = emp
+    employeeFormMode.value = 'update'
+    showEmployeeModal.value = true
+}
+
+const closeEmployeeModal = () => {
+    showEmployeeModal.value = false
+    selectedEmployeeForm.value = null
+}
 
 onMounted(async () => {
     await Promise.all([
@@ -112,7 +72,6 @@ onMounted(async () => {
         fetchAllRoles()
     ])
 })
-const activeTab = ref('employeeList')
 
 const employeesData = computed(() => {
     const filteredEmployees = filterDataByPermission('human-resources', employees.value)
@@ -195,13 +154,11 @@ const handleFamilyRelationSubmit = async (data) => {
         
         closeFamilyFormModal()
         
-        // Refresh the family relations list
         if (selectedEmployee.value) {
             await fetchFamilyRelationsByEmployeeId(selectedEmployee.value.id)
             selectedRelations.value = familyRelations.value
         }
     } catch (err) {
-        console.error('Error submitting family relation:', err)
         showMessage(`Lỗi: ${err.message}`, 'error')
     }
 }
@@ -211,11 +168,9 @@ const handleDeleteFamilyRelation = async (relationId) => {
         try {
             await deleteFamilyRelation(relationId, selectedEmployee.value.id)
             showMessage('Xóa quan hệ gia đình thành công!', 'success')
-            // Refresh the family relations list
             await fetchFamilyRelationsByEmployeeId(selectedEmployee.value.id)
             selectedRelations.value = familyRelations.value
         } catch (err) {
-            console.error('Error deleting family relation:', err)
             showMessage(`Lỗi: ${err.message}`, 'error')
         }
     }
@@ -239,21 +194,8 @@ const handleCellClick = (item, column) => {
     }
 }
 
-// Excel export function
-const exportToExcel = async (type) => {
-    const workbook = new ExcelJS.Workbook()
-    const worksheet = workbook.addWorksheet('Employees')
-
-    // Thêm header
-    worksheet.columns = columns.map(c => ({ header: c.label, key: c.key, width: 15 }))
-
-    // Thêm dữ liệu
-    employeesData.value.forEach((row, index) => {
-        worksheet.addRow(row)
-    })
-
-    // Style header
-    worksheet.getRow(1).eachCell(cell => {
+const applyHeaderStyle = (row) => {
+    row.eachCell(cell => {
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
         cell.alignment = { vertical: 'middle', horizontal: 'center' }
@@ -264,83 +206,69 @@ const exportToExcel = async (type) => {
             right: { style: 'thin' }
         }
     })
+}
 
-    // Style dữ liệu
-    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-        row.eachCell(cell => {
-            if (rowNumber !== 1) { // skip header
-                cell.alignment = { vertical: 'middle', horizontal: 'center' }
-                cell.border = {
-                    top: { style: 'thin' },
-                    left: { style: 'thin' },
-                    bottom: { style: 'thin' },
-                    right: { style: 'thin' }
-                }
-            }
-        })
-    })
+const applyDataStyle = (cell) => {
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+    }
+}
 
-    // Auto-fit chiều ngang cho từng cột
+const autoFitColumns = (worksheet) => {
     worksheet.columns.forEach(column => {
         let maxLength = 0
         column.eachCell({ includeEmpty: true }, cell => {
             const val = cell.value ? cell.value.toString() : ''
             maxLength = Math.max(maxLength, val.length)
         })
-        column.width = maxLength + 2 // padding để text không sát
+        column.width = maxLength + 2
     })
+}
+
+const exportToExcel = async () => {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Employees')
+
+    worksheet.columns = columns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+
+    employeesData.value.forEach(row => {
+        worksheet.addRow(row)
+    })
+
+    applyHeaderStyle(worksheet.getRow(1))
+
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (rowNumber !== 1) {
+            row.eachCell(applyDataStyle)
+        }
+    })
+
+    autoFitColumns(worksheet)
 
     const buf = await workbook.xlsx.writeBuffer()
     saveAs(new Blob([buf]), 'Employees.xlsx')
 }
 
-// Function to get employee name with status indicator
+const getStatusConfig = (status) => {
+    const statusMap = {
+        'Active': { color: '#28a745', text: 'Đang làm việc' },
+        'Resigned': { color: '#000000', text: 'Nghỉ việc' },
+        'MaternityLeave': { color: '#e91e63', text: 'Nghỉ thai sản' },
+        0: { color: '#28a745', text: 'Đang làm việc' },
+        1: { color: '#000000', text: 'Nghỉ việc' },
+        2: { color: '#e91e63', text: 'Nghỉ thai sản' }
+    }
+    return statusMap[status] || { color: '#28a745', text: 'Đang làm việc' }
+}
+
 const getEmployeeNameWithStatus = (employee) => {
     const fullName = `${employee.firstName} ${employee.lastName}`
-    const status = employee.status || 'Active' // Default to Active
-    
-    let statusColor = ''
-    let statusText = ''
-    
-    // Handle both string and number status values
-    if (typeof status === 'string') {
-        switch (status) {
-            case 'Active':
-                statusColor = '#28a745' // Green
-                statusText = 'Đang làm việc'
-                break
-            case 'Resigned':
-                statusColor = '#000000' // Black
-                statusText = 'Nghỉ việc'
-                break
-            case 'MaternityLeave':
-                statusColor = '#e91e63' // Pink
-                statusText = 'Nghỉ thai sản'
-                break
-            default:
-                statusColor = '#28a745' // Default to green
-                statusText = 'Đang làm việc'
-        }
-    } else {
-        // Handle number status values (legacy support)
-        switch (status) {
-            case 0: // Active
-                statusColor = '#28a745' // Green
-                statusText = 'Đang làm việc'
-                break
-            case 1: // Resigned
-                statusColor = '#000000' // Black
-                statusText = 'Nghỉ việc'
-                break
-            case 2: // MaternityLeave
-                statusColor = '#e91e63' // Pink
-                statusText = 'Nghỉ thai sản'
-                break
-            default:
-                statusColor = '#28a745' // Default to green
-                statusText = 'Đang làm việc'
-        }
-    }
+    const status = employee.status || 'Active'
+    const { color: statusColor, text: statusText } = getStatusConfig(status)
     
     return `<span class="employee-name-with-status" title="${statusText}">
         <span class="status-dot" style="background-color: ${statusColor};"></span>
@@ -366,7 +294,7 @@ const getEmployeeNameWithStatus = (employee) => {
                 <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
                     Lọc
                 </ActionButton>
-                <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('employees')">
+                <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
                     Xuất Excel
                 </ActionButton>
                 <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">

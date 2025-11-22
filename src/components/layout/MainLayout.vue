@@ -143,7 +143,7 @@ import Breadcrumb from './Breadcrumb.vue'
 import ChangePasswordModal from '../common/ChangePasswordModal.vue'
 import { useAuth } from '../../composables/useAuth'
 
-const { currentUser, logout, isDirector, isHRManager } = useAuth()
+const { currentUser, logout } = useAuth()
 const router = useRouter()
 const route = useRoute()
 
@@ -319,22 +319,9 @@ const personnelMenuItems = computed(() => {
   return menuItems
 })
 
-// Static menu items for "Phân hệ Hệ thống" (only for admin roles)
-const systemMenuItems = [
-  {
-    name: 'Phân quyền',
-    icon: 'fas fa-shield-alt',
-    children: [
-      { icon: 'fas fa-key', text: 'Quản lý phân quyền', route: '/permission-management' }
-    ]
-  }
-]
-
-
-
 // Subsystems
 const subsystems = computed(() => {
-  const baseSubsystems = [
+  return [
     {
       name: 'Phân hệ Nhân sự',
       icon: 'fas fa-users',
@@ -348,18 +335,6 @@ const subsystems = computed(() => {
       modules: constructionMenuItems.value || []
     }
   ]
-
-  // Only show system subsystem for admin roles
-  if (isDirector.value || isHRManager.value) {
-    baseSubsystems.push({
-      name: 'Phân hệ Hệ thống',
-      icon: 'fas fa-cogs',
-      key: 'system',
-      modules: systemMenuItems || []
-    })
-  }
-
-  return baseSubsystems
 })
 
 const filteredSubsystems = computed(() => {
@@ -416,10 +391,8 @@ const handleChangePassword = () => {
   closeUserDropdown()
 }
 
-const handlePasswordChangeSuccess = (message) => {
+const handlePasswordChangeSuccess = () => {
   showChangePasswordModal.value = false
-  // Show success message if needed
-  console.log('Password changed successfully:', message)
 }
 
 // Action buttons functions
@@ -429,12 +402,12 @@ const refreshPage = () => {
 
 const toggleFullscreen = () => {
   if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(err => {
-      console.log('Error attempting to enable fullscreen:', err)
+    document.documentElement.requestFullscreen().catch(() => {
+      // Fullscreen not supported or denied
     })
   } else {
-    document.exitFullscreen().catch(err => {
-      console.log('Error attempting to exit fullscreen:', err)
+    document.exitFullscreen().catch(() => {
+      // Exit fullscreen failed
     })
   }
 }

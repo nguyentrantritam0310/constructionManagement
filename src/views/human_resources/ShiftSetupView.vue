@@ -6,7 +6,6 @@ import Pagination from '../../components/common/Pagination.vue'
 import { useWorkShift } from '../../composables/useWorkShift'
 import { useAttendanceMachine } from '../../composables/useAttendanceMachine'
 import UpdateButton from '@/components/common/UpdateButton.vue'
-import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import DeleteButton from '@/components/common/DeleteButton.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
@@ -38,6 +37,7 @@ const showUpdateForm = ref(false)
 const showUpdateFormAttendanceMachine = ref(false)
 const selectedItem = ref(null)
 const showImportModal = ref(false)
+const showFilter = ref(false)
 const { showMessage } = useGlobalMessage()
 onMounted(async () => {
   await fetchWorkShifts()
@@ -51,7 +51,6 @@ const openUpdateForm = (id) => {
 }
 
 const handleUpdateWorkShift = async (payload) => {
-  // Đảm bảo truyền đúng id
   const id = selectedItem.value.id || selectedItem.value.ID
   await updateWorkShift(id, { ...payload, id })
   showUpdateForm.value = false
@@ -75,7 +74,7 @@ const tabs = [
 const handleCreateWorkShift = async (payload) => {
   await createWorkShifts(payload)
   showCreateForm.value = false
-  await fetchWorkShifts() // Refresh lại danh sách ca làm việc
+  await fetchWorkShifts()
 }
 const handleCreateMachine = async (formData) => {
   await createAttendanceMachine(formData)
@@ -92,67 +91,52 @@ const shiftColumns = [
   { key: 'in', label: 'Giờ vào' },
   { key: 'out', label: 'Giờ ra' },
 ]
+const findEarliestTime = (times) => {
+  if (!times.length) return '--:--'
+  return times.reduce((a, b) => {
+    const timeA = new Date(`2000-01-01T${a}`)
+    const timeB = new Date(`2000-01-01T${b}`)
+    return timeA < timeB ? a : b
+  })
+}
+
+const findLatestTime = (times) => {
+  if (!times.length) return '--:--'
+  return times.reduce((a, b) => {
+    const timeA = new Date(`2000-01-01T${a}`)
+    const timeB = new Date(`2000-01-01T${b}`)
+    return timeA > timeB ? a : b
+  })
+}
+
 const shiftData = computed(() => {
   return workshifts.value.map((shift, index) => {
-    console.log('Processing shift:', shift);
-    console.log('Shift details:', shift.shiftDetails);
-    
-    // Kiểm tra xem shiftDetails có tồn tại và có dữ liệu không
     if (!shift.shiftDetails || shift.shiftDetails.length === 0) {
-      console.log('No shift details found for shift:', shift.shiftName);
       return {
         stt: index + 1,
         code: shift.id,
         name: shift.shiftName,
         in: '--:--',
         out: '--:--'
-      };
+      }
     }
     
-    // Lấy mảng giờ vào và giờ ra
-    // Thử cả hai cách để đảm bảo tương thích
     const startTimes = shift.shiftDetails.map(d => d.StartTime || d.startTime)
     const endTimes = shift.shiftDetails.map(d => d.EndTime || d.endTime)
     
-    console.log('Start times:', startTimes);
-    console.log('End times:', endTimes);
-
-    // Lọc bỏ các ngày nghỉ (00:00:00)
     const validStartTimes = startTimes.filter(time => time !== '00:00:00')
     const validEndTimes = endTimes.filter(time => time !== '00:00:00')
     
-    console.log('Valid start times:', validStartTimes);
-    console.log('Valid end times:', validEndTimes);
-
-    // Tìm giờ vào sớm nhất (min) và giờ ra trễ nhất (max) từ các ngày làm việc
-    const earliestStart = validStartTimes.length > 0 ? validStartTimes.reduce((a, b) => {
-      const timeA = new Date(`2000-01-01T${a}`)
-      const timeB = new Date(`2000-01-01T${b}`)
-      return timeA < timeB ? a : b
-    }) : '--:--'
-    
-    const latestEnd = validEndTimes.length > 0 ? validEndTimes.reduce((a, b) => {
-      const timeA = new Date(`2000-01-01T${a}`)
-      const timeB = new Date(`2000-01-01T${b}`)
-      return timeA > timeB ? a : b
-    }) : '--:--'
-    
-    console.log('Earliest start:', earliestStart);
-    console.log('Latest end:', latestEnd);
-
     return {
       stt: index + 1,
       code: shift.id,
       name: shift.shiftName,
-      in: earliestStart, // giờ vào sớm nhất
-      out: latestEnd    // giờ ra trễ nhất
+      in: findEarliestTime(validStartTimes),
+      out: findLatestTime(validEndTimes)
     }
   })
 })
 
-function toggleShiftActive(item) {
-  item.active = !item.active
-}
 const paginatedShiftData = computed(() => {
   const start = (shiftCurrentPage.value - 1) * shiftItemsPerPage.value
   return shiftData.value.slice(start, start + shiftItemsPerPage.value)
@@ -180,113 +164,88 @@ const paginatedMachineData = computed(() => {
   return machineData.value.slice(start, start + machineItemsPerPage.value)
 })
 
-const exportToExcel = async (type) => {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('WorkShift');
-
-  // Thêm header
-  worksheet.columns = shiftColumns.map(c => ({ header: c.label, key: c.key, width: 15 }));
-
-  // Thêm dữ liệu
-  shiftData.value.forEach((row, index) => {
-    worksheet.addRow(row);
-  });
-
-  // Style header
-  worksheet.getRow(1).eachCell(cell => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } };
-    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+const applyHeaderStyle = (row) => {
+  row.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
     cell.border = {
       top: { style: 'thin' },
       left: { style: 'thin' },
       bottom: { style: 'thin' },
       right: { style: 'thin' }
-    };
-  });
+    }
+  })
+}
 
-  // Style dữ liệu
-  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    row.eachCell(cell => {
-      if (rowNumber !== 1) { // skip header
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        };
-      }
-    });
-  });
+const applyDataStyle = (cell) => {
+  cell.alignment = { vertical: 'middle', horizontal: 'center' }
+  cell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  }
+}
 
-  // 👉 Auto-fit chiều ngang cho từng cột
+const autoFitColumns = (worksheet) => {
   worksheet.columns.forEach(column => {
-    let maxLength = 0;
+    let maxLength = 0
     column.eachCell({ includeEmpty: true }, cell => {
-      const val = cell.value ? cell.value.toString() : '';
-      maxLength = Math.max(maxLength, val.length);
-    });
-    column.width = maxLength + 2; // padding để text không sát
-  });
+      const val = cell.value ? cell.value.toString() : ''
+      maxLength = Math.max(maxLength, val.length)
+    })
+    column.width = maxLength + 2
+  })
+}
 
-  const buf = await workbook.xlsx.writeBuffer();
-  saveAs(new Blob([buf]), 'WorkShift.xlsx');
-};
+const exportToExcel = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('WorkShift')
 
-const exportToExcelAttendanceMachine = async (type) => {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('AttendanceMachine');
+  worksheet.columns = shiftColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+  
+  shiftData.value.forEach(row => {
+    worksheet.addRow(row)
+  })
 
-  // Thêm header
-  worksheet.columns = machineColumns.map(c => ({ header: c.label, key: c.key, width: 15 }));
-
-  // Thêm dữ liệu
-  machineData.value.forEach((row, index) => {
-    worksheet.addRow(row);
-  });
-
-  // Style header
-  worksheet.getRow(1).eachCell(cell => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } };
-    cell.alignment = { vertical: 'middle', horizontal: 'center' };
-    cell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
-  });
-
-  // Style dữ liệu
+  applyHeaderStyle(worksheet.getRow(1))
+  
   worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    row.eachCell(cell => {
-      if (rowNumber !== 1) { // skip header
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        };
-      }
-    });
-  });
+    if (rowNumber !== 1) {
+      row.eachCell(applyDataStyle)
+    }
+  })
 
-  // 👉 Auto-fit chiều ngang cho từng cột
-  worksheet.columns.forEach(column => {
-    let maxLength = 0;
-    column.eachCell({ includeEmpty: true }, cell => {
-      const val = cell.value ? cell.value.toString() : '';
-      maxLength = Math.max(maxLength, val.length);
-    });
-    column.width = maxLength + 2; // padding để text không sát
-  });
+  autoFitColumns(worksheet)
 
-  const buf = await workbook.xlsx.writeBuffer();
-  saveAs(new Blob([buf]), 'AttendanceMachine.xlsx');
-};
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'WorkShift.xlsx')
+}
+
+const exportToExcelAttendanceMachine = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('AttendanceMachine')
+
+  worksheet.columns = machineColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+  
+  machineData.value.forEach(row => {
+    worksheet.addRow(row)
+  })
+
+  applyHeaderStyle(worksheet.getRow(1))
+  
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber !== 1) {
+      row.eachCell(applyDataStyle)
+    }
+  })
+
+  autoFitColumns(worksheet)
+
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'AttendanceMachine.xlsx')
+}
 
 // IMPORT EXCEL
 const file = ref(null);
@@ -403,11 +362,12 @@ const processImport = () => {
       showImportModal.value = false;
     } catch (error) {
       console.error('Lỗi khi xử lý file Excel:', error);
-      showMessage('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.', 'error');
+      showMessage('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.', 'error')
     }
-  };
-  reader.readAsArrayBuffer(file.value);
-};
+  }
+  reader.readAsArrayBuffer(file.value)
+}
+
 const handleUpdateAttendanceMachineClick = async (item) => {
   selectedItem.value = { ...item }
   showUpdateFormAttendanceMachine.value = true
@@ -427,27 +387,6 @@ const handleUpdateMachine = async (formData) => {
 const handleDeleteClick = async (item) => {
   if (confirm(`Bạn có chắc chắn muốn xóa máy chấm công "${item.attendanceMachineName}" không?`)) {
     await deleteAttendanceMachine(item.id)
-  }
-}
-
-const handleUpdateSubmit = async (formData) => {
-  try {
-    const itemId = selectedItem.value.id
-    console.log('🔄 Updating report:', itemId)
-    console.log('📦 Form data contents:')
-    for (let [key, value] of formData.entries()) {
-      console.log(`${key}: ${value instanceof File ? `File(${value.name})` : value}`)
-    }
-
-    await updateReport(reportId, formData)
-    showUpdateForm.value = false
-    selectedItem.value = null
-    reportFormData.value = {}
-    showMessage('Cập nhật báo cáo thành công', 'success')
-    await fetchReportsByKiThuat()
-  } catch (err) {
-    console.error('Error updating report:', err)
-    showMessage(err.message || 'Có lỗi xảy ra khi cập nhật báo cáo', 'error')
   }
 }
 </script>
@@ -470,7 +409,7 @@ const handleUpdateSubmit = async (formData) => {
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
           Lọc
         </ActionButton>
-        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('shift')">
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
           Xuất Excel
         </ActionButton>
         <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
@@ -485,7 +424,7 @@ const handleUpdateSubmit = async (formData) => {
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
           Lọc
         </ActionButton>
-        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcelAttendanceMachine('machine')">
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcelAttendanceMachine">
           Xuất Excel
         </ActionButton>
         <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">

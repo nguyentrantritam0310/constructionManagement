@@ -4,8 +4,6 @@ import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import LeaveForm from '../../components/common/leave/LeaveForm.vue'
 import { useAuth } from '../../composables/useAuth.js'
-import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
-import api from '../../api.js'
 
 const showEmployeeModal = ref(false)
 const showDayModal = ref(false)
@@ -55,28 +53,14 @@ function handleImageClick(imageUrl, imageType = 'checkin') {
   showImageModal.value = true
 }
 
-// Function to open LeaveForm modal when clicking on voucher code
-function openLeaveFormModal(voucherCode) {
-  console.log('Opening leave form modal for voucher code:', voucherCode)
-  console.log('Available leave requests:', leaveRequests.value)
+const openLeaveFormModal = (voucherCode) => {
+  if (!voucherCode) return
   
-  if (!voucherCode) {
-    console.warn('No voucher code provided')
-    return
-  }
-  
-  // Find the leave request by voucher code
   const leaveRequest = leaveRequests.value.find(leave => leave.voucherCode === voucherCode)
-  
-  console.log('Found leave request:', leaveRequest)
   
   if (leaveRequest) {
     selectedLeaveRequest.value = leaveRequest
     showLeaveFormModal.value = true
-    console.log('Leave form modal opened successfully')
-  } else {
-    console.warn('Leave request not found for voucher code:', voucherCode)
-    console.log('Available voucher codes:', leaveRequests.value.map(lr => lr.voucherCode))
   }
 }
 
@@ -126,88 +110,12 @@ const workColumnsNoActions = [
   { key: 'workHour', label: 'Giờ/ngày công' }
 ]
 
-// Filtered data for day modal - show all loaded data since it's already filtered by date
-const filteredAttendanceHistory = computed(() => {
-  console.log('Filtered attendance history:', attendanceHistory.value);
-  return attendanceHistory.value || [];
-});
+const filteredAttendanceHistory = computed(() => attendanceHistory.value || [])
 
-// Computed property để xử lý URL ảnh như ReportDetailDialog
-const apiBaseUrl = computed(() => {
-  const baseUrl = api.defaults.baseURL || import.meta.env.VITE_API_URL
-  // Remove /api from the end if it exists
-  return baseUrl.endsWith('/api')
-    ? baseUrl.slice(0, -4)
-    : baseUrl
-});
 
-// Function để format URL ảnh
-const formatImageUrl = (imagePath) => {
-  if (!imagePath) return null;
-  
-  // Nếu đã là full URL thì return luôn
-  if (imagePath.startsWith('http')) {
-    return imagePath;
-  }
-  
-  // Sử dụng API endpoint thay vì static files
-  const baseUrl = 'https://xaydungvipro.id.vn/api/Attendance';
-  
-  // Extract filename from path like "/uploads/attendance/filename.jpg"
-  const filename = imagePath.split('/').pop();
-  
-  // Construct API URL
-  return `${baseUrl}/image/${filename}`;
-};
-
-const filteredWorkHistory = computed(() => {
-  console.log('Filtered work history:', workHistory.value);
-  return workHistory.value || [];
-});
-const deleteColumns = [
-  { key: 'stt', label: 'STT' },
-  { key: 'shiftName', label: 'Tên ca' },
-  { key: 'deletedBy', label: 'Nhân viên xóa' },
-  { key: 'deleteDate', label: 'Ngày xóa' }
-]
-const deleteWorkColumns = [
-  { key: 'stt', label: 'STT' },
-  { key: 'avatar', label: 'Ảnh' },
-  { key: 'shiftName', label: 'Tên ca' },
-  { key: 'refCode', label: 'Mã phiếu tham chiếu' },
-  { key: 'date', label: 'Ngày đi làm' },
-  { key: 'scanTime', label: 'Giờ quét' },
-  { key: 'type', label: 'Loại công' },
-  { key: 'location', label: 'Vị trí' }
-]
-
-// Real attendance history data from API
+const filteredWorkHistory = computed(() => workHistory.value || [])
 const attendanceHistory = ref([])
-
-// Real work history data from API
 const workHistory = ref([])
-
-const deleteHistory = ref([
-  {
-    stt: 1,
-    shiftName: 'Ca hành chính Hà Nội (08:30-17:30)',
-    deletedBy: 'Nguyễn Văn A',
-    deleteDate: '10/07/2025'
-  }
-])
-
-const deleteWorkHistory = ref([
-  {
-    stt: 1,
-    avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
-    shiftName: 'Ca hành chính Hà Nội (08:30-17:30)',
-    refCode: 'MP003',
-    date: '10/07/2025',
-    scanTime: '08:30',
-    type: 'DILAM',
-    location: 'Máy quét: Importfile'
-  }
-])
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TabBar from '../../components/common/TabBar.vue'
@@ -319,176 +227,23 @@ const selectTab = async (tabKey) => {
     ])
   }
   
-  // Load data for personal tab
   if (tabKey === 'personal') {
-    console.log('Loading data for personal tab...')
     await Promise.all([
       loadAttendanceData(),
       fetchLeaveRequests()
     ])
-    console.log('Personal tab data loaded. Attendance count:', attendanceList.value?.length || 0)
   }
   
-  // Load data for personal overtime tab
   if (tabKey === 'personalOvertime') {
-    console.log('Loading data for personal overtime tab...')
     await Promise.all([
       loadOvertimeData(),
       fetchOvertimeRequests()
     ])
-    console.log('Personal overtime tab data loaded. Overtime count:', overtimeRequests.value?.length || 0)
   }
 }
 
-// Danh sách nhân viên và dữ liệu công cho từng ngày trong tháng
-const employees = [
-  {
-    id: 'NV0001',
-    name: 'Vũ Thị Hợp',
-    position: 'Tổng giám đốc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 1, totalPaidLeave: 1, totalPresent: 20, totalCompensatoryOt: 4, totalPaidOt: 8, businessTrip: 2, totalWorkDays: 21, lateCount: 2, earlyLeaveCount: 1, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0002',
-    name: 'Trần Nha Trang',
-    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 2, totalPaidOt: 5, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0224',
-    name: 'Nguyễn Thạc Hùng',
-    position: 'Giám đốc Ban Đầu tư',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 2, totalPaidLeave: 0, totalPresent: 20, totalCompensatoryOt: 0, totalPaidOt: 10, businessTrip: 3, totalWorkDays: 20, lateCount: 5, earlyLeaveCount: 2, unexplainedAbsence: 1 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0001',
-    name: 'Vũ Thị Hợp',
-    position: 'Tổng giám đốc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 1, totalPaidLeave: 1, totalPresent: 20, totalCompensatoryOt: 4, totalPaidOt: 8, businessTrip: 2, totalWorkDays: 21, lateCount: 2, earlyLeaveCount: 1, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0002',
-    name: 'Trần Nha Trang',
-    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 2, totalPaidOt: 5, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0224',
-    name: 'Nguyễn Thạc Hùng',
-    position: 'Giám đốc Ban Đầu tư',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 2, totalPaidLeave: 0, totalPresent: 20, totalCompensatoryOt: 0, totalPaidOt: 10, businessTrip: 3, totalWorkDays: 20, lateCount: 5, earlyLeaveCount: 2, unexplainedAbsence: 1 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0001',
-    name: 'Vũ Thị Hợp',
-    position: 'Tổng giám đốc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 1, totalPaidLeave: 1, totalPresent: 20, totalCompensatoryOt: 4, totalPaidOt: 8, businessTrip: 2, totalWorkDays: 21, lateCount: 2, earlyLeaveCount: 1, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0002',
-    name: 'Trần Nha Trang',
-    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 2, totalPaidOt: 5, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0224',
-    name: 'Nguyễn Thạc Hùng',
-    position: 'Giám đốc Ban Đầu tư',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 2, totalPaidLeave: 0, totalPresent: 20, totalCompensatoryOt: 0, totalPaidOt: 10, businessTrip: 3, totalWorkDays: 20, lateCount: 5, earlyLeaveCount: 2, unexplainedAbsence: 1 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0001',
-    name: 'Vũ Thị Hợp',
-    position: 'Tổng giám đốc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 1, totalPaidLeave: 1, totalPresent: 20, totalCompensatoryOt: 4, totalPaidOt: 8, businessTrip: 2, totalWorkDays: 21, lateCount: 2, earlyLeaveCount: 1, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0002',
-    name: 'Trần Nha Trang',
-    position: 'Phó Tổng Giám đốc phụ trách Kinh doanh',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 2, totalPaidOt: 5, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0224',
-    name: 'Nguyễn Thạc Hùng',
-    position: 'Giám đốc Ban Đầu tư',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 2, totalPaidLeave: 0, totalPresent: 20, totalCompensatoryOt: 0, totalPaidOt: 10, businessTrip: 3, totalWorkDays: 20, lateCount: 5, earlyLeaveCount: 2, unexplainedAbsence: 1 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0253',
-    name: 'Nguyễn Duy Phúc',
-    position: 'Kiến trúc sư trưởng khối Công trình kiến trúc',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 2, totalPresent: 20, totalCompensatoryOt: 8, totalPaidOt: 0, businessTrip: 1, totalWorkDays: 22, lateCount: 1, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  },
-  {
-    id: 'NV0280',
-    name: 'Nguyễn Thiện Đức',
-    position: 'Chuyên viên Quản lý thiết kế Kết cấu & Hạ tầng',
-    summary: { totalStandardWork: 22, totalUnpaidLeave: 0, totalPaidLeave: 0, totalPresent: 22, totalCompensatoryOt: 0, totalPaidOt: 0, businessTrip: 0, totalWorkDays: 22, lateCount: 0, earlyLeaveCount: 0, unexplainedAbsence: 0 }
-  }
-]
-
 // Tạo danh sách ngày trong tháng được chọn (computed để reactive)
+ // Tạo danh sách ngày trong tháng được chọn (computed để reactive)
 const dayHeaders = computed(() => {
   const year = selectedYear.value
   const month = selectedMonth.value
@@ -549,171 +304,60 @@ function isLeaveTimeSufficient(leaveRequest, workShiftId) {
   const shiftStartTime = shiftStart.getTime();
   const shiftEndTime = shiftEnd.getTime();
 
-  // Leave is sufficient if it starts before or at shift start and ends after or at shift end
-  const isSufficient = leaveStartTime <= shiftStartTime && leaveEndTime >= shiftEndTime;
-
-  console.log('Leave time check:', {
-    leaveStart: leaveStart.toLocaleTimeString(),
-    leaveEnd: leaveEnd.toLocaleTimeString(),
-    shiftStart: shiftStart.toLocaleTimeString(),
-    shiftEnd: shiftEnd.toLocaleTimeString(),
-    isSufficient
-  });
-
-  return isSufficient;
+  return leaveStartTime <= shiftStartTime && leaveEndTime >= shiftEndTime
 }
 
-// Function to check if employee has approved leave for a specific date and work shift
-function hasApprovedLeaveForDate(employeeId, date, workShiftId) {
-  console.log('=== CHECKING LEAVE REQUEST ===');
-  console.log('Employee ID:', employeeId);
-  console.log('Date:', date);
-  console.log('Work Shift ID:', workShiftId);
-  console.log('Leave requests available:', leaveRequests.value?.length || 0);
-
-  if (!leaveRequests.value || leaveRequests.value.length === 0) {
-    console.log('No leave requests found');
-    return null;
-  }
-
-  // Sử dụng format YYYY-MM-DD trực tiếp để tránh vấn đề timezone
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const dateStr = `${year}-${month}-${day}`;
-  console.log('Looking for date:', dateStr);
-
-  const leaveRequest = leaveRequests.value.find(request => {
-    // Sử dụng format YYYY-MM-DD trực tiếp để tránh vấn đề timezone
-    const startDateObj = new Date(request.startDateTime);
-    const endDateObj = new Date(request.endDateTime);
-    const startYear = startDateObj.getFullYear();
-    const startMonth = String(startDateObj.getMonth() + 1).padStart(2, '0');
-    const startDay = String(startDateObj.getDate()).padStart(2, '0');
-    const startDate = `${startYear}-${startMonth}-${startDay}`;
-
-    const endYear = endDateObj.getFullYear();
-    const endMonth = String(endDateObj.getMonth() + 1).padStart(2, '0');
-    const endDay = String(endDateObj.getDate()).padStart(2, '0');
-    const endDate = `${endYear}-${endMonth}-${endDay}`;
-
-    console.log('Checking leave request:', {
-      requestEmployeeID: request.employeeID,
-      targetEmployeeID: employeeId,
-      approveStatus: request.approveStatus,
-      startDate,
-      endDate,
-      targetDate: dateStr,
-      requestWorkShiftID: request.workShiftID,
-      targetWorkShiftID: workShiftId
-    });
-
-    const employeeMatch = request.employeeID === employeeId ||
-      request.employeeID === String(employeeId) ||
-      String(request.employeeID) === employeeId;
-
-    const statusMatch = request.approveStatus === 'Đã duyệt' || request.approveStatus === 'Approved';
-
-    const dateMatch = dateStr >= startDate && dateStr <= endDate;
-
-    const shiftMatch = !workShiftId || !request.workShiftID ||
-      request.workShiftID == workShiftId ||
-      String(request.workShiftID) === String(workShiftId);
-
-    const result = employeeMatch && statusMatch && dateMatch && shiftMatch;
-    console.log('Leave request match result:', result);
-
-    return result;
-  });
-
-  console.log('Found leave request:', leaveRequest);
-  return leaveRequest;
+const formatDateToString = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
-// Function to check leave requests for a specific employee and date without work shift requirement
-function checkLeaveRequestForEmployee(employeeId, date) {
-  console.log('=== CHECKING LEAVE REQUEST FOR EMPLOYEE ===');
-  console.log('Employee ID:', employeeId);
-  console.log('Date:', date);
-  console.log('Available leave requests:', leaveRequests.value?.length || 0);
+const formatRequestDate = (dateTime) => {
+  const date = new Date(dateTime)
+  return formatDateToString(date)
+}
 
-  if (!leaveRequests.value || leaveRequests.value.length === 0) {
-    console.log('No leave requests available');
-    return null;
-  }
+const matchEmployeeId = (requestId, targetId) => {
+  return requestId === targetId || 
+         requestId === String(targetId) || 
+         String(requestId) === targetId
+}
 
-  // Sử dụng format YYYY-MM-DD trực tiếp để tránh vấn đề timezone
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const dateStr = `${year}-${month}-${day}`;
-  console.log('Looking for date:', dateStr);
+const isApprovedStatus = (status) => {
+  return status === 'Đã duyệt' || status === 'Approved'
+}
 
-  // Debug: Show all leave requests for this employee
-  const employeeRequests = leaveRequests.value.filter(request => {
-    const employeeMatch = request.employeeID === employeeId ||
-      request.employeeID === String(employeeId) ||
-      String(request.employeeID) === employeeId;
-    return employeeMatch;
-  });
+const hasApprovedLeaveForDate = (employeeId, date, workShiftId) => {
+  if (!leaveRequests.value?.length) return null
 
-  console.log(`Found ${employeeRequests.length} leave requests for employee ${employeeId}:`);
-  employeeRequests.forEach((request, index) => {
-    // Sử dụng format YYYY-MM-DD trực tiếp để tránh vấn đề timezone
-    const startDateObj = new Date(request.startDateTime);
-    const endDateObj = new Date(request.endDateTime);
-    const startYear = startDateObj.getFullYear();
-    const startMonth = String(startDateObj.getMonth() + 1).padStart(2, '0');
-    const startDay = String(startDateObj.getDate()).padStart(2, '0');
-    const startDate = `${startYear}-${startMonth}-${startDay}`;
+  const dateStr = formatDateToString(date)
 
-    const endYear = endDateObj.getFullYear();
-    const endMonth = String(endDateObj.getMonth() + 1).padStart(2, '0');
-    const endDay = String(endDateObj.getDate()).padStart(2, '0');
-    const endDate = `${endYear}-${endMonth}-${endDay}`;
+  return leaveRequests.value.find(request => {
+    const startDate = formatRequestDate(request.startDateTime)
+    const endDate = formatRequestDate(request.endDateTime)
 
-    console.log(`Request ${index + 1}:`, {
-      approveStatus: request.approveStatus,
-      startDate,
-      endDate,
-      targetDate: dateStr,
-      dateMatch: dateStr >= startDate && dateStr <= endDate,
-      leaveTypeName: request.leaveTypeName
-    });
-  });
+    return matchEmployeeId(request.employeeID, employeeId) &&
+           isApprovedStatus(request.approveStatus) &&
+           dateStr >= startDate && dateStr <= endDate &&
+           (!workShiftId || !request.workShiftID || String(request.workShiftID) === String(workShiftId))
+  }) || null
+}
 
-  const result = leaveRequests.value.find(request => {
-    // Sử dụng format YYYY-MM-DD trực tiếp để tránh vấn đề timezone
-    const startDateObj = new Date(request.startDateTime);
-    const endDateObj = new Date(request.endDateTime);
-    const startYear = startDateObj.getFullYear();
-    const startMonth = String(startDateObj.getMonth() + 1).padStart(2, '0');
-    const startDay = String(startDateObj.getDate()).padStart(2, '0');
-    const startDate = `${startYear}-${startMonth}-${startDay}`;
+const checkLeaveRequestForEmployee = (employeeId, date) => {
+  if (!leaveRequests.value?.length) return null
 
-    const endYear = endDateObj.getFullYear();
-    const endMonth = String(endDateObj.getMonth() + 1).padStart(2, '0');
-    const endDay = String(endDateObj.getDate()).padStart(2, '0');
-    const endDate = `${endYear}-${endMonth}-${endDay}`;
+  const dateStr = formatDateToString(date)
 
-    const employeeMatch = request.employeeID === employeeId ||
-      request.employeeID === String(employeeId) ||
-      String(request.employeeID) === employeeId;
+  return leaveRequests.value.find(request => {
+    const startDate = formatRequestDate(request.startDateTime)
+    const endDate = formatRequestDate(request.endDateTime)
 
-    const statusMatch = request.approveStatus === 'Đã duyệt' || request.approveStatus === 'Approved';
-    const dateMatch = dateStr >= startDate && dateStr <= endDate;
-
-    const finalMatch = employeeMatch && statusMatch && dateMatch;
-
-    if (finalMatch) {
-      console.log('MATCH FOUND:', request);
-    }
-
-    return finalMatch;
-  });
-
-  console.log('Final result:', result ? 'FOUND' : 'NOT FOUND');
-  return result;
+    return matchEmployeeId(request.employeeID, employeeId) &&
+           isApprovedStatus(request.approveStatus) &&
+           dateStr >= startDate && dateStr <= endDate
+  }) || null
 }
 
 // Function to calculate work hours for a specific date within a leave period
@@ -764,17 +408,7 @@ function calculateWorkHoursForDate(leaveRequest, targetDate) {
     workEndHour = workShiftEnd;
   }
   
-  const workHours = Math.max(0, workEndHour - workStartHour);
-  
-  console.log(`Work hours calculation for ${targetDate.toDateString()}:`, {
-    leaveStart: leaveStart.toLocaleString(),
-    leaveEnd: leaveEnd.toLocaleString(),
-    workStartHour,
-    workEndHour,
-    workHours,
-    isFirstDay: target.getTime() === leaveStartDate.getTime(),
-    isLastDay: target.getTime() === leaveEndDate.getTime()
-  });
+  const workHours = Math.max(0, workEndHour - workStartHour)
   
   return {
     workHours,
@@ -784,162 +418,78 @@ function calculateWorkHoursForDate(leaveRequest, targetDate) {
   };
 }
 
-// Tạo dữ liệu chấm công thực tế cho từng nhân viên, từng ngày từ API
-function generateAttendanceForEmployee(employeeId, employeeName) {
-  // LOGIC ƯU TIÊN: Phiếu nghỉ phép > Dữ liệu chấm công
-  // 1. Nếu có phiếu nghỉ phép đã duyệt → hiển thị nghỉ phép (màu xanh dương)
-  // 2. Nếu KHÔNG có phiếu nghỉ phép → mới kiểm tra dữ liệu chấm công thực tế
-  
-  console.log('=== ATTENDANCE DEBUG ===');
-  console.log('Employee ID:', employeeId);
-  console.log('Employee Name:', employeeName);
-  console.log('Attendance data count:', attendanceList.value?.length || 0);
-  console.log('Selected year:', selectedYear.value);
-  console.log('Selected month:', selectedMonth.value);
-  
-  // Debug: Show sample attendance data structure
-  if (attendanceList.value && attendanceList.value.length > 0) {
-    console.log('Sample attendance record:', attendanceList.value[0]);
-    console.log('All employee IDs in attendance:', attendanceList.value.map(a => ({
-      employeeCode: a.employeeCode,
-      employeeID: a.employeeID,
-      employeeName: a.employeeName
-    })).slice(0, 5));
-  }
+const matchEmployee = (attendance, employeeId, employeeName) => {
+  return matchEmployeeId(attendance.employeeCode, employeeId) ||
+         matchEmployeeId(attendance.employeeID, employeeId) ||
+         attendance.employeeName === employeeName ||
+         attendance.employeeName === employeeId
+}
 
-  if (!attendanceList.value || attendanceList.value.length === 0) {
-    console.log('No attendance data found - generating empty data with leave requests');
-    console.log('Leave requests available:', leaveRequests.value?.length || 0);
-    // Vẫn tạo dữ liệu để kiểm tra phiếu nghỉ phép
+const generateAttendanceForEmployee = (employeeId, employeeName) => {
+  if (!attendanceList.value?.length) {
     return dayHeaders.value.map((_, dayIdx) => {
-      const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, dayIdx + 1);
-      const leaveRequest = checkLeaveRequestForEmployee(employeeId, currentDate);
+      const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, dayIdx + 1)
+      const leaveRequest = checkLeaveRequestForEmployee(employeeId, currentDate)
 
       if (leaveRequest) {
-        console.log(`Found leave request for employee ${employeeId} on day ${dayIdx + 1}:`, leaveRequest);
-        // Tạo thời gian hiển thị từ startDateTime và endDateTime
-        const startTime = new Date(leaveRequest.startDateTime);
-        const endTime = new Date(leaveRequest.endDateTime);
+        const startTime = new Date(leaveRequest.startDateTime)
+        const endTime = new Date(leaveRequest.endDateTime)
+        const timeDisplay = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
+        const isSufficient = isLeaveTimeSufficient(leaveRequest, leaveRequest.workShiftID)
 
-        // Format thời gian: chỉ hiển thị giờ:phút
-        const timeDisplay = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
-
-        // Kiểm tra xem thời gian nghỉ phép có đủ so với ca làm việc không
-        const isSufficient = isLeaveTimeSufficient(leaveRequest, leaveRequest.workShiftID);
-
-        const result = {
+        return {
           status: isSufficient ? 'leave' : 'insufficient',
           time: timeDisplay,
           type: leaveRequest.leaveTypeName
-        };
-        
-        console.log(`Generated leave data for day ${dayIdx + 1}:`, result);
-        return result;
+        }
       }
 
-      return { status: '', time: '', type: '' };
-    });
+      return { status: '', time: '', type: '' }
+    })
   }
 
-  // Lọc dữ liệu chấm công của nhân viên này trong tháng được chọn
-  const employeeAttendance = attendanceList.value.filter(attendance => {
-    console.log('Checking attendance:', {
-      attendanceObject: attendance,
-      employeeCode: attendance.employeeCode,
-      employeeID: attendance.employeeID,
-      employeeName: attendance.employeeName,
-      targetEmployeeID: employeeId,
-      workDate: attendance.workDate
-    });
-
-    // Thử nhiều trường có thể chứa employee ID hoặc tên
-    const employeeMatch = attendance.employeeCode === employeeId ||
-      attendance.employeeCode === String(employeeId) ||
-      String(attendance.employeeCode) === employeeId ||
-      attendance.employeeID === employeeId ||
-      attendance.employeeID === String(employeeId) ||
-      String(attendance.employeeID) === employeeId ||
-      attendance.employeeName === employeeName ||
-      attendance.employeeName === employeeId;
-
-    return employeeMatch;
-  });
-
-  console.log('Filtered employee attendance:', employeeAttendance);
+  const employeeAttendance = attendanceList.value.filter(attendance => 
+    matchEmployee(attendance, employeeId, employeeName)
+  )
 
   return dayHeaders.value.map((dayHeader, dayIdx) => {
-    // Tạo ngày hiện tại để so sánh
-    const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, dayIdx + 1);
-    // Sử dụng format YYYY-MM-DD trực tiếp để tránh vấn đề timezone
-    const year = currentDate.getFullYear();
-    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-    const day = String(currentDate.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
+    const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, dayIdx + 1)
+    const dateStr = formatDateToString(currentDate)
 
-    // Tìm dữ liệu chấm công trong ngày này
     const dayAttendance = employeeAttendance.find(attendance => {
-      // Sử dụng format YYYY-MM-DD trực tiếp để tránh vấn đề timezone
-      const attendanceDateObj = new Date(attendance.workDate);
-      const attendanceYear = attendanceDateObj.getFullYear();
-      const attendanceMonth = String(attendanceDateObj.getMonth() + 1).padStart(2, '0');
-      const attendanceDay = String(attendanceDateObj.getDate()).padStart(2, '0');
-      const attendanceDate = `${attendanceYear}-${attendanceMonth}-${attendanceDay}`;
-      console.log('Comparing dates:', { attendanceDate, dateStr, match: attendanceDate === dateStr });
-      return attendanceDate === dateStr;
-    });
+      const attendanceDate = formatDateToString(new Date(attendance.workDate))
+      return attendanceDate === dateStr
+    })
 
-    // ƯU TIÊN: Kiểm tra nghỉ phép trước tiên (bất kể có dữ liệu chấm công hay không)
-    let leaveRequest = checkLeaveRequestForEmployee(employeeId, currentDate);
+    let leaveRequest = checkLeaveRequestForEmployee(employeeId, currentDate)
     
-    // Nếu có dữ liệu chấm công và chưa tìm thấy nghỉ phép tổng quát, kiểm tra cho ca cụ thể
-    if (!leaveRequest && dayAttendance && dayAttendance.workShiftID) {
-      leaveRequest = hasApprovedLeaveForDate(employeeId, currentDate, dayAttendance.workShiftID);
+    if (!leaveRequest && dayAttendance?.workShiftID) {
+      leaveRequest = hasApprovedLeaveForDate(employeeId, currentDate, dayAttendance.workShiftID)
     }
 
-    // ƯU TIÊN: Kiểm tra nghỉ phép trước (ưu tiên cao nhất)
     if (leaveRequest) {
-      console.log('Found leave request for day:', dayIdx, leaveRequest);
-
-      // Tính toán giờ công chính xác cho ngày này
-      const workHoursInfo = calculateWorkHoursForDate(leaveRequest, currentDate);
+      const workHoursInfo = calculateWorkHoursForDate(leaveRequest, currentDate)
       
-      if (workHoursInfo && workHoursInfo.workHours > 0) {
-        // Có giờ công (ngày đầu hoặc ngày cuối của kỳ nghỉ)
-        const workStartTime = `${Math.floor(workHoursInfo.workStartHour).toString().padStart(2, '0')}:${Math.floor((workHoursInfo.workStartHour % 1) * 60).toString().padStart(2, '0')}`;
-        const workEndTime = `${Math.floor(workHoursInfo.workEndHour).toString().padStart(2, '0')}:${Math.floor((workHoursInfo.workEndHour % 1) * 60).toString().padStart(2, '0')}`;
+      if (workHoursInfo?.workHours > 0) {
+        const formatTime = (hour) => {
+          const h = Math.floor(hour).toString().padStart(2, '0')
+          const m = Math.floor((hour % 1) * 60).toString().padStart(2, '0')
+          return `${h}:${m}`
+        }
         
-        const timeDisplay = `${workStartTime} ${workEndTime}`;
-        
-        // NGHỈ PHÉP LUÔN ĐƯỢC ƯU TIÊN - bất kể có giờ công hay không
-        const status = 'leave'; // Luôn là nghỉ phép khi có đơn nghỉ phép
-        
-        console.log('Leave request takes priority:', {
-          workHours: workHoursInfo.workHours,
-          workStartTime,
-          workEndTime,
-          status: 'leave (forced)',
-          isPartialDay: workHoursInfo.isPartialDay
-        });
+        const timeDisplay = `${formatTime(workHoursInfo.workStartHour)} ${formatTime(workHoursInfo.workEndHour)}`
         
         return { 
-          status, 
+          status: 'leave', 
           time: timeDisplay, 
           type: leaveRequest.leaveTypeName, 
           leaveRequest,
           workHours: workHoursInfo.workHours
-        };
+        }
       } else {
-        // Không có giờ công (ngày giữa của kỳ nghỉ hoặc nghỉ cả ngày)
-        const startTime = new Date(leaveRequest.startDateTime);
-        const endTime = new Date(leaveRequest.endDateTime);
-
-        // Format thời gian: chỉ hiển thị giờ:phút
-        const timeDisplay = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
-
-        console.log('Full leave day:', {
-          timeDisplay,
-          workHours: workHoursInfo?.workHours || 0
-        });
+        const startTime = new Date(leaveRequest.startDateTime)
+        const endTime = new Date(leaveRequest.endDateTime)
+        const timeDisplay = `${startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
 
         return { 
           status: 'leave', 
@@ -947,115 +497,63 @@ function generateAttendanceForEmployee(employeeId, employeeName) {
           type: leaveRequest.leaveTypeName, 
           leaveRequest,
           workHours: workHoursInfo?.workHours || 0
-        };
-      }
-    }
-
-    // Kiểm tra dữ liệu chấm công thực tế (chỉ khi KHÔNG có nghỉ phép)
-    if (!leaveRequest && dayAttendance) {
-      console.log('Found attendance for day:', dayIdx, dayAttendance);
-
-      // ƯU TIÊN: Nghỉ phép đã được xử lý ở trên, đây chỉ là dữ liệu chấm công thực tế
-      let status = '';
-      let time = '';
-
-      if (dayAttendance.checkInTime && dayAttendance.checkOutTime) {
-        // Có cả giờ vào và ra
-        const checkIn = dayAttendance.checkInTime.toString().substring(0, 5);
-        const checkOut = dayAttendance.checkOutTime.toString().substring(0, 5);
-        time = `${checkIn} ${checkOut}`;
-
-        // Tính giờ công thực tế
-        const checkInTime = new Date(`2000-01-01T${dayAttendance.checkInTime}`);
-        const checkOutTime = new Date(`2000-01-01T${dayAttendance.checkOutTime}`);
-        const workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60);
-
-        if (workHours >= 8) {
-          status = 'work'; // Đi làm đủ giờ (màu xanh lá)
-        } else {
-          status = 'insufficient'; // Chưa đủ giờ công (màu vàng)
         }
-      } else if (dayAttendance.checkInTime && !dayAttendance.checkOutTime) {
-        // Chỉ có giờ vào, quên checkout - màu đỏ
-        const checkIn = dayAttendance.checkInTime.toString().substring(0, 5);
-        time = `${checkIn} -`;
-        status = 'incomplete'; // Quên checkout (màu đỏ)
-      } else if (!dayAttendance.checkInTime && dayAttendance.checkOutTime) {
-        // Chỉ có giờ ra, quên checkin - màu đỏ
-        const checkOut = dayAttendance.checkOutTime.toString().substring(0, 5);
-        time = `- ${checkOut}`;
-        status = 'incomplete'; // Quên checkin (màu đỏ)
-      } else {
-        // Không có giờ chấm công nhưng có dữ liệu attendance record
-        status = 'leave'; // Coi như nghỉ vì không có giờ chấm công
-        time = '';
       }
-
-      console.log('Attendance data (no leave request):', {
-        status,
-        time,
-        attendance: dayAttendance,
-        leaveRequest: 'None',
-        priority: 'Attendance data only'
-      });
-      return { status, time, type: dayAttendance.status, attendance: dayAttendance, leaveRequest: null };
-    } else if (!leaveRequest && !dayAttendance) {
-      // Không có dữ liệu chấm công và không có nghỉ phép
-      console.log('No attendance data and no leave request for day:', dayIdx);
-      return { status: 'absent', time: '', type: 'Vắng mặt', attendance: null, leaveRequest: null };
     }
+
+    if (!leaveRequest && dayAttendance) {
+      const getTimeString = (time) => time?.toString().substring(0, 5) || ''
+      
+      if (dayAttendance.checkInTime && dayAttendance.checkOutTime) {
+        const checkIn = getTimeString(dayAttendance.checkInTime)
+        const checkOut = getTimeString(dayAttendance.checkOutTime)
+        const checkInTime = new Date(`2000-01-01T${dayAttendance.checkInTime}`)
+        const checkOutTime = new Date(`2000-01-01T${dayAttendance.checkOutTime}`)
+        const workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+
+        return {
+          status: workHours >= 8 ? 'work' : 'insufficient',
+          time: `${checkIn} ${checkOut}`,
+          type: dayAttendance.status,
+          attendance: dayAttendance,
+          leaveRequest: null
+        }
+      } else if (dayAttendance.checkInTime) {
+        return {
+          status: 'incomplete',
+          time: `${getTimeString(dayAttendance.checkInTime)} -`,
+          type: dayAttendance.status,
+          attendance: dayAttendance,
+          leaveRequest: null
+        }
+      } else if (dayAttendance.checkOutTime) {
+        return {
+          status: 'incomplete',
+          time: `- ${getTimeString(dayAttendance.checkOutTime)}`,
+          type: dayAttendance.status,
+          attendance: dayAttendance,
+          leaveRequest: null
+        }
+      } else {
+        return {
+          status: 'leave',
+          time: '',
+          type: dayAttendance.status,
+          attendance: dayAttendance,
+          leaveRequest: null
+        }
+      }
+    }
+    
+    return { status: 'absent', time: '', type: 'Vắng mặt', attendance: null, leaveRequest: null }
   });
 }
 
 const attendanceMatrix = computed(() => {
-  console.log('=== ATTENDANCE MATRIX DEBUG ===');
-  console.log('Selected year:', selectedYear.value);
-  console.log('Selected month:', selectedMonth.value);
-  console.log('All employees:', allEmployees.value?.length || 0);
-  console.log('Leave requests available:', leaveRequests.value?.length || 0);
-  console.log('Attendance list available:', attendanceList.value?.length || 0);
+  if (!allEmployees.value?.length) return []
 
-  // Check if we have leave requests for the selected month
-  if (leaveRequests.value && leaveRequests.value.length > 0) {
-    const selectedMonthRequests = leaveRequests.value.filter(request => {
-      const requestDate = new Date(request.startDateTime);
-      return requestDate.getFullYear() === selectedYear.value &&
-        requestDate.getMonth() + 1 === selectedMonth.value;
-    });
-
-    console.log(`Leave requests for ${selectedMonth.value}/${selectedYear.value}:`, selectedMonthRequests.length);
-
-    if (selectedMonthRequests.length > 0) {
-      console.log('Sample leave request for selected month:', selectedMonthRequests[0]);
-    }
-  }
-
-  // Fallback to hardcoded employees if API employees are not available
-  const employeesToUse = allEmployees.value && allEmployees.value.length > 0 ? allEmployees.value : employees;
-
-  if (!employeesToUse || employeesToUse.length === 0) {
-    console.log('No employees found');
-    return [];
-  }
-
-  // Log first few employees to see structure
-  if (employeesToUse.length > 0) {
-    console.log('First employee structure:', employeesToUse[0]);
-    console.log('Employee ID types:', employeesToUse.slice(0, 3).map(emp => ({ id: emp.id, type: typeof emp.id })));
-    console.log('All employee names:', employeesToUse.map(emp => ({ id: emp.id, name: emp.name, fullName: emp.fullName, employeeName: emp.employeeName })));
-  }
-
-  console.log('=== ATTENDANCE MATRIX FOR SELECTED MONTH ===');
-  console.log('Selected month:', selectedMonth.value);
-  console.log('Attendance matrix length:', employeesToUse.length);
-  
-  const result = employeesToUse.map(emp => generateAttendanceForEmployee(emp.id, emp.employeeName));
-  
-  console.log('First employee attendance matrix:', result[0]);
-  console.log('Sample day data:', result[0]?.[0]);
-  
-  return result;
-});
+  return allEmployees.value.map(emp => generateAttendanceForEmployee(emp.id, emp.employeeName))
+})
 
 const getCell = (empIdx, dayIdx) => {
   if (!attendanceMatrix.value || !attendanceMatrix.value[empIdx]) return null;
@@ -1095,18 +593,6 @@ const statusColor = {
   other: '#adb5bd'
 }
 
-function onDeleteAttendance(item) {
-  alert('Xóa chấm công: ' + item.shiftName)
-}
-function onDeleteWork(item) {
-  alert('Xóa lịch làm việc: ' + item.shiftName)
-}
-function onRestoreDelete(item) {
-  alert('Phục hồi ca: ' + item.shiftName)
-}
-function onRestoreDeleteWork(item) {
-  alert('Phục hồi công: ' + item.shiftName)
-}
 
 // Cấu hình cột cho bảng công tổng ngoài màn hình chính (computed để reactive)
 const mainSummaryColumns = computed(() => [
@@ -1117,38 +603,23 @@ const mainSummaryColumns = computed(() => [
 ]);
 
 const mainSummaryData = computed(() => {
-  console.log('Computing main summary data...');
-  console.log('Employees (allEmployees):', allEmployees.value);
-  console.log('Attendance matrix:', attendanceMatrix.value);
+  if (!allEmployees.value?.length || !attendanceMatrix.value) return []
 
-  // Fallback to hardcoded employees if API employees are not available
-  const employeesToUse = allEmployees.value && allEmployees.value.length > 0 ? allEmployees.value : employees;
+  const employeesWithAttendance = []
 
-  if (!employeesToUse || !attendanceMatrix.value) {
-    console.log('Missing employees or attendance matrix');
-    return [];
-  }
-
-  // Hiển thị nhân viên có dữ liệu chấm công hoặc phiếu nghỉ phép trong tháng
-  const employeesWithAttendance = [];
-
-  employeesToUse.forEach((emp, idx) => {
-    const dayData = {};
-    let hasAnyData = false;
+  allEmployees.value.forEach((emp, idx) => {
+    const dayData = {}
+    let hasAnyData = false
 
     if (attendanceMatrix.value[idx]) {
       attendanceMatrix.value[idx].forEach((d, dIdx) => {
-        dayData[`day_${dIdx}`] = d;
-        // Hiển thị nếu có bất kỳ dữ liệu nào: chấm công, nghỉ phép, hoặc chưa đủ giờ
-        // Loại trừ trạng thái 'absent' (vắng mặt) và trạng thái rỗng
+        dayData[`day_${dIdx}`] = d
         if (d.status && d.status !== '' && d.status !== null && d.status !== 'absent') {
-          hasAnyData = true;
-          console.log(`Employee ${emp.id}, Day ${dIdx}: ${d.status}, time: ${d.time}`);
+          hasAnyData = true
         }
-      });
+      })
     }
 
-    // Thêm vào danh sách nếu có bất kỳ dữ liệu nào trong tháng
     if (hasAnyData) {
       employeesWithAttendance.push({
         id: emp.id,
@@ -1161,22 +632,7 @@ const mainSummaryData = computed(() => {
     }
   });
 
-  console.log('=== MAIN SUMMARY FILTERING DEBUG ===');
-  console.log('Total employees:', employeesToUse.length);
-  console.log('Employees with attendance displayed:', employeesWithAttendance.length);
-  console.log('Filtered employees:', employeesWithAttendance.map(emp => ({ id: emp.id, name: emp.name })));
-  console.log('Final main summary data:', employeesWithAttendance);
-
-  // Debug: Log attendance matrix for selected month
-  console.log('=== ATTENDANCE MATRIX FOR SELECTED MONTH ===');
-  console.log('Selected month:', selectedMonth.value);
-  console.log('Attendance matrix length:', attendanceMatrix.value?.length);
-  if (attendanceMatrix.value && attendanceMatrix.value.length > 0) {
-    console.log('First employee attendance matrix:', attendanceMatrix.value[0]);
-    console.log('Sample day data:', attendanceMatrix.value[0]?.[0]);
-  }
-
-  return employeesWithAttendance;
+  return employeesWithAttendance
 });
 
 // Paginated data for main summary table
@@ -1283,166 +739,86 @@ const overtimeColumns = computed(() => [
   ...overtimeHeaders.value.map((day, idx) => ({ key: `day_${idx}`, label: day, class: 'text-center col-day' }))
 ]);
 
-// Helper function to compare dates without timezone issues
-function isSameDate(date1, date2) {
-  const d1 = new Date(date1);
-  const d2 = new Date(date2);
-  
-  return d1.getFullYear() === d2.getFullYear() &&
-         d1.getMonth() === d2.getMonth() &&
-         d1.getDate() === d2.getDate();
+const formatDateForComparison = (date) => {
+  const d = new Date(date)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// Helper function to format date for comparison
-function formatDateForComparison(date) {
-  const d = new Date(date);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const isOvertimeApproved = (status) => {
+  return status === 'Đã duyệt' || 
+         status === 'Approved' || 
+         status === 2 ||
+         status === '2'
 }
 
-// Tạo dữ liệu tăng ca thực tế cho từng nhân viên, từng ngày từ API
-function generateOvertimeForEmployee(employeeId) {
-  console.log('=== OVERTIME DEBUG ===');
-  console.log('Employee ID:', employeeId);
-  console.log('Employee ID type:', typeof employeeId);
-  console.log('Overtime requests:', overtimeRequests.value);
-  console.log('Selected year:', selectedYear.value);
-  console.log('Selected month:', selectedMonth.value);
+const getOvertimeType = (request) => {
+  if (request.overtimeFormName?.toLowerCase().includes('tính lương') || request.overtimeFormID === 1) {
+    return 'paid'
+  }
+  if (request.overtimeFormName?.toLowerCase().includes('nghỉ bù') || request.overtimeFormID === 2) {
+    return 'compensatory'
+  }
+  return ''
+}
 
-  if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
-    console.log('No overtime requests found');
-    return overtimeHeaders.value.map(() => ({ type: '', hours: 0 }));
+const generateOvertimeForEmployee = (employeeId) => {
+  if (!overtimeRequests.value?.length) {
+    return overtimeHeaders.value.map(() => ({ type: '', hours: 0 }))
   }
 
-  // Lọc các yêu cầu tăng ca của nhân viên này trong tháng được chọn
   const employeeOvertimeRequests = overtimeRequests.value.filter(request => {
-    console.log('Checking request:', {
-      employeeID: request.employeeID,
-      targetEmployeeID: employeeId,
-      approveStatus: request.approveStatus,
-      startDateTime: request.startDateTime,
-      employeeIDType: typeof request.employeeID,
-      targetEmployeeIDType: typeof employeeId
-    });
-
-    // So sánh cả string và number, và normalize IDs
-    const requestEmployeeId = String(request.employeeID).trim();
-    const targetEmployeeId = String(employeeId).trim();
+    const requestEmployeeId = String(request.employeeID).trim()
+    const targetEmployeeId = String(employeeId).trim()
     
-    const employeeMatch = requestEmployeeId === targetEmployeeId ||
-      requestEmployeeId === String(targetEmployeeId) ||
-      String(requestEmployeeId) === targetEmployeeId;
-
-    const isApproved = request.approveStatus === 'Đã duyệt' || 
-                      request.approveStatus === 'Approved' || 
-                      request.approveStatus === 2 ||
-                      request.approveStatus === '2';
-
-    return employeeMatch && isApproved;
-  });
-
-  console.log('Filtered employee overtime requests:', employeeOvertimeRequests);
+    return (requestEmployeeId === targetEmployeeId ||
+            requestEmployeeId === String(targetEmployeeId) ||
+            String(requestEmployeeId) === targetEmployeeId) &&
+           isOvertimeApproved(request.approveStatus)
+  })
 
   return overtimeHeaders.value.map((day, dayIdx) => {
-    // Tạo ngày hiện tại để so sánh
-    const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, dayIdx + 1);
-    const dateStr = formatDateForComparison(currentDate);
+    const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, dayIdx + 1)
+    const dateStr = formatDateForComparison(currentDate)
 
-    console.log(`Processing day ${dayIdx}: ${day} -> ${dateStr}`);
-
-    // Tìm yêu cầu tăng ca trong ngày này
     const dayOvertimeRequest = employeeOvertimeRequests.find(request => {
-      const requestDateStr = formatDateForComparison(request.startDateTime);
-      
-      console.log('Comparing dates:', { 
-        requestDateStr, 
-        dateStr, 
-        match: requestDateStr === dateStr,
-        originalRequestDate: request.startDateTime,
-        originalCurrentDate: currentDate.toISOString(),
-        dayHeader: day,
-        isSameDateCheck: isSameDate(request.startDateTime, currentDate)
-      });
-      return requestDateStr === dateStr;
-    });
+      const requestDateStr = formatDateForComparison(request.startDateTime)
+      return requestDateStr === dateStr
+    })
 
     if (dayOvertimeRequest) {
-      console.log('Found overtime request for day:', dayIdx, dayOvertimeRequest);
+      const startTime = new Date(dayOvertimeRequest.startDateTime)
+      const endTime = new Date(dayOvertimeRequest.endDateTime)
+      const hours = Math.max(0, (endTime - startTime) / (1000 * 60 * 60))
+      const type = getOvertimeType(dayOvertimeRequest)
 
-      // Tính số giờ tăng ca
-      const startTime = new Date(dayOvertimeRequest.startDateTime);
-      const endTime = new Date(dayOvertimeRequest.endDateTime);
-      const hours = Math.max(0, (endTime - startTime) / (1000 * 60 * 60)); // Chuyển đổi sang giờ
-
-      // Xác định loại tăng ca - sử dụng tên thay vì ID
-      let type = '';
-      if (dayOvertimeRequest.overtimeFormName && dayOvertimeRequest.overtimeFormName.toLowerCase().includes('tính lương')) {
-        type = 'paid'; // Tăng ca tính lương
-      } else if (dayOvertimeRequest.overtimeFormName && dayOvertimeRequest.overtimeFormName.toLowerCase().includes('nghỉ bù')) {
-        type = 'compensatory'; // Tăng ca nghỉ bù
-      } else if (dayOvertimeRequest.overtimeFormID === 1) {
-        type = 'paid'; // Fallback cho ID
-      } else if (dayOvertimeRequest.overtimeFormID === 2) {
-        type = 'compensatory'; // Fallback cho ID
-      }
-
-      console.log('Overtime data:', { type, hours, request: dayOvertimeRequest });
-      return { type, hours, request: dayOvertimeRequest };
+      return { type, hours, request: dayOvertimeRequest }
     }
 
-    return { type: '', hours: 0 };
-  });
+    return { type: '', hours: 0 }
+  })
 }
 
 const overtimeMatrix = computed(() => {
-  console.log('=== OVERTIME MATRIX DEBUG ===');
-  console.log('All employees:', allEmployees.value);
-  console.log('All employees length:', allEmployees.value?.length);
-
-  // Fallback to hardcoded employees if API employees are not available
-  const employeesToUse = allEmployees.value && allEmployees.value.length > 0 ? allEmployees.value : employees;
-
-  if (!employeesToUse || employeesToUse.length === 0) {
-    console.log('No employees found');
-    return [];
-  }
-
-  // Log first employee structure
-  if (employeesToUse[0]) {
-    console.log('First employee structure:', employeesToUse[0]);
-    console.log('First employee ID:', employeesToUse[0].id, 'Type:', typeof employeesToUse[0].id);
-  }
-
-  return employeesToUse.map(emp => generateOvertimeForEmployee(emp.id));
-});
+  if (!allEmployees.value?.length) return []
+  return allEmployees.value.map(emp => generateOvertimeForEmployee(emp.id))
+})
 
 const overtimeData = computed(() => {
-  console.log('Computing overtime data...');
-  console.log('Employees (allEmployees):', allEmployees.value);
-  console.log('Overtime matrix:', overtimeMatrix.value);
+  if (!allEmployees.value?.length || !overtimeMatrix.value) return []
 
-  // Fallback to hardcoded employees if API employees are not available
-  const employeesToUse = allEmployees.value && allEmployees.value.length > 0 ? allEmployees.value : employees;
+  const employeesWithOvertime = []
 
-  if (!employeesToUse || !overtimeMatrix.value) {
-    console.log('Missing employees or overtime matrix');
-    return [];
-  }
-
-  // Chỉ lấy những nhân viên có tăng ca trong tháng
-  const employeesWithOvertime = [];
-
-  employeesToUse.forEach((emp, idx) => {
-    const dayData = {};
-    let hasOvertime = false;
+  allEmployees.value.forEach((emp, idx) => {
+    const dayData = {}
+    let hasOvertime = false
 
     if (overtimeMatrix.value[idx]) {
       overtimeMatrix.value[idx].forEach((d, dIdx) => {
-        dayData[`day_${dIdx}`] = d;
+        dayData[`day_${dIdx}`] = d
         if (d.hours > 0) {
-          hasOvertime = true;
-          console.log(`Employee ${emp.id}, Day ${dIdx}: ${d.hours} hours, type: ${d.type}`);
+          hasOvertime = true
         }
-      });
+      })
     }
 
     // Chỉ thêm vào danh sách nếu có tăng ca
@@ -1467,9 +843,7 @@ const overtimeData = computed(() => {
     }
   });
 
-  console.log('Employees with overtime:', employeesWithOvertime.length);
-  console.log('Final overtime data:', employeesWithOvertime);
-  return employeesWithOvertime;
+  return employeesWithOvertime
 });
 
 function getOvertimeCellClass(type) {
@@ -1571,19 +945,6 @@ function getDayOvertimeDaysWithCoefficient(employee, dayIdx) {
 }
 
 // Function to check if there are any overtime requests in the current month
-function hasOvertimeInMonth() {
-  if (!overtimeRequests.value || overtimeRequests.value.length === 0) return false;
-
-  const currentYear = selectedYear.value;
-  const currentMonth = selectedMonth.value;
-
-  return overtimeRequests.value.some(request => {
-    const requestDate = new Date(request.startDateTime);
-    return requestDate.getFullYear() === currentYear &&
-      requestDate.getMonth() + 1 === currentMonth &&
-      (request.approveStatus === 'Đã duyệt' || request.approveStatus === 'Approved');
-  });
-}
 
 // Modal chi tiết tăng ca
 const showOvertimeModal = ref(false);
@@ -1759,52 +1120,13 @@ const loadAttendanceData = async () => {
       data = await attendanceDataService.getAttendanceDataByMonth(selectedYear.value, selectedMonth.value)
     }
 
-    // Filter data based on user role
     const hasHRPermission = isDirector.value || isHRManager.value || isHREmployee.value
-    console.log('=== ATTENDANCE TAB DEBUG ===')
-    console.log('hasHRPermission:', hasHRPermission)
-    console.log('currentUser:', currentUser.value)
-    console.log('currentUser.id:', currentUser.value?.id)
-    console.log('Raw data before filtering:', data.length, 'records')
-    console.log('Sample data structure:', data[0])
     
     if (!hasHRPermission && currentUser.value) {
-      // Only show current user's data for non-HR users
-      console.log('Filtering for non-HR user...')
-      console.log('Looking for employeeID matching:', currentUser.value.id)
-      
-      // Debug: show all possible employee ID fields in data
-      console.log('Sample item keys:', Object.keys(data[0] || {}))
-      console.log('Looking for employee ID in fields:', {
-        employeeID: data[0]?.employeeID,
-        employeeCode: data[0]?.employeeCode,
-        employeeId: data[0]?.employeeId,
-        id: data[0]?.id,
-        userId: data[0]?.userId
-      })
-      
-      // Try different field names for employee ID, handle null values
-      const employeeIdField = data[0]?.employeeCode || data[0]?.employeeID || data[0]?.employeeId || data[0]?.id
-      console.log('Using field:', employeeIdField ? 'employeeCode' : 'employeeID')
-      
-      // Debug: show first few items with their employee codes
-      console.log('First 3 items employee codes:', data.slice(0, 3).map(item => ({
-        employeeCode: item.employeeCode,
-        employeeName: item.employeeName,
-        type: typeof item.employeeCode
-      })))
-      
       data = data.filter(item => {
-        // Handle null/undefined values and try different field names
         const itemEmployeeId = item.employeeCode || item.employeeID || item.employeeId || item.id
-        const matches = itemEmployeeId === currentUser.value.id
-        
-        // More detailed logging for debugging
-        console.log(`Item: ${item.employeeName}, employeeCode: ${item.employeeCode} (${typeof item.employeeCode}), currentUser.id: ${currentUser.value.id} (${typeof currentUser.value.id}), matches: ${matches}`)
-        
-        return matches
+        return itemEmployeeId === currentUser.value.id
       })
-      console.log('Filtered attendance data for current user:', currentUser.value.id, 'Records:', data.length)
     }
 
     // Transform data to match the expected format
@@ -1846,13 +1168,8 @@ const loadAttendanceData = async () => {
 
     attendanceData.value = transformedData
     
-    // Also set attendanceList for generateAttendanceForEmployee function
     attendanceList.value = data
-
-    console.log('Attendance data loaded:', attendanceData.value)
-    console.log('AttendanceList set for personal tab:', attendanceList.value?.length || 0)
   } catch (error) {
-    console.error('Error loading attendance data:', error)
     attendanceError.value = error.message || 'Lỗi khi tải dữ liệu chấm công'
   } finally {
     attendanceLoading.value = false
@@ -1948,64 +1265,19 @@ const goToCurrentMonth = () => {
   selectedYear.value = now.getFullYear()
 }
 
-// Export and print functions
-const exportSummaryToExcel = () => {
-  console.log('Exporting summary to Excel...')
-  // TODO: Implement Excel export
-}
-
-const printSummaryReport = () => {
-  console.log('Printing summary report...')
-  // TODO: Implement print report
-}
-
-const exportPersonalToExcel = () => {
-  console.log('Exporting personal to Excel...')
-  // TODO: Implement Excel export
-}
-
-const printPersonalReport = () => {
-  console.log('Printing personal report...')
-  // TODO: Implement print report
-}
-
-const exportOvertimeToExcel = () => {
-  console.log('Exporting overtime to Excel...')
-  // TODO: Implement Excel export
-}
-
-const printOvertimeReport = () => {
-  console.log('Printing overtime report...')
-  // TODO: Implement print report
-}
-
-const exportPersonalOvertimeToExcel = () => {
-  console.log('Exporting personal overtime to Excel...')
-  // TODO: Implement Excel export
-}
-
-const printPersonalOvertimeReport = () => {
-  console.log('Printing personal overtime report...')
-  // TODO: Implement print report
-}
-
 const exportDetailToExcel = () => {
-  console.log('Exporting detail to Excel...')
   // TODO: Implement Excel export
 }
 
 const printDetailReport = () => {
-  console.log('Printing detail report...')
   // TODO: Implement print report
 }
 
 const exportAttendanceToExcel = () => {
-  console.log('Exporting attendance to Excel...')
   // TODO: Implement Excel export
 }
 
 const printAttendanceReport = () => {
-  console.log('Printing attendance report...')
   // TODO: Implement print report
 }
 
@@ -2057,50 +1329,12 @@ const loadDetailData = async () => {
 
     // Filter data based on user role
     const hasHRPermission = isDirector.value || isHRManager.value || isHREmployee.value
-    console.log('=== DETAIL TAB DEBUG ===')
-    console.log('hasHRPermission:', hasHRPermission)
-    console.log('currentUser:', currentUser.value)
-    console.log('currentUser.id:', currentUser.value?.id)
-    console.log('Raw data before filtering:', data.length, 'records')
-    console.log('Sample data structure:', data[0])
     
     if (!hasHRPermission && currentUser.value) {
-      // Only show current user's data for non-HR users
-      console.log('Filtering for non-HR user...')
-      console.log('Looking for employeeID matching:', currentUser.value.id)
-      
-      // Debug: show all possible employee ID fields in data
-      console.log('Sample item keys:', Object.keys(data[0] || {}))
-      console.log('Looking for employee ID in fields:', {
-        employeeID: data[0]?.employeeID,
-        employeeCode: data[0]?.employeeCode,
-        employeeId: data[0]?.employeeId,
-        id: data[0]?.id,
-        userId: data[0]?.userId
-      })
-      
-      // Try different field names for employee ID, handle null values
-      const employeeIdField = data[0]?.employeeCode || data[0]?.employeeID || data[0]?.employeeId || data[0]?.id
-      console.log('Using field:', employeeIdField ? 'employeeCode' : 'employeeID')
-      
-      // Debug: show first few items with their employee codes
-      console.log('First 3 items employee codes:', data.slice(0, 3).map(item => ({
-        employeeCode: item.employeeCode,
-        employeeName: item.employeeName,
-        type: typeof item.employeeCode
-      })))
-      
       data = data.filter(item => {
-        // Handle null/undefined values and try different field names
         const itemEmployeeId = item.employeeCode || item.employeeID || item.employeeId || item.id
-        const matches = itemEmployeeId === currentUser.value.id
-        
-        // More detailed logging for debugging
-        console.log(`Item: ${item.employeeName}, employeeCode: ${item.employeeCode} (${typeof item.employeeCode}), currentUser.id: ${currentUser.value.id} (${typeof currentUser.value.id}), matches: ${matches}`)
-        
-        return matches
+        return itemEmployeeId === currentUser.value.id
       })
-      console.log('Filtered detail data for current user:', currentUser.value.id, 'Records:', data.length)
     }
 
     // Transform data to match the expected format for detail view
@@ -2123,10 +1357,7 @@ const loadDetailData = async () => {
     })
 
     detailData.value = transformedData
-
-    console.log('Detail data loaded:', detailData.value)
   } catch (error) {
-    console.error('Error loading detail data:', error)
     detailError.value = error.message || 'Lỗi khi tải dữ liệu công chi tiết'
   } finally {
     detailLoading.value = false
@@ -3728,7 +2959,7 @@ const getEmployeeFullName = (employee) => {
                 v-if="selectedLeaveRequest"
                 mode="update"
                 :leave="selectedLeaveRequest"
-                :employees="employees"
+                :employees="allEmployees"
                 :leaveTypes="leaveTypes"
                 :workShifts="workshifts"
                 :currentUser="currentUser"

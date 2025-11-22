@@ -2,8 +2,6 @@
 import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
-import UpdateButton from '@/components/common/UpdateButton.vue'
-import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import { useLeaveRequest } from '../../composables/useLeaveRequest'
 import { useUser } from '../../composables/useUser'
 import { useAuth } from '../../composables/useAuth'
@@ -32,7 +30,7 @@ const {
   returnLeaveRequest
 } = useLeaveRequest()
 
-const { users, fetchUsers } = useUser()
+const { fetchUsers } = useUser()
 
 // Auth composable for role checking
 const { currentUser, refreshUserInfo } = useAuth()
@@ -86,19 +84,9 @@ const currentPage = ref(1)
 const itemsPerPage = ref(8)
 
 // Computed
-// Filter leave requests based on centralized permissions
 const filteredLeaveRequests = computed(() => {
-  console.log('=== LEAVE PERMISSION DEBUG ===')
-  console.log('Current user:', currentUser.value)
-  console.log('Can view leave:', canView('leave'))
-  console.log('Leave requests count:', leaveRequests.value?.length || 0)
-  
-  if (!leaveRequests.value || leaveRequests.value.length === 0) return []
-  
-  // Use centralized permission filtering
-  const filtered = filterDataByPermission('leave', leaveRequests.value)
-  console.log('Filtered requests count:', filtered.length)
-  return filtered
+  if (!leaveRequests.value?.length) return []
+  return filterDataByPermission('leave', leaveRequests.value)
 })
 
 const paginatedLeaveData = computed(() => {
@@ -112,7 +100,7 @@ const handleCreate = async (formData) => {
     await createLeaveRequest(formData)
     showCreateForm.value = false
   } catch (error) {
-    console.error('Error creating leave request:', error)
+    // Error handling is done by composable
   }
 }
 
@@ -122,7 +110,7 @@ const handleUpdate = async (formData) => {
     showUpdateForm.value = false
     selectedItem.value = null
   } catch (error) {
-    console.error('Error updating leave request:', error)
+    // Error handling is done by composable
   }
 }
 
@@ -164,7 +152,7 @@ const handleApprovalConfirm = async (notes) => {
     pendingVoucherCode.value = ''
     pendingAction.value = ''
   } catch (error) {
-    console.error(`Error ${pendingAction.value} leave request:`, error)
+    // Error handling is done by composable
   }
 }
 
@@ -200,7 +188,7 @@ const handleDelete = async (voucherCode) => {
     showDeleteDialog.value = false
     selectedItem.value = null
   } catch (error) {
-    console.error('Error deleting leave request:', error)
+    // Error handling is done by composable
   }
 }
 
@@ -229,7 +217,6 @@ const getStatusText = (status) => {
   return statusMap[status] || 'Không xác định'
 }
 
-// Excel import functions
 const file = ref(null)
 
 const handleFileUpload = (event) => {
@@ -346,41 +333,20 @@ const processImport = () => {
         return
       }
 
-      // Create leave requests
-      for (const request of leaveRequestsToCreate) {
-        await createLeaveRequest(request)
-      }
+      await Promise.all(leaveRequestsToCreate.map(request => createLeaveRequest(request)))
 
       alert(`Đã nhập thành công ${leaveRequestsToCreate.length} đơn nghỉ phép.`)
       file.value = null
       showImportModal.value = false
     } catch (error) {
-      console.error('Lỗi khi xử lý file Excel:', error)
       alert('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.')
     }
   }
   reader.readAsArrayBuffer(file.value)
 }
 
-// Excel export function
-const exportToExcel = async (type) => {
-  const workbook = new ExcelJS.Workbook()
-  const worksheet = workbook.addWorksheet('LeaveRequests')
-
-  // Thêm header
-  worksheet.columns = leaveColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
-
-  // Thêm dữ liệu
-  filteredLeaveRequests.value.forEach((row, index) => {
-    worksheet.addRow({
-      ...row,
-      startDateTime: formatDateTime(row.startDateTime),
-      endDateTime: formatDateTime(row.endDateTime)
-    })
-  })
-
-  // Style header
-  worksheet.getRow(1).eachCell(cell => {
+const applyHeaderStyle = (row) => {
+  row.eachCell(cell => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
     cell.alignment = { vertical: 'middle', horizontal: 'center' }
@@ -391,31 +357,52 @@ const exportToExcel = async (type) => {
       right: { style: 'thin' }
     }
   })
+}
 
-  // Style dữ liệu
-  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    row.eachCell(cell => {
-      if (rowNumber !== 1) { // skip header
-        cell.alignment = { vertical: 'middle', horizontal: 'center' }
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        }
-      }
-    })
-  })
+const applyDataStyle = (cell) => {
+  cell.alignment = { vertical: 'middle', horizontal: 'center' }
+  cell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  }
+}
 
-  // Auto-fit chiều ngang cho từng cột
+const autoFitColumns = (worksheet) => {
   worksheet.columns.forEach(column => {
     let maxLength = 0
     column.eachCell({ includeEmpty: true }, cell => {
       const val = cell.value ? cell.value.toString() : ''
       maxLength = Math.max(maxLength, val.length)
     })
-    column.width = maxLength + 2 // padding để text không sát
+    column.width = maxLength + 2
   })
+}
+
+const exportToExcel = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('LeaveRequests')
+
+  worksheet.columns = leaveColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+
+  filteredLeaveRequests.value.forEach(row => {
+    worksheet.addRow({
+      ...row,
+      startDateTime: formatDateTime(row.startDateTime),
+      endDateTime: formatDateTime(row.endDateTime)
+    })
+  })
+
+  applyHeaderStyle(worksheet.getRow(1))
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber !== 1) {
+      row.eachCell(applyDataStyle)
+    }
+  })
+
+  autoFitColumns(worksheet)
 
   const buf = await workbook.xlsx.writeBuffer()
   saveAs(new Blob([buf]), 'LeaveRequests.xlsx')
@@ -467,7 +454,7 @@ defineExpose({
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
           Lọc
         </ActionButton>
-        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('leave')">
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
           Xuất Excel
         </ActionButton>
         <ActionButton 

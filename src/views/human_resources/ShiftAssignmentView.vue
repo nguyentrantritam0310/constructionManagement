@@ -26,12 +26,9 @@ const {
 
 const {
   shiftAssignments,
-  shiftSchedule,
   loading: shiftLoading,
   error: shiftError,
   fetchAllShiftAssignments,
-  getShiftScheduleByWeek,
-  formatShiftScheduleForDisplay,
   createShiftAssignment,
   updateShiftAssignment,
   deleteShiftAssignment
@@ -66,41 +63,43 @@ const formatDateForDisplay = (dateString) => {
   return `${day}/${month}/${year}`
 }
 
-// Utility function to normalize date for comparison
 const normalizeDate = (date) => {
   const normalizedDate = new Date(date)
   normalizedDate.setHours(0, 0, 0, 0)
   return normalizedDate
 }
 
+const getEmployeeId = (employee) => {
+  return employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId
+}
+
+const getWorkShiftId = (shift) => {
+  return shift.code || shift.id || shift.workShiftID || shift.ID
+}
+
 onMounted(async () => {
   await fetchWorkShifts()
   await fetchAllShiftAssignments()
-  await fetchAllEmployees() // Load employees for bulk assign
-  loadCurrentWeekSchedule() // Chỉ khởi tạo currentWeekStart, không gọi API
+  await fetchAllEmployees()
+  loadCurrentWeekSchedule()
 })
 
-// Week filter controls
 const currentWeekStart = ref(new Date())
 const selectedDate = ref(new Date())
 
-// Quick add shift modal
 const showQuickAddModal = ref(false)
 const quickAddEmployee = ref(null)
 const quickAddDate = ref(null)
 const quickAddShiftId = ref('')
 const quickAddLoading = ref(false)
 
-// View shift details modal
 const showViewDetailsModal = ref(false)
 const selectedShiftDetails = ref(null)
 const isUpdatingShift = ref(false)
 
-// Delete shift modal
 const showDeleteModal = ref(false)
 const shiftToDelete = ref(null)
 
-// Bulk assign shift modal
 const showBulkAssignModal = ref(false)
 const selectedShiftForBulk = ref(null)
 const selectedEmployees = ref([])
@@ -110,57 +109,41 @@ const bulkAssignLoading = ref(false)
 const employeeSearchTerm = ref('')
 const selectedRole = ref('')
 const selectedGender = ref('')
-const applyToAll = ref(true) // Option to apply same date range to all employees
-const employeeDateRanges = ref({}) // Individual date ranges for each employee
+const applyToAll = ref(true)
+const employeeDateRanges = ref({})
 
-// Change shift assignment modal state
 const showChangeShiftModal = ref(false)
 const selectedHistoryItem = ref(null)
 const newStartDate = ref('')
 const newEndDate = ref('')
 const newShiftId = ref('')
 const changeShiftLoading = ref(false)
-
-// Initialize current week start (Monday)
 const initCurrentWeekStart = () => {
   const today = new Date()
   const monday = new Date(today)
   const dayOfWeek = today.getDay()
-  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // Sunday = 0, Monday = 1
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
   monday.setDate(today.getDate() - daysToMonday)
   monday.setHours(0, 0, 0, 0)
   currentWeekStart.value = monday
 }
 
-// Load current week schedule
 const loadCurrentWeekSchedule = () => {
   initCurrentWeekStart()
-  // Data sẽ tự động update thông qua computed properties
 }
 
-// Load week schedule for specific date (filter from all assignments)
-const loadWeekSchedule = async (weekStartDate) => {
-  // Không cần gọi API nữa, chỉ filter từ data đã load
-  // API call đã được thực hiện trong onMounted với fetchAllShiftAssignments()
-}
-
-// Navigate to previous week
 const goToPreviousWeek = () => {
   const newWeekStart = new Date(currentWeekStart.value)
   newWeekStart.setDate(newWeekStart.getDate() - 7)
   currentWeekStart.value = newWeekStart
-  // Data sẽ tự động update thông qua computed properties
 }
 
-// Navigate to next week
 const goToNextWeek = () => {
   const newWeekStart = new Date(currentWeekStart.value)
   newWeekStart.setDate(newWeekStart.getDate() + 7)
   currentWeekStart.value = newWeekStart
-  // Data sẽ tự động update thông qua computed properties
 }
 
-// Go to specific date
 const goToSpecificDate = (date) => {
   const monday = new Date(date)
   const dayOfWeek = monday.getDay()
@@ -168,7 +151,6 @@ const goToSpecificDate = (date) => {
   monday.setDate(monday.getDate() - daysToMonday)
   monday.setHours(0, 0, 0, 0)
   currentWeekStart.value = monday
-  // Data sẽ tự động update thông qua computed properties
 }
 
 // Format week display
@@ -180,7 +162,6 @@ const weekDisplayText = computed(() => {
   return `${start.getDate()}/${start.getMonth() + 1} - ${end.getDate()}/${end.getMonth() + 1}/${end.getFullYear()}`
 })
 
-// Quick add shift functions
 const openQuickAddModal = (employee, date) => {
   quickAddEmployee.value = employee
   quickAddDate.value = date
@@ -218,14 +199,12 @@ const handleQuickAddShift = async () => {
     closeQuickAddModal()
     showMessage('Phân ca thành công!', 'success')
   } catch (error) {
-    console.error('Error creating shift assignment:', error)
     showMessage('Có lỗi xảy ra khi phân ca', 'error')
   } finally {
     quickAddLoading.value = false
   }
 }
 
-// Get date from day index
 const getDateFromDayIndex = (dayIndex) => {
   const monday = new Date(currentWeekStart.value)
   const targetDate = new Date(monday)
@@ -233,7 +212,6 @@ const getDateFromDayIndex = (dayIndex) => {
   return targetDate
 }
 
-// View shift details
 const openViewDetailsModal = (shift) => {
   selectedShiftDetails.value = shift
   newShiftId.value = '' // Reset selection
@@ -248,7 +226,6 @@ const closeViewDetailsModal = () => {
   isUpdatingShift.value = false
 }
 
-// Update shift assignment
 const handleUpdateShift = async () => {
   if (!selectedShiftDetails.value || !newShiftId.value) {
     showMessage('Vui lòng chọn ca làm việc mới', 'warning')
@@ -263,14 +240,12 @@ const handleUpdateShift = async () => {
   try {
     isUpdatingShift.value = true
     
-    // Tìm thông tin ca mới
     const newShift = workshifts.value.find(s => s.id == newShiftId.value)
     if (!newShift) {
       showMessage('Không tìm thấy thông tin ca làm việc', 'error')
       return
     }
 
-    // Tạo dữ liệu cập nhật
     const updateData = {
       id: selectedShiftDetails.value.id,
       employeeID: selectedShiftDetails.value.employeeID,
@@ -278,13 +253,9 @@ const handleUpdateShift = async () => {
       workDate: formatDateForAPI(selectedShiftDetails.value.workDate)
     }
     
-    // Gọi API cập nhật (cần thêm hàm này vào composable)
     await updateShiftAssignment(updateData)
-    
-    // Refresh data
     await fetchAllShiftAssignments()
     
-    // Cập nhật selectedShiftDetails với thông tin mới
     selectedShiftDetails.value = {
       ...selectedShiftDetails.value,
       shiftId: newShift.id,
@@ -298,14 +269,12 @@ const handleUpdateShift = async () => {
     newShiftId.value = ''
     showMessage('Đổi ca thành công!', 'success')
   } catch (error) {
-    console.error('Error updating shift assignment:', error)
     showMessage('Có lỗi xảy ra khi đổi ca', 'error')
   } finally {
     isUpdatingShift.value = false
   }
 }
 
-// Delete shift
 const openDeleteModal = (shift) => {
   shiftToDelete.value = shift
   showDeleteModal.value = true
@@ -323,21 +292,18 @@ const handleDeleteShift = async () => {
     await deleteShiftAssignment(shiftToDelete.value.id)
     await fetchAllShiftAssignments()
     closeDeleteModal()
-    closeViewDetailsModal() // Đóng modal chi tiết nếu đang mở
+    closeViewDetailsModal()
     showMessage('Xóa phân ca thành công!', 'success')
   } catch (error) {
-    console.error('Error deleting shift assignment:', error)
     showMessage('Có lỗi xảy ra khi xóa phân ca', 'error')
   }
 }
 
-// Go to today
 const goToToday = () => {
   const today = new Date()
   goToSpecificDate(today)
 }
 
-// Bulk assign shift functions
 const openBulkAssignModal = (shift) => {
   selectedShiftForBulk.value = shift
   selectedEmployees.value = []
@@ -364,7 +330,6 @@ const closeBulkAssignModal = () => {
   employeeDateRanges.value = {}
 }
 
-// Open change shift modal
 const openChangeShiftModal = (historyItem) => {
   selectedHistoryItem.value = historyItem
   // Điền sẵn thời gian hiện tại
@@ -374,14 +339,12 @@ const openChangeShiftModal = (historyItem) => {
   showChangeShiftModal.value = true
 }
 
-// Convert display date (DD/MM/YYYY) to input date (YYYY-MM-DD)
 const convertDisplayDateToInput = (displayDate) => {
   if (!displayDate || displayDate === 'N/A') return ''
   const [day, month, year] = displayDate.split('/')
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
 }
 
-// Close change shift modal
 const closeChangeShiftModal = () => {
   showChangeShiftModal.value = false
   selectedHistoryItem.value = null
@@ -390,7 +353,6 @@ const closeChangeShiftModal = () => {
   newShiftId.value = ''
 }
 
-// Handle change shift assignment
 const handleChangeShift = async () => {
   if (!selectedHistoryItem.value) {
     showMessage('Không tìm thấy thông tin phân ca', 'error')
@@ -410,18 +372,13 @@ const handleChangeShift = async () => {
   try {
     changeShiftLoading.value = true
 
-    // Tìm và xóa các assignment cũ
     const oldAssignments = shiftAssignments.value.filter(assignment => 
       assignment.employeeID === selectedHistoryItem.value.employeeID &&
       assignment.workShiftID === selectedHistoryItem.value.workShiftID
     )
 
-    // Xóa từng assignment cũ
-    for (const assignment of oldAssignments) {
-      await deleteShiftAssignment(assignment.id)
-    }
+    await Promise.all(oldAssignments.map(assignment => deleteShiftAssignment(assignment.id)))
 
-    // Tạo các assignment mới
     const startDate = new Date(newStartDate.value)
     const endDate = new Date(newEndDate.value)
     const dates = []
@@ -432,32 +389,24 @@ const handleChangeShift = async () => {
       currentDate.setDate(currentDate.getDate() + 1)
     }
 
-    // Tạo assignments mới
     const newAssignments = dates.map(date => ({
       employeeID: selectedHistoryItem.value.employeeID,
       workShiftID: newShiftId.value,
       workDate: formatDateForAPI(date)
     }))
 
-    // Tạo từng assignment mới
-    for (const assignment of newAssignments) {
-      await createShiftAssignment(assignment)
-    }
-
-    // Refresh data
+    await Promise.all(newAssignments.map(assignment => createShiftAssignment(assignment)))
     await fetchAllShiftAssignments()
 
     closeChangeShiftModal()
     showMessage('Đổi phân ca thành công!', 'success')
   } catch (error) {
-    console.error('Error changing shift assignment:', error)
     showMessage('Có lỗi xảy ra khi đổi phân ca', 'error')
   } finally {
     changeShiftLoading.value = false
   }
 }
 
-// Filter employees based on search criteria
 const filteredEmployees = computed(() => {
   if (!employees.value || !Array.isArray(employees.value)) {
     return []
@@ -475,7 +424,6 @@ const filteredEmployees = computed(() => {
   })
 })
 
-// Get unique roles and genders for filter dropdowns
 const uniqueRoles = computed(() => {
   if (!employees.value || !Array.isArray(employees.value)) {
     return []
@@ -492,72 +440,43 @@ const uniqueGenders = computed(() => {
   return genders
 })
 
-// Handle employee click (outside checkbox)
 const handleEmployeeClick = (employee) => {
-  console.log('Employee clicked:', employee.employeeName)
   toggleEmployeeSelection(employee)
 }
 
-// Handle checkbox change
 const handleCheckboxChange = (employee, event) => {
-  console.log('Checkbox changed:', employee.employeeName, event.target.checked)
   event.stopPropagation()
   toggleEmployeeSelection(employee)
 }
 
-// Toggle employee selection
 const toggleEmployeeSelection = (employee) => {
-  // Try different possible ID fields
-  const employeeId = employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId
-  console.log('Toggling employee:', employee.employeeName, 'ID:', employeeId)
-  console.log('Employee object keys:', Object.keys(employee))
-  console.log('Current selected employees:', selectedEmployees.value.map(emp => emp.employeeName))
+  const employeeId = getEmployeeId(employee)
   
-  const index = selectedEmployees.value.findIndex(emp => {
-    const empId = emp.employeeID || emp.id || emp.Id || emp.employeeId || emp.userId
-    return empId === employeeId
-  })
+  const index = selectedEmployees.value.findIndex(emp => getEmployeeId(emp) === employeeId)
   
   if (index > -1) {
     selectedEmployees.value.splice(index, 1)
-    // Remove individual date range when deselecting
     delete employeeDateRanges.value[employeeId]
-    console.log('Removed employee:', employee.employeeName)
   } else {
     selectedEmployees.value.push(employee)
-    // Initialize individual date range when selecting
     if (!employeeDateRanges.value[employeeId]) {
       employeeDateRanges.value[employeeId] = {
         startDate: '',
         endDate: ''
       }
     }
-    console.log('Added employee:', employee.employeeName)
   }
-  
-  console.log('Updated selected employees:', selectedEmployees.value.map(emp => emp.employeeName))
 }
 
-// Check if employee is selected
 const isEmployeeSelected = (employee) => {
-  // Try different possible ID fields
-  const employeeId = employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId
-  
-  const isSelected = selectedEmployees.value.some(emp => {
-    const empId = emp.employeeID || emp.id || emp.Id || emp.employeeId || emp.userId
-    return empId === employeeId
-  })
-  
-  console.log(`Checking if ${employee.employeeName} (ID: ${employeeId}) is selected:`, isSelected)
-  return isSelected
+  const employeeId = getEmployeeId(employee)
+  return selectedEmployees.value.some(emp => getEmployeeId(emp) === employeeId)
 }
 
-// Select all filtered employees
 const selectAllFiltered = () => {
   selectedEmployees.value = [...filteredEmployees.value]
-  // Initialize date ranges for all selected employees
   filteredEmployees.value.forEach(emp => {
-    const employeeId = emp.employeeID || emp.id || emp.Id || emp.employeeId || emp.userId
+    const employeeId = getEmployeeId(emp)
     if (!employeeDateRanges.value[employeeId]) {
       employeeDateRanges.value[employeeId] = {
         startDate: '',
@@ -567,13 +486,11 @@ const selectAllFiltered = () => {
   })
 }
 
-// Deselect all employees
 const deselectAll = () => {
   selectedEmployees.value = []
   employeeDateRanges.value = {}
 }
 
-// Handle bulk assign
 const handleBulkAssign = async () => {
   if (!selectedShiftForBulk.value) {
     showMessage('Vui lòng chọn ca làm việc', 'warning')
@@ -584,11 +501,6 @@ const handleBulkAssign = async () => {
     showMessage('Vui lòng chọn ít nhất một nhân viên', 'warning')
     return
   }
-
-  // Debug: Log selected shift and employees
-  console.log('Selected shift for bulk:', selectedShiftForBulk.value)
-  console.log('Selected shift keys:', selectedShiftForBulk.value ? Object.keys(selectedShiftForBulk.value) : 'No shift selected')
-  console.log('Selected employees for bulk:', selectedEmployees.value)
 
   try {
     bulkAssignLoading.value = true
@@ -618,28 +530,21 @@ const handleBulkAssign = async () => {
         currentDate.setDate(currentDate.getDate() + 1)
       }
 
-        // Create assignments for all employees with same date range
         for (const employee of selectedEmployees.value) {
-          const employeeId = employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId
-          console.log('Employee ID for assignment:', employeeId, 'from employee:', employee)
+          const employeeId = getEmployeeId(employee)
+          const workShiftId = getWorkShiftId(selectedShiftForBulk.value)
           
           for (const date of dates) {
-            const workShiftId = selectedShiftForBulk.value.code || selectedShiftForBulk.value.id || selectedShiftForBulk.value.workShiftID || selectedShiftForBulk.value.ID
-            console.log('WorkShift ID detected:', workShiftId, 'from shift:', selectedShiftForBulk.value)
-            
-            const assignment = {
+            assignments.push({
               employeeID: employeeId,
               workShiftID: workShiftId,
               workDate: formatDateForAPI(date)
-            }
-            console.log('Creating assignment for employee:', employee.employeeName, 'assignment:', assignment)
-            assignments.push(assignment)
+            })
           }
         }
     } else {
-      // Apply individual date ranges for each employee
       for (const employee of selectedEmployees.value) {
-        const employeeId = employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId
+        const employeeId = getEmployeeId(employee)
         const dateRange = employeeDateRanges.value[employeeId]
         
         if (!dateRange || !dateRange.startDate || !dateRange.endDate) {
@@ -655,7 +560,6 @@ const handleBulkAssign = async () => {
           return
         }
 
-        // Generate dates for this employee
         const dates = []
         const currentDate = new Date(startDate)
         while (currentDate <= endDate) {
@@ -663,24 +567,17 @@ const handleBulkAssign = async () => {
           currentDate.setDate(currentDate.getDate() + 1)
         }
 
-        // Create assignments for this employee
+        const workShiftId = getWorkShiftId(selectedShiftForBulk.value)
+        
         for (const date of dates) {
-          const workShiftId = selectedShiftForBulk.value.code || selectedShiftForBulk.value.id || selectedShiftForBulk.value.workShiftID || selectedShiftForBulk.value.ID
-          console.log('WorkShift ID detected:', workShiftId, 'from shift:', selectedShiftForBulk.value)
-          
-          const assignment = {
+          assignments.push({
             employeeID: employeeId,
             workShiftID: workShiftId,
             workDate: formatDateForAPI(date)
-          }
-          console.log('Creating assignment for employee:', employee.employeeName, 'assignment:', assignment)
-          assignments.push(assignment)
+          })
         }
       }
     }
-
-    // Debug: Log assignments before sending
-    console.log('Assignments to create:', assignments)
     
     // Validate assignments before sending
     for (const assignment of assignments) {
@@ -698,12 +595,7 @@ const handleBulkAssign = async () => {
       }
     }
     
-    // Create all assignments
-    const promises = assignments.map(assignment => {
-      console.log('Creating assignment:', assignment)
-      return createShiftAssignment(assignment)
-    })
-    await Promise.all(promises)
+    await Promise.all(assignments.map(assignment => createShiftAssignment(assignment)))
 
     // Refresh data
     await fetchAllShiftAssignments()
@@ -711,7 +603,6 @@ const handleBulkAssign = async () => {
     closeBulkAssignModal()
     showMessage(`Phân ca thành công!`, 'success')
   } catch (error) {
-    console.error('Error bulk assigning shifts:', error)
     showMessage('Có lỗi xảy ra khi phân ca hàng loạt', 'error')
   } finally {
     bulkAssignLoading.value = false
@@ -804,33 +695,20 @@ const historyData = computed(() => {
   
   // Chuyển đổi thành mảng và tính toán ngày bắt đầu/kết thúc
   return Object.values(groupedAssignments).map((group, index) => {
-    // Tìm thông tin nhân viên
-    const employee = employees.value.find(emp => 
-      emp.employeeID === group.employeeID || 
-      emp.id === group.employeeID || 
-      emp.Id === group.employeeID ||
-      emp.employeeId === group.employeeID ||
-      emp.userId === group.employeeID
-    )
+    const employee = employees.value.find(emp => getEmployeeId(emp) === group.employeeID)
     
-    // Tìm thông tin ca làm việc
     const shift = workshifts.value.find(s => 
       s.id === group.workShiftID || 
       s.code === group.workShiftID
     )
     
-    console.log('Finding shift for workShiftID:', group.workShiftID)
-    console.log('Available workshifts:', workshifts.value)
-    console.log('Found shift:', shift)
-    
-    // Sắp xếp ngày và tìm ngày bắt đầu/kết thúc
     const sortedDates = group.dates.sort()
     const startDate = sortedDates[0]
     const endDate = sortedDates[sortedDates.length - 1]
     
     return {
       stt: index + 1,
-      empId: employee?.employeeCode || employee?.employeeID || employee?.id || employee?.Id || employee?.employeeId || employee?.userId || 'N/A',
+      empId: employee?.employeeCode || getEmployeeId(employee) || 'N/A',
       empName: employee?.employeeName || 'N/A',
       dept: employee?.roleName || employee?.department || 'N/A',
       shiftCode: shift?.code ? `CA-${shift.code}` : shift?.id ? `CA-${shift.id}` : 'N/A',
@@ -864,13 +742,10 @@ const unassignedData = computed(() => {
   const assignedEmployeeIds = new Set(shiftAssignments.value.map(assignment => assignment.employeeID))
   
   return employees.value
-    .filter(employee => {
-      const employeeId = employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId
-      return !assignedEmployeeIds.has(employeeId)
-    })
+    .filter(employee => !assignedEmployeeIds.has(getEmployeeId(employee)))
     .map((employee, index) => ({
       stt: index + 1,
-      empId: employee.employeeCode || employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId || 'N/A',
+      empId: employee.employeeCode || getEmployeeId(employee) || 'N/A',
       empName: employee.employeeName || 'N/A',
       dept: employee.roleName || employee.department || 'N/A',
       title: employee.position || employee.jobTitle || employee.title || 'N/A',
@@ -1716,7 +1591,7 @@ const paginatedScheduleData = computed(() => {
                     <input 
                       type="date" 
                       class="form-control form-control-sm" 
-                      v-model="employeeDateRanges[employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId].startDate"
+                      v-model="employeeDateRanges[getEmployeeId(employee)].startDate"
                       :min="new Date().toISOString().split('T')[0]"
                     />
                   </div>
@@ -1725,15 +1600,15 @@ const paginatedScheduleData = computed(() => {
                     <input 
                       type="date" 
                       class="form-control form-control-sm" 
-                      v-model="employeeDateRanges[employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId].endDate"
-                      :min="employeeDateRanges[employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId].startDate || new Date().toISOString().split('T')[0]"
+                      v-model="employeeDateRanges[getEmployeeId(employee)].endDate"
+                      :min="employeeDateRanges[getEmployeeId(employee)].startDate || new Date().toISOString().split('T')[0]"
                     />
                   </div>
                   <div class="col-md-4">
-                    <div v-if="employeeDateRanges[employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId].startDate && employeeDateRanges[employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId].endDate" class="text-center">
+                    <div v-if="employeeDateRanges[getEmployeeId(employee)].startDate && employeeDateRanges[getEmployeeId(employee)].endDate" class="text-center">
                       <span class="badge bg-info">
                         <i class="fas fa-calendar-check me-1"></i>
-                        {{ Math.ceil((new Date(employeeDateRanges[employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId].endDate) - new Date(employeeDateRanges[employee.employeeID || employee.id || employee.Id || employee.employeeId || employee.userId].startDate)) / (1000 * 60 * 60 * 24)) + 1 }} phân ca
+                        {{ Math.ceil((new Date(employeeDateRanges[getEmployeeId(employee)].endDate) - new Date(employeeDateRanges[getEmployeeId(employee)].startDate)) / (1000 * 60 * 60 * 24)) + 1 }} phân ca
                       </span>
                     </div>
                   </div>

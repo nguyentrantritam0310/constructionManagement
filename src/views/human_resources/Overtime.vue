@@ -80,7 +80,7 @@ const handleCreate = async (formData) => {
     await createOvertimeRequest(formData)
     showCreateForm.value = false
   } catch (error) {
-    console.error('Error creating overtime request:', error)
+    // Error handling is done by composable
   }
 }
 
@@ -89,7 +89,7 @@ const handleUpdate = async (formData) => {
     await updateOvertimeRequest(formData.voucherCode, formData)
     showUpdateForm.value = false
   } catch (error) {
-    console.error('Error updating overtime request:', error)
+    // Error handling is done by composable
   }
 }
 
@@ -131,7 +131,7 @@ const handleApprovalConfirm = async (notes) => {
     pendingVoucherCode.value = ''
     pendingAction.value = ''
   } catch (error) {
-    console.error(`Error ${pendingAction.value} overtime request:`, error)
+    // Error handling is done by composable
   }
 }
 
@@ -166,7 +166,7 @@ const handleDelete = async (voucherCode) => {
     try {
       await deleteOvertimeRequest(voucherCode)
     } catch (error) {
-      console.error('Error deleting overtime request:', error)
+      // Error handling is done by composable
     }
   }
 }
@@ -189,19 +189,9 @@ const getStatusText = (status) => {
 const currentPage = ref(1)
 const itemsPerPage = ref(8)
 
-// Filter overtime requests based on centralized permissions
 const filteredOvertimeRequests = computed(() => {
-  console.log('=== OVERTIME PERMISSION DEBUG ===')
-  console.log('Current user:', currentUser.value)
-  console.log('Can view overtime:', canView('overtime'))
-  console.log('Overtime requests count:', overtimeRequests.value?.length || 0)
-  
-  if (!overtimeRequests.value || overtimeRequests.value.length === 0) return []
-  
-  // Use centralized permission filtering
-  const filtered = filterDataByPermission('overtime', overtimeRequests.value)
-  console.log('Filtered requests count:', filtered.length)
-  return filtered
+  if (!overtimeRequests.value?.length) return []
+  return filterDataByPermission('overtime', overtimeRequests.value)
 })
 
 const paginatedOvertimeData = computed(() => {
@@ -209,7 +199,6 @@ const paginatedOvertimeData = computed(() => {
   return filteredOvertimeRequests.value.slice(start, start + itemsPerPage.value)
 })
 
-// Excel import functions
 const file = ref(null)
 
 const handleFileUpload = (event) => {
@@ -330,41 +319,20 @@ const processImport = () => {
         return
       }
 
-      // Create overtime requests
-      for (const request of overtimeRequestsToCreate) {
-        await createOvertimeRequest(request)
-      }
+      await Promise.all(overtimeRequestsToCreate.map(request => createOvertimeRequest(request)))
 
       alert(`Đã nhập thành công ${overtimeRequestsToCreate.length} đơn tăng ca.`)
       file.value = null
       showImportModal.value = false
     } catch (error) {
-      console.error('Lỗi khi xử lý file Excel:', error)
       alert('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.')
     }
   }
   reader.readAsArrayBuffer(file.value)
 }
 
-// Excel export function
-const exportToExcel = async (type) => {
-  const workbook = new ExcelJS.Workbook()
-  const worksheet = workbook.addWorksheet('OvertimeRequests')
-
-  // Thêm header
-  worksheet.columns = overtimeColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
-
-  // Thêm dữ liệu
-  filteredOvertimeRequests.value.forEach((row, index) => {
-    worksheet.addRow({
-      ...row,
-      startDateTime: new Date(row.startDateTime).toLocaleString('vi-VN'),
-      endDateTime: new Date(row.endDateTime).toLocaleString('vi-VN')
-    })
-  })
-
-  // Style header
-  worksheet.getRow(1).eachCell(cell => {
+const applyHeaderStyle = (row) => {
+  row.eachCell(cell => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
     cell.alignment = { vertical: 'middle', horizontal: 'center' }
@@ -375,31 +343,57 @@ const exportToExcel = async (type) => {
       right: { style: 'thin' }
     }
   })
+}
 
-  // Style dữ liệu
-  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    row.eachCell(cell => {
-      if (rowNumber !== 1) { // skip header
-        cell.alignment = { vertical: 'middle', horizontal: 'center' }
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        }
-      }
-    })
-  })
+const applyDataStyle = (cell) => {
+  cell.alignment = { vertical: 'middle', horizontal: 'center' }
+  cell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  }
+}
 
-  // Auto-fit chiều ngang cho từng cột
+const autoFitColumns = (worksheet) => {
   worksheet.columns.forEach(column => {
     let maxLength = 0
     column.eachCell({ includeEmpty: true }, cell => {
       const val = cell.value ? cell.value.toString() : ''
       maxLength = Math.max(maxLength, val.length)
     })
-    column.width = maxLength + 2 // padding để text không sát
+    column.width = maxLength + 2
   })
+}
+
+const formatDateTimeForExport = (dateTime) => {
+  if (!dateTime) return ''
+  return new Date(dateTime).toLocaleString('vi-VN')
+}
+
+const exportToExcel = async () => {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('OvertimeRequests')
+
+  worksheet.columns = overtimeColumns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+
+  filteredOvertimeRequests.value.forEach(row => {
+    worksheet.addRow({
+      ...row,
+      startDateTime: formatDateTimeForExport(row.startDateTime),
+      endDateTime: formatDateTimeForExport(row.endDateTime)
+    })
+  })
+
+  applyHeaderStyle(worksheet.getRow(1))
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber !== 1) {
+      row.eachCell(applyDataStyle)
+    }
+  })
+
+  autoFitColumns(worksheet)
 
   const buf = await workbook.xlsx.writeBuffer()
   saveAs(new Blob([buf]), 'OvertimeRequests.xlsx')
@@ -422,7 +416,7 @@ const exportToExcel = async (type) => {
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
           Lọc
         </ActionButton>
-        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel('overtime')">
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
           Xuất Excel
         </ActionButton>
         <ActionButton 
@@ -471,10 +465,6 @@ const exportToExcel = async (type) => {
               icon="fas fa-paper-plane" 
               title="Gửi duyệt"
             ></ActionButton>
-            <!-- Debug info -->
-            <span v-if="item.approveStatus === 'Tạo mới'" class="badge bg-info" style="font-size: 0.7rem;">
-              Debug: {{ canSubmitItem('overtime', item) ? 'Can Submit' : 'Cannot Submit' }}
-            </span>
             <!-- Approve button -->
             <ActionButton 
               v-if="canApproveItem('overtime', item)" 

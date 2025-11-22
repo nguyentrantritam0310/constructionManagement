@@ -1,8 +1,5 @@
-// Demo file để test hệ thống phân quyền
-// File này có thể được xóa sau khi test xong
-
-import { usePermissions } from './usePermissions.js'
-import { useAuth } from './useAuth.js'
+import { usePermissions } from '../composables/usePermissions.js'
+import { useAuth } from '../composables/useAuth.js'
 
 // Test function để kiểm tra permissions
 export function testPermissions() {
@@ -24,16 +21,11 @@ export function testPermissions() {
   console.log('\n--- LEAVE PAGE PERMISSIONS ---')
   console.log('Can view leave:', canView('leave'))
   console.log('Can create leave:', canCreate('leave'))
-  console.log('Can edit leave:', canEdit('leave'))
-  console.log('Can delete leave:', canDelete('leave'))
   console.log('Can approve leave:', canApprove('leave'))
   
-  // Test logic: nếu không xem được thì không được làm gì khác
   if (!canView('leave')) {
     console.log('❌ Cannot view leave - should not have any other permissions')
     console.log('Create permission:', canCreate('leave'), '(should be false)')
-    console.log('Edit permission:', canEdit('leave'), '(should be false)')
-    console.log('Delete permission:', canDelete('leave'), '(should be false)')
     console.log('Approve permission:', canApprove('leave'), '(should be false)')
   } else {
     console.log('✅ Can view leave - checking other permissions')

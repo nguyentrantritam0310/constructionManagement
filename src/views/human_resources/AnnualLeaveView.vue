@@ -13,7 +13,7 @@ import { useOvertimeType } from '../../composables/useOvertimeType'
 import { useOvertimeForm } from '../../composables/useOvertimeForm'
 import { useEmployeeRequest } from '../../composables/useEmployeeRequest'
 import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
-import { CONTRACT_APPROVE_STATUS, isApprovedStatus } from '../../constants/status.js'
+import { isApprovedStatus } from '../../constants/status.js'
 
 // Composables
 const { employees, fetchAllEmployees, loading: employeeLoading, error: employeeError } = useEmployee()
@@ -22,10 +22,9 @@ const { leaveTypes, fetchLeaveTypes } = useLeaveType()
 const { workshifts, fetchWorkShifts } = useWorkShift()
 const { overtimeTypes, fetchOvertimeTypes } = useOvertimeType()
 const { overtimeForms, fetchOvertimeForms } = useOvertimeForm()
-const { employeeRequests, fetchEmployeeRequests, loading: requestLoading, error: requestError } = useEmployeeRequest()
+const { fetchEmployeeRequests, loading: requestLoading, error: requestError } = useEmployeeRequest()
 const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
 
-// Combined loading state
 const loading = computed(() => employeeLoading.value || leaveLoading.value || requestLoading.value || overtimeLoading.value)
 const error = computed(() => employeeError.value || leaveError.value || requestError.value || overtimeError.value)
 
@@ -69,136 +68,71 @@ const calculateSeniorityLeave = (joinDate) => {
   return Math.floor(yearsWorked / 5)
 }
 
-// Function to calculate total used leave days for an employee
+const calculateDaysBetween = (startDate, endDate) => {
+  return Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1
+}
+
 const calculateTotalUsedLeave = (employeeId) => {
-  if (!leaveRequests.value || leaveRequests.value.length === 0) {
-    console.log('No leave requests available for calculation')
-    return 0
-  }
+  if (!leaveRequests.value?.length) return 0
   
-  // Debug: Log all leave requests for this employee
-  const allEmployeeRequests = leaveRequests.value.filter(request => request.employeeID === employeeId)
-  console.log(`Employee ${employeeId} has ${allEmployeeRequests.length} total leave requests`)
-  console.log('All employee leave requests:', allEmployeeRequests.map(req => ({
-    voucherCode: req.voucherCode,
-    employeeID: req.employeeID,
-    approveStatus: req.approveStatus,
-    startDateTime: req.startDateTime,
-    endDateTime: req.endDateTime
-  })))
-  
-  const employeeLeaveRequests = leaveRequests.value.filter(request => {
-    const isCorrectEmployee = request.employeeID === employeeId
-    const isApproved = isApprovedStatus(request.approveStatus)
-    // Only log for this specific employee to reduce noise
-    if (isCorrectEmployee) {
-      console.log(`Request ${request.voucherCode}: employee match=${isCorrectEmployee}, approved=${isApproved}, status=${request.approveStatus}`)
-    }
-    return isCorrectEmployee && isApproved
-  })
-  
-  console.log(`Employee ${employeeId} has ${employeeLeaveRequests.length} approved leave requests`)
-  
-  const total = employeeLeaveRequests.reduce((total, request) => {
-    const fromDate = new Date(request.startDateTime)
-    const toDate = new Date(request.endDateTime)
-    const requestYear = fromDate.getFullYear()
-    
-    if (requestYear === selectedYear.value) {
-      const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1
-      console.log(`Leave request ${request.voucherCode}: ${days} days in ${requestYear}`)
-      return total + days
-    }
-    return total
-  }, 0)
-  
-  console.log(`Total used leave for employee ${employeeId} in ${selectedYear.value}: ${total}`)
-  return total
+  return leaveRequests.value
+    .filter(request => 
+      request.employeeID === employeeId && 
+      isApprovedStatus(request.approveStatus)
+    )
+    .reduce((total, request) => {
+      const requestYear = new Date(request.startDateTime).getFullYear()
+      if (requestYear === selectedYear.value) {
+        return total + calculateDaysBetween(request.startDateTime, request.endDateTime)
+      }
+      return total
+    }, 0)
 }
 
-// Function to get leave days by month for an employee
 const getLeaveDaysByMonth = (employeeId, month) => {
-  if (!leaveRequests.value || leaveRequests.value.length === 0) {
-    return 0
-  }
+  if (!leaveRequests.value?.length) return 0
   
-  const employeeLeaveRequests = leaveRequests.value.filter(request => 
-    request.employeeID === employeeId && 
-    isApprovedStatus(request.approveStatus) // Backend maps enum to Vietnamese string
-  )
-  
-  const monthDays = employeeLeaveRequests.reduce((total, request) => {
-    const fromDate = new Date(request.startDateTime)
-    const toDate = new Date(request.endDateTime)
-    const requestMonth = fromDate.getMonth() + 1 // JavaScript months are 0-indexed
-    const requestYear = fromDate.getFullYear()
-    
-    if (requestMonth === month && requestYear === selectedYear.value) {
-      const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1
-      console.log(`Month ${month}: Leave request ${request.voucherCode}: ${days} days`)
-      return total + days
-    }
-    return total
-  }, 0)
-  
-  if (monthDays > 0) {
-    console.log(`Employee ${employeeId} - Month ${month}: ${monthDays} leave days`)
-  }
-  return monthDays
+  return leaveRequests.value
+    .filter(request => 
+      request.employeeID === employeeId && 
+      isApprovedStatus(request.approveStatus)
+    )
+    .reduce((total, request) => {
+      const fromDate = new Date(request.startDateTime)
+      const requestMonth = fromDate.getMonth() + 1
+      const requestYear = fromDate.getFullYear()
+      
+      if (requestMonth === month && requestYear === selectedYear.value) {
+        return total + calculateDaysBetween(request.startDateTime, request.endDateTime)
+      }
+      return total
+    }, 0)
 }
 
-// Computed property for leave data based on real API data
+const isActiveEmployee = (emp) => {
+  return emp.status === 0 || emp.status === '0' || emp.status === 'Active' || emp.status === null || emp.status === undefined
+}
+
 const leaveData = computed(() => {
-  console.log('=== LEAVE DATA COMPUTED ===')
-  console.log('Employees value:', employees.value)
-  console.log('Employees length:', employees.value?.length || 0)
-  console.log('Leave requests value:', leaveRequests.value)
-  console.log('Leave requests length:', leaveRequests.value?.length || 0)
+  if (!employees.value?.length) return []
   
-  // Check if data is loaded
-  if (!employees.value || employees.value.length === 0) {
-    console.log('No employees data available')
-    return []
-  }
-  
-  // Debug: Log first employee structure
-  if (employees.value.length > 0) {
-    console.log('First employee structure:', employees.value[0])
-    console.log('Employee status values:', employees.value.map(emp => ({ id: emp.id, status: emp.status, employeeCode: emp.employeeCode })))
-  }
-  
-  // Filter only active employees - try different status values
-  const activeEmployees = employees.value.filter(emp => {
-    console.log(`Employee ${emp.employeeCode}: status = ${emp.status} (type: ${typeof emp.status})`)
-    return emp.status === 0 || emp.status === '0' || emp.status === 'Active' || emp.status === null || emp.status === undefined
-  })
-  
-  console.log('Total employees:', employees.value.length)
-  console.log('Active employees after filter:', activeEmployees.length)
-  
-  if (activeEmployees.length === 0) {
-    console.log('No active employees found - showing all employees instead')
-    const allEmployees = employees.value
-    console.log('All employees count:', allEmployees.length)
-  }
-  
+  const activeEmployees = employees.value.filter(isActiveEmployee)
   const employeesToProcess = activeEmployees.length > 0 ? activeEmployees : employees.value
   
-  const result = employeesToProcess.map(employee => {
+  return employeesToProcess.map(employee => {
     const joinDate = new Date(employee.joinDate)
     const seniorityLeave = calculateSeniorityLeave(employee.joinDate)
     const totalUsed = calculateTotalUsedLeave(employee.id)
-    const totalLeave = 12 + seniorityLeave // 12 days default + seniority leave
+    const totalLeave = 12 + seniorityLeave
     
-    // Generate month data
     const monthData = {}
     for (let i = 1; i <= 12; i++) {
       monthData[`month${i}`] = getLeaveDaysByMonth(employee.id, i)
     }
     
-    const employeeData = {
-      empId: employee.id, // Use employee ID instead of employeeCode
-      empCode: employee.id, // Use employee ID for display (backend uses Id as primary key)
+    return {
+      empId: employee.id,
+      empCode: employee.id,
       empName: `${employee.firstName} ${employee.lastName}`,
       ...monthData,
       joinDate: joinDate.toLocaleDateString('vi-VN'),
@@ -208,20 +142,9 @@ const leaveData = computed(() => {
       totalUsed,
       leaveRemain: Math.max(0, totalLeave - totalUsed),
       seniorityDate: joinDate.toLocaleDateString('vi-VN'),
-      employeeId: employee.id // Keep for modal usage
+      employeeId: employee.id
     }
-    
-    // Debug logging for first employee
-    if (employee === activeEmployees[0]) {
-      console.log('Sample employee data:', employeeData)
-      console.log('Employee leave requests:', leaveRequests.value.filter(req => req.employeeID === employee.id))
-    }
-    
-    return employeeData
   })
-  
-  console.log('Leave data computed:', result.length, 'employees')
-  return result
 })
 
 const annualCurrentPage = ref(1)
@@ -235,183 +158,105 @@ const paginatedLeaveData = computed(() => {
 })
 
 // ----------- Phép bù tăng ca -----------
-const otLeaveColumns = [
+const otLeaveColumns = computed(() => [
   { key: 'empId', label: 'Mã nhân viên' },
   { key: 'empName', label: 'Tên nhân viên' },
   ...Array.from({ length: 12 }, (_, i) => ({
     key: `month${i + 1}`,
-    label: `${i + 1 < 10 ? '0' : ''}${i + 1}/2025`
+    label: `${i + 1 < 10 ? '0' : ''}${i + 1}/${selectedYear.value}`
   })),
   { key: 'totalOTHours', label: 'Tổng giờ tăng ca' },
   { key: 'otLeaveDays', label: 'Số ngày phép bù' },
   { key: 'otLeaveUsed', label: 'Đã nghỉ phép bù' },
   { key: 'otLeaveRemain', label: 'Phép bù còn lại' }
-]
+])
 
-// Function to calculate total overtime days for an employee (only overtime leave compensation, not paid overtime)
+const isOvertimeLeaveCompensation = (request) => {
+  return request.overtimeFormID === 2
+}
+
 const calculateTotalOTDays = (employeeId) => {
-  if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
-    console.log(`No overtime requests available for employee ${employeeId}`)
-    return 0
-  }
+  if (!overtimeRequests.value?.length) return 0
   
-  // Debug: Log all overtime requests for this employee
-  const allEmployeeOTRequests = overtimeRequests.value.filter(request => request.employeeID === employeeId)
-  console.log(`Employee ${employeeId} has ${allEmployeeOTRequests.length} total overtime requests`)
-  console.log('All employee overtime requests:', allEmployeeOTRequests.map(req => ({
-    voucherCode: req.voucherCode,
-    employeeID: req.employeeID,
-    approveStatus: req.approveStatus,
-    overtimeFormID: req.overtimeFormID,
-    overtimeFormName: req.overtimeFormName,
-    startDateTime: req.startDateTime,
-    endDateTime: req.endDateTime
-  })))
-  
-  const employeeOTRequests = overtimeRequests.value.filter(request => {
-    const isCorrectEmployee = request.employeeID === employeeId
-    const isApproved = isApprovedStatus(request.approveStatus)
-    const isLeaveCompensation = request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation), not "Tăng ca tính lương"
-    // Only log for this specific employee to reduce noise
-    if (isCorrectEmployee) {
-      console.log(`OT Request ${request.voucherCode}: employee match=${isCorrectEmployee}, approved=${isApproved}, leave compensation=${isLeaveCompensation}, status=${request.approveStatus}, formID=${request.overtimeFormID}`)
-    }
-    return isCorrectEmployee && isApproved && isLeaveCompensation
-  })
-  
-  console.log(`Employee ${employeeId} has ${employeeOTRequests.length} approved overtime leave compensation requests`)
-  
-  // Debug: Log overtime form information
-  if (employeeOTRequests.length > 0) {
-    console.log('Overtime leave compensation requests:', employeeOTRequests.map(req => ({
-      voucherCode: req.voucherCode,
-      overtimeFormID: req.overtimeFormID,
-      overtimeFormName: req.overtimeFormName,
-      reason: req.reason
-    })))
-  }
-  
-  const totalDays = employeeOTRequests.reduce((total, request) => {
-    const fromDate = new Date(request.startDateTime)
-    const toDate = new Date(request.endDateTime)
-    const requestYear = fromDate.getFullYear()
-    
-    if (requestYear === selectedYear.value) {
-      const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1 // Calculate actual days
-      console.log(`Overtime request ${request.voucherCode}: ${days} days (${fromDate.toLocaleDateString('vi-VN')} - ${toDate.toLocaleDateString('vi-VN')})`)
-      return total + days
-    }
-    return total
-  }, 0)
-  
-  console.log(`Total OT days for employee ${employeeId} in ${selectedYear.value}: ${totalDays}`)
-  return totalDays
+  return overtimeRequests.value
+    .filter(request => 
+      request.employeeID === employeeId && 
+      isApprovedStatus(request.approveStatus) &&
+      isOvertimeLeaveCompensation(request)
+    )
+    .reduce((total, request) => {
+      const requestYear = new Date(request.startDateTime).getFullYear()
+      if (requestYear === selectedYear.value) {
+        return total + calculateDaysBetween(request.startDateTime, request.endDateTime)
+      }
+      return total
+    }, 0)
 }
 
-// Function to get overtime days by month for an employee (only overtime leave compensation)
 const getOTDaysByMonth = (employeeId, month) => {
-  if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
-    return 0
-  }
+  if (!overtimeRequests.value?.length) return 0
   
-  const employeeOTRequests = overtimeRequests.value.filter(request => 
-    request.employeeID === employeeId && 
-    isApprovedStatus(request.approveStatus) &&
-    request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation)
-  )
-  
-  const monthDays = employeeOTRequests.reduce((total, request) => {
-    const fromDate = new Date(request.startDateTime)
-    const toDate = new Date(request.endDateTime)
-    const requestMonth = fromDate.getMonth() + 1 // JavaScript months are 0-indexed
-    const requestYear = fromDate.getFullYear()
-    
-    if (requestMonth === month && requestYear === selectedYear.value) {
-      const days = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1 // Calculate actual days
-      console.log(`Month ${month}: Overtime request ${request.voucherCode}: ${days} days`)
-      return total + days
-    }
-    return total
-  }, 0)
-  
-  if (monthDays > 0) {
-    console.log(`Employee ${employeeId} - Month ${month}: ${monthDays} OT days`)
-  }
-  return monthDays
+  return overtimeRequests.value
+    .filter(request => 
+      request.employeeID === employeeId && 
+      isApprovedStatus(request.approveStatus) &&
+      isOvertimeLeaveCompensation(request)
+    )
+    .reduce((total, request) => {
+      const fromDate = new Date(request.startDateTime)
+      const requestMonth = fromDate.getMonth() + 1
+      const requestYear = fromDate.getFullYear()
+      
+      if (requestMonth === month && requestYear === selectedYear.value) {
+        return total + calculateDaysBetween(request.startDateTime, request.endDateTime)
+      }
+      return total
+    }, 0)
 }
 
-// Function to calculate total overtime hours for display (only overtime leave compensation)
 const calculateTotalOTHours = (employeeId) => {
-  if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
-    return 0
-  }
+  if (!overtimeRequests.value?.length) return 0
   
-  const employeeOTRequests = overtimeRequests.value.filter(request => 
-    request.employeeID === employeeId && 
-    isApprovedStatus(request.approveStatus) &&
-    request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation)
-  )
-  
-  return employeeOTRequests.reduce((total, request) => {
-    const fromDate = new Date(request.startDateTime)
-    const toDate = new Date(request.endDateTime)
-    const requestYear = fromDate.getFullYear()
-    
-    if (requestYear === selectedYear.value) {
-      const hours = Math.ceil((toDate - fromDate) / (1000 * 60 * 60)) // Convert to hours
-      return total + hours
-    }
-    return total
-  }, 0)
+  return overtimeRequests.value
+    .filter(request => 
+      request.employeeID === employeeId && 
+      isApprovedStatus(request.approveStatus) &&
+      isOvertimeLeaveCompensation(request)
+    )
+    .reduce((total, request) => {
+      const requestYear = new Date(request.startDateTime).getFullYear()
+      if (requestYear === selectedYear.value) {
+        return total + Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60))
+      }
+      return total
+    }, 0)
 }
 
-// Overtime leave data computed from API data
 const otLeaveData = computed(() => {
-  console.log('=== OT LEAVE DATA COMPUTED ===')
-  console.log('Employees value:', employees.value)
-  console.log('Employees length:', employees.value?.length || 0)
-  console.log('Overtime requests value:', overtimeRequests.value)
-  console.log('Overtime requests length:', overtimeRequests.value?.length || 0)
+  if (!employees.value?.length) return []
   
-  // Check if data is loaded
-  if (!employees.value || employees.value.length === 0) {
-    console.log('No employees data available for OT leave')
-    return []
-  }
-  
-  // Filter only active employees - try different status values
-  const activeEmployees = employees.value.filter(emp => {
-    return emp.status === 0 || emp.status === '0' || emp.status === 'Active' || emp.status === null || emp.status === undefined
-  })
-  
-  console.log('Total employees for OT:', employees.value.length)
-  console.log('Active employees for OT after filter:', activeEmployees.length)
-  
+  const activeEmployees = employees.value.filter(isActiveEmployee)
   const employeesToProcess = activeEmployees.length > 0 ? activeEmployees : employees.value
   
   return employeesToProcess.map(employee => {
-    const totalOTDays = calculateTotalOTDays(employee.id) // Calculate actual days from overtime requests
-    const totalOTHours = calculateTotalOTHours(employee.id) // Keep hours for display
-    const otLeaveDays = totalOTDays // Use actual days from overtime requests
-    const otLeaveUsed = totalOTDays // Same as otLeaveDays for now (assuming all overtime becomes leave)
-    const otLeaveRemain = Math.max(0, otLeaveDays - otLeaveUsed)
+    const totalOTDays = calculateTotalOTDays(employee.id)
+    const totalOTHours = calculateTotalOTHours(employee.id)
     
-    // Generate month data using actual days
     const monthData = {}
     for (let i = 1; i <= 12; i++) {
-      monthData[`month${i}`] = getOTDaysByMonth(employee.id, i) // Use actual days
+      monthData[`month${i}`] = getOTDaysByMonth(employee.id, i)
     }
     
     return {
-      empId: employee.id, // Use employee ID instead of employeeCode
-      empCode: employee.employeeCode, // Keep employeeCode for display
+      empId: employee.id,
+      empCode: employee.employeeCode,
       empName: `${employee.firstName} ${employee.lastName}`,
       ...monthData,
       totalOTHours,
-      otLeaveDays,
-      otLeaveUsed,
-      otLeaveRemain,
-      employeeId: employee.id // Keep for modal usage
+      otLeaveDays: totalOTDays,
+      otLeaveUsed: totalOTDays,
+      otLeaveRemain: 0,
+      employeeId: employee.id
     }
   })
 })
@@ -450,11 +295,6 @@ const leaveTicketColumns = [
   { key: 'reason', label: 'Lý do' }
 ]
 
-// Dữ liệu phiếu nghỉ phép cho phép năm quy định - Sẽ được tạo động từ API data
-const leaveTickets = {}
-
-// Dữ liệu phiếu nghỉ phép bù tăng ca - Sẽ được tạo động từ API data
-const otTickets = {}
 
 function openLeaveModal(emp, month, type = 'annual', field = 'month') {
   modalEmployee.value = emp
@@ -464,28 +304,14 @@ function openLeaveModal(emp, month, type = 'annual', field = 'month') {
   showModal.value = true
 }
 
-// Function to open LeaveForm modal when clicking on voucher code
-function openLeaveFormModal(voucherCode) {
-  console.log('Opening leave form modal for voucher code:', voucherCode)
-  console.log('Available leave requests:', leaveRequests.value)
+const openLeaveFormModal = (voucherCode) => {
+  if (!voucherCode) return
   
-  if (!voucherCode) {
-    console.warn('No voucher code provided')
-    return
-  }
-  
-  // Find the leave request by voucher code
   const leaveRequest = leaveRequests.value.find(leave => leave.voucherCode === voucherCode)
-  
-  console.log('Found leave request:', leaveRequest)
   
   if (leaveRequest) {
     selectedLeaveRequest.value = leaveRequest
     showLeaveFormModal.value = true
-    console.log('Leave form modal opened successfully')
-  } else {
-    console.warn('Leave request not found for voucher code:', voucherCode)
-    console.log('Available voucher codes:', leaveRequests.value.map(lr => lr.voucherCode))
   }
 }
 
@@ -494,28 +320,14 @@ function closeLeaveFormModal() {
   selectedLeaveRequest.value = null
 }
 
-// Function to open OvertimeForm modal when clicking on voucher code
-function openOvertimeFormModal(voucherCode) {
-  console.log('Opening overtime form modal for voucher code:', voucherCode)
-  console.log('Available overtime requests:', overtimeRequests.value)
+const openOvertimeFormModal = (voucherCode) => {
+  if (!voucherCode) return
   
-  if (!voucherCode) {
-    console.warn('No voucher code provided')
-    return
-  }
-  
-  // Find the overtime request by voucher code
   const overtimeRequest = overtimeRequests.value.find(overtime => overtime.voucherCode === voucherCode)
-  
-  console.log('Found overtime request:', overtimeRequest)
   
   if (overtimeRequest) {
     selectedOvertimeRequest.value = overtimeRequest
     showOvertimeFormModal.value = true
-    console.log('Overtime form modal opened successfully')
-  } else {
-    console.warn('Overtime request not found for voucher code:', voucherCode)
-    console.log('Available voucher codes:', overtimeRequests.value.map(or => or.voucherCode))
   }
 }
 
@@ -524,326 +336,78 @@ function closeOvertimeFormModal() {
   selectedOvertimeRequest.value = null
 }
 
-function getTickets(empId, month, type, field) {
-  console.log('getTickets called:', { empId, month, type, field })
-  
+const mapRequestToTicket = (request, empName, defaultReason) => ({
+  ticketId: request.voucherCode,
+  empName,
+  fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
+  toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
+  days: calculateDaysBetween(request.startDateTime, request.endDateTime),
+  reason: request.reason || defaultReason
+})
+
+const getTickets = (empId, month, type, field) => {
   if (type === 'annual') {
-    // Check if data is loaded
-    if (!leaveData.value || leaveData.value.length === 0 || !leaveRequests.value) {
-      console.log('No data available for getTickets')
-      return []
-    }
+    if (!leaveData.value?.length || !leaveRequests.value?.length) return []
     
-    // Find employee by ID from leaveData
     const employee = leaveData.value.find(emp => emp.empId === empId)
-    if (!employee) {
-      console.log('Employee not found:', empId)
-      return []
-    }
+    if (!employee) return []
     
-    console.log('Found employee:', employee.empName, 'ID:', employee.employeeId)
-    
-    // Filter leave requests for this employee
     const employeeLeaveRequests = leaveRequests.value.filter(request => 
       request.employeeID === employee.employeeId && 
-      isApprovedStatus(request.approveStatus) // Backend maps enum to Vietnamese string
+      isApprovedStatus(request.approveStatus)
     )
     
-    console.log('Employee leave requests:', employeeLeaveRequests.length)
-    
     if (field === 'month' && typeof month === 'number') {
-      // Filter by specific month and year
-      const monthRequests = employeeLeaveRequests.filter(request => {
-        const fromDate = new Date(request.startDateTime)
-        const requestMonth = fromDate.getMonth() + 1
-        const requestYear = fromDate.getFullYear()
-        return requestMonth === month && requestYear === selectedYear.value
-      })
-      
-      console.log(`Month ${month} requests:`, monthRequests.length)
-      
-      return monthRequests.map(request => ({
-        ticketId: request.voucherCode,
-        empName: employee.empName,
-        fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
-        toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
-        days: Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60 * 24)) + 1,
-        reason: request.reason || 'Nghỉ phép cá nhân'
-      }))
+      return employeeLeaveRequests
+        .filter(request => {
+          const fromDate = new Date(request.startDateTime)
+          return fromDate.getMonth() + 1 === month && fromDate.getFullYear() === selectedYear.value
+        })
+        .map(request => mapRequestToTicket(request, employee.empName, 'Nghỉ phép cá nhân'))
     }
     
     if (field === 'totalUsed') {
-      // Return all approved leave requests for this employee in selected year
-      const yearRequests = employeeLeaveRequests.filter(request => {
-        const fromDate = new Date(request.startDateTime)
-        const requestYear = fromDate.getFullYear()
-        return requestYear === selectedYear.value
-      })
-      
-      console.log(`Year ${selectedYear.value} requests:`, yearRequests.length)
-      
-      return yearRequests.map(request => ({
-        ticketId: request.voucherCode,
-        empName: employee.empName,
-        fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
-        toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
-        days: Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60 * 24)) + 1,
-        reason: request.reason || 'Nghỉ phép cá nhân'
-      }))
+      return employeeLeaveRequests
+        .filter(request => new Date(request.startDateTime).getFullYear() === selectedYear.value)
+        .map(request => mapRequestToTicket(request, employee.empName, 'Nghỉ phép cá nhân'))
     }
   }
   
   if (type === 'otLeave') {
-    console.log('Processing overtime leave tickets:', { empId, month, field })
+    if (!otLeaveData.value?.length || !overtimeRequests.value?.length) return []
     
-    // Check if data is loaded
-    if (!otLeaveData.value || otLeaveData.value.length === 0 || !overtimeRequests.value) {
-      console.log('No overtime data available for getTickets')
-      return []
-    }
-    
-    // Find employee by ID from otLeaveData
     const employee = otLeaveData.value.find(emp => emp.empId === empId)
-    if (!employee) {
-      console.log('Employee not found in overtime data:', empId)
-      return []
-    }
+    if (!employee) return []
     
-    console.log('Found employee in overtime data:', employee.empName, 'ID:', employee.employeeId)
-    
-    // Filter overtime requests for this employee (only overtime leave compensation)
     const employeeOTRequests = overtimeRequests.value.filter(request => 
       request.employeeID === employee.employeeId && 
       isApprovedStatus(request.approveStatus) &&
-      request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation)
+      isOvertimeLeaveCompensation(request)
     )
     
-    console.log('Employee overtime requests:', employeeOTRequests.length)
-    
     if (field === 'month' && typeof month === 'number') {
-      // Filter by specific month and year
-      const monthRequests = employeeOTRequests.filter(request => {
-        const fromDate = new Date(request.startDateTime)
-        const requestMonth = fromDate.getMonth() + 1
-        const requestYear = fromDate.getFullYear()
-        return requestMonth === month && requestYear === selectedYear.value
-      })
-      
-      console.log(`Month ${month} overtime requests:`, monthRequests.length)
-      
-      return monthRequests.map(request => {
-        const days = Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60 * 24)) + 1
-        return {
-          ticketId: request.voucherCode,
-          empName: employee.empName,
-          fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
-          toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
-          days: days,
-          reason: request.reason || 'Nghỉ bù tăng ca'
-        }
-      })
+      return employeeOTRequests
+        .filter(request => {
+          const fromDate = new Date(request.startDateTime)
+          return fromDate.getMonth() + 1 === month && fromDate.getFullYear() === selectedYear.value
+        })
+        .map(request => mapRequestToTicket(request, employee.empName, 'Nghỉ bù tăng ca'))
     }
     
     if (field === 'otLeaveUsed') {
-      // Return all approved overtime requests for this employee in selected year
-      const yearRequests = employeeOTRequests.filter(request => {
-        const fromDate = new Date(request.startDateTime)
-        const requestYear = fromDate.getFullYear()
-        return requestYear === selectedYear.value
-      })
-      
-      console.log(`Year ${selectedYear.value} overtime requests:`, yearRequests.length)
-      
-      return yearRequests.map(request => {
-        const days = Math.ceil((new Date(request.endDateTime) - new Date(request.startDateTime)) / (1000 * 60 * 60 * 24)) + 1
-        return {
-          ticketId: request.voucherCode,
-          empName: employee.empName,
-          fromDate: new Date(request.startDateTime).toLocaleDateString('vi-VN'),
-          toDate: new Date(request.endDateTime).toLocaleDateString('vi-VN'),
-          days: days,
-          reason: request.reason || 'Nghỉ bù tăng ca'
-        }
-      })
+      return employeeOTRequests
+        .filter(request => new Date(request.startDateTime).getFullYear() === selectedYear.value)
+        .map(request => mapRequestToTicket(request, employee.empName, 'Nghỉ bù tăng ca'))
     }
   }
+  
   return []
 }
 
-// Debug function
-const debugData = () => {
-  console.log('=== DEBUG DATA ===')
-  console.log('Selected year:', selectedYear.value)
-  console.log('Loading states:', {
-    employeeLoading: employeeLoading.value,
-    leaveLoading: leaveLoading.value,
-    requestLoading: requestLoading.value,
-    overtimeLoading: overtimeLoading.value,
-    combinedLoading: loading.value
-  })
-  console.log('Error states:', {
-    employeeError: employeeError.value,
-    leaveError: leaveError.value,
-    requestError: requestError.value,
-    overtimeError: overtimeError.value,
-    combinedError: error.value
-  })
-  console.log('Employees count:', employees.value?.length || 0)
-  console.log('Leave requests count:', leaveRequests.value?.length || 0)
-  console.log('Overtime requests count:', overtimeRequests.value?.length || 0)
-  console.log('Employee requests count:', employeeRequests.value?.length || 0)
-  console.log('Leave data computed length:', leaveData.value?.length || 0)
-  console.log('OT leave data computed length:', otLeaveData.value?.length || 0)
-  
-  if (employees.value?.length > 0) {
-    console.log('First employee:', employees.value[0])
-    console.log('Employee ID types:', employees.value.slice(0, 3).map(emp => ({
-      id: emp.id,
-      idType: typeof emp.id,
-      employeeCode: emp.employeeCode,
-      employeeCodeType: typeof emp.employeeCode
-    })))
-    
-    // Show all employee IDs
-    console.log('=== ALL EMPLOYEE IDs ===')
-    console.log('Employee IDs:', employees.value.map(emp => emp.id))
-  }
-  
-  if (leaveRequests.value?.length > 0) {
-    // Show all leave request employee IDs
-    console.log('=== ALL LEAVE REQUEST EMPLOYEE IDs ===')
-    const leaveRequestEmployeeIds = [...new Set(leaveRequests.value.map(req => req.employeeID))]
-    console.log('Leave Request Employee IDs:', leaveRequestEmployeeIds)
-    console.log('Matching employee IDs:', leaveRequestEmployeeIds.filter(id => 
-      employees.value?.some(emp => emp.id === id)
-    ))
-    console.log('Non-matching employee IDs:', leaveRequestEmployeeIds.filter(id => 
-      !employees.value?.some(emp => emp.id === id)
-    ))
-  }
-  
-  if (overtimeRequests.value?.length > 0) {
-    // Show all overtime request employee IDs
-    console.log('=== ALL OVERTIME REQUEST EMPLOYEE IDs ===')
-    const overtimeRequestEmployeeIds = [...new Set(overtimeRequests.value.map(req => req.employeeID))]
-    console.log('Overtime Request Employee IDs:', overtimeRequestEmployeeIds)
-    console.log('Matching employee IDs:', overtimeRequestEmployeeIds.filter(id => 
-      employees.value?.some(emp => emp.id === id)
-    ))
-    console.log('Non-matching employee IDs:', overtimeRequestEmployeeIds.filter(id => 
-      !employees.value?.some(emp => emp.id === id)
-    ))
-  }
-  
-  if (leaveRequests.value?.length > 0) {
-    console.log('All leave requests:', leaveRequests.value)
-    console.log('First leave request:', leaveRequests.value[0])
-    console.log('Leave requests with "Nghỉ phép" type:', leaveRequests.value.filter(req => req.requestType === 'Nghỉ phép'))
-    console.log('Approved leave requests (status = "Đã duyệt"):', leaveRequests.value.filter(req => req.approveStatus === 'Đã duyệt'))
-    
-    // Check employee ID matching
-    console.log('=== EMPLOYEE ID MATCHING DEBUG ===')
-    if (employees.value?.length > 0 && leaveRequests.value?.length > 0) {
-      const firstEmployee = employees.value[0]
-      const matchingRequests = leaveRequests.value.filter(req => req.employeeID === firstEmployee.id)
-      console.log(`Employee ${firstEmployee.id} (${firstEmployee.firstName} ${firstEmployee.lastName})`)
-      console.log(`Has ${matchingRequests.length} leave requests`)
-      console.log('Matching requests:', matchingRequests.map(req => ({
-        voucherCode: req.voucherCode,
-        employeeID: req.employeeID,
-        employeeIDType: typeof req.employeeID,
-        approveStatus: req.approveStatus,
-        isApproved: isApprovedStatus(req.approveStatus)
-      })))
-    }
-    
-    // Check specific fields
-    leaveRequests.value.forEach((req, index) => {
-      console.log(`Leave request ${index}:`, {
-        voucherCode: req.voucherCode,
-        employeeID: req.employeeID,
-        employeeIDType: typeof req.employeeID,
-        requestType: req.requestType,
-        approveStatus: req.approveStatus,
-        approveStatusType: typeof req.approveStatus,
-        startDateTime: req.startDateTime,
-        endDateTime: req.endDateTime
-      })
-    })
-  }
-  
-  if (overtimeRequests.value?.length > 0) {
-    console.log('All overtime requests:', overtimeRequests.value)
-    console.log('First overtime request:', overtimeRequests.value[0])
-    console.log('Approved overtime requests (status = "Đã duyệt"):', overtimeRequests.value.filter(req => req.approveStatus === 'Đã duyệt'))
-    console.log('Overtime leave compensation requests (overtimeFormID = 2):', overtimeRequests.value.filter(req => req.overtimeFormID === 2))
-    console.log('Paid overtime requests (overtimeFormID = 1):', overtimeRequests.value.filter(req => req.overtimeFormID === 1))
-    
-    // Check employee ID matching for overtime
-    console.log('=== OVERTIME EMPLOYEE ID MATCHING DEBUG ===')
-    if (employees.value?.length > 0 && overtimeRequests.value?.length > 0) {
-      const firstEmployee = employees.value[0]
-      const matchingOTRequests = overtimeRequests.value.filter(req => req.employeeID === firstEmployee.id)
-      console.log(`Employee ${firstEmployee.id} (${firstEmployee.firstName} ${firstEmployee.lastName})`)
-      console.log(`Has ${matchingOTRequests.length} overtime requests`)
-      console.log('Matching OT requests:', matchingOTRequests.map(req => ({
-        voucherCode: req.voucherCode,
-        employeeID: req.employeeID,
-        employeeIDType: typeof req.employeeID,
-        approveStatus: req.approveStatus,
-        isApproved: isApprovedStatus(req.approveStatus),
-        overtimeFormID: req.overtimeFormID,
-        overtimeFormName: req.overtimeFormName
-      })))
-    }
-    
-    // Check specific fields
-    overtimeRequests.value.forEach((req, index) => {
-      console.log(`Overtime request ${index}:`, {
-        voucherCode: req.voucherCode,
-        employeeID: req.employeeID,
-        employeeIDType: typeof req.employeeID,
-        requestType: req.requestType,
-        approveStatus: req.approveStatus,
-        approveStatusType: typeof req.approveStatus,
-        overtimeFormID: req.overtimeFormID,
-        overtimeFormName: req.overtimeFormName,
-        startDateTime: req.startDateTime,
-        endDateTime: req.endDateTime,
-        reason: req.reason
-      })
-    })
-  }
-  
-  console.log('Leave data computed:', leaveData.value?.length || 0)
-  if (leaveData.value?.length > 0) {
-    console.log('First leave data entry:', leaveData.value[0])
-  }
-  
-  console.log('Overtime leave data computed:', otLeaveData.value?.length || 0)
-  if (otLeaveData.value?.length > 0) {
-    console.log('First overtime leave data entry:', otLeaveData.value[0])
-    
-    // Debug calculation for first employee
-    const firstEmployee = otLeaveData.value[0]
-    if (firstEmployee) {
-      console.log('=== OVERTIME CALCULATION DEBUG ===')
-      console.log('Employee:', firstEmployee.empName)
-      console.log('Total OT Hours:', firstEmployee.totalOTHours)
-      console.log('Total OT Days (calculated):', calculateTotalOTDays(firstEmployee.employeeId))
-      console.log('OT Leave Days (displayed):', firstEmployee.otLeaveDays)
-      console.log('Month data:', Object.keys(firstEmployee).filter(key => key.startsWith('month')).map(key => `${key}: ${firstEmployee[key]}`))
-    }
-  }
-}
 
-// Load data on component mount
 onMounted(async () => {
-  console.log('=== ONMOUNTED START ===')
   try {
-    console.log('Starting to fetch all data...')
-    
-    const results = await Promise.allSettled([
+    await Promise.allSettled([
       fetchAllEmployees(),
       fetchLeaveRequests(),
       fetchLeaveTypes(),
@@ -853,58 +417,14 @@ onMounted(async () => {
       fetchEmployeeRequests(),
       fetchOvertimeRequests()
     ])
-    
-    console.log('All fetch operations completed:', results)
-    
-    // Check each result
-    results.forEach((result, index) => {
-      const operations = ['fetchAllEmployees', 'fetchLeaveRequests', 'fetchEmployeeRequests', 'fetchOvertimeRequests']
-      if (result.status === 'fulfilled') {
-        console.log(`${operations[index]} succeeded`)
-      } else {
-        console.error(`${operations[index]} failed:`, result.reason)
-      }
-    })
-    
-    // Debug logging
-    console.log('=== AFTER FETCH ===')
-    console.log('Employees loaded:', employees.value?.length || 0)
-    console.log('Leave requests loaded:', leaveRequests.value?.length || 0)
-    console.log('Overtime requests loaded:', overtimeRequests.value?.length || 0)
-    console.log('Employee requests loaded:', employeeRequests.value?.length || 0)
-    
-    if (employees.value?.length > 0) {
-      console.log('First employee:', employees.value[0])
-      console.log('Employee fields:', Object.keys(employees.value[0]))
-    }
-    
-    if (leaveRequests.value?.length > 0) {
-      console.log('First leave request:', leaveRequests.value[0])
-      console.log('Leave request fields:', Object.keys(leaveRequests.value[0]))
-    }
-    
-    if (overtimeRequests.value?.length > 0) {
-      console.log('First overtime request:', overtimeRequests.value[0])
-      console.log('Overtime request fields:', Object.keys(overtimeRequests.value[0]))
-    }
-    
-    // Force computed properties to recalculate
-    console.log('Leave data after mount:', leaveData.value?.length || 0)
-    console.log('OT leave data after mount:', otLeaveData.value?.length || 0)
-    
   } catch (error) {
-    console.error('Error loading data:', error)
+    // Error handling is done by composables
   }
-  console.log('=== ONMOUNTED END ===')
 })
 
-// Reload data function
 const reloadData = async () => {
-  console.log('=== RELOAD DATA ===')
   try {
-    console.log('Reloading all data...')
-    
-    const results = await Promise.allSettled([
+    await Promise.allSettled([
       fetchAllEmployees(),
       fetchLeaveRequests(),
       fetchLeaveTypes(),
@@ -914,21 +434,8 @@ const reloadData = async () => {
       fetchEmployeeRequests(),
       fetchOvertimeRequests()
     ])
-    
-    console.log('Reload results:', results)
-    console.log('Data after reload:', {
-      employees: employees.value?.length || 0,
-      leaveRequests: leaveRequests.value?.length || 0,
-      overtimeRequests: overtimeRequests.value?.length || 0,
-      employeeRequests: employeeRequests.value?.length || 0
-    })
-    
-    // Force reactive updates
-    console.log('Leave data after reload:', leaveData.value?.length || 0)
-    console.log('OT leave data after reload:', otLeaveData.value?.length || 0)
-    
   } catch (error) {
-    console.error('Error reloading data:', error)
+    // Error handling is done by composables
   }
 }
 </script>

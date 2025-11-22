@@ -23,10 +23,26 @@
         </div>
         <div class="map-container">
           <div class="map-wrapper">
-            <l-map ref="map" :zoom="zoom" :center="mapCenter" @click="handleMapClick">
-              <l-tile-layer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" layer-type="base"
-                name="OpenStreetMap" attribution="&copy; <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a>">
+            <l-map 
+              ref="map" 
+              :zoom="zoom" 
+              :center="mapCenter" 
+              @click="handleMapClick">
+              <l-tile-layer 
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
+                layer-type="base"
+                name="CartoDB Voyager No Labels"
+                attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors &copy; <a href='https://carto.com/attributions'>CARTO</a>"
+                subdomains="abcd"
+                max-zoom="19">
               </l-tile-layer>
+              <!-- Labels cho các tỉnh/thành phố Việt Nam -->
+              <l-marker 
+                v-for="province in vietnamProvinces" 
+                :key="province.name"
+                :lat-lng="[province.lat, province.lng]"
+                :icon="provinceLabelIcon(province.name)">
+              </l-marker>
               <l-marker v-if="markerLatLng" :lat-lng="markerLatLng"></l-marker>
             </l-map>
           </div>
