@@ -10,7 +10,7 @@ defineProps({
   }
 })
 
-// defineEmits(['row-click'])
+defineEmits(['row-click', 'cell-click'])
 
 </script>
 

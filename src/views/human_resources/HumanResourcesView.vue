@@ -223,8 +223,18 @@ const handlePageChange = (page) => {
 const handleCellClick = (item, column) => {
     if (column.key === 'id' && column.link) {
         // Navigate to employee profile
-        router.push({ name: 'employee-profile', params: { employeeId: item.id } })
+        viewEmployeeProfile(item.id)
     }
+}
+
+// Handle row click for navigation
+const handleRowClick = (item) => {
+    viewEmployeeProfile(item.id)
+}
+
+// Navigate to employee profile
+const viewEmployeeProfile = (employeeId) => {
+    router.push({ name: 'employee-profile', params: { employeeId } })
 }
 
 const applyHeaderStyle = (row) => {
@@ -363,7 +373,7 @@ const getEmployeeNameWithStatus = (employee) => {
         </div>
         
         <!-- Data Table -->
-        <DataTable v-else :columns="columns" :data="paginatedEmployees" @cell-click="handleCellClick">
+        <DataTable v-else :columns="columns" :data="paginatedEmployees" @cell-click="handleCellClick" @row-click="handleRowClick">
             <template #actions="{ item }">
                 <div class="d-flex justify-content-start gap-2">
                     <ActionButton 

@@ -448,12 +448,12 @@ const getValidityStatusText = (contract) => {
 
 <style scoped>
 .profile-page {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+
   min-height: calc(100vh - 64px);
 }
 
 .profile-header {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: #ffffff;
   color: #495057;
   padding: 1.5rem;
   border-radius: 12px;
@@ -655,7 +655,7 @@ const getValidityStatusText = (contract) => {
 }
 
 .profile-details-card .card-header {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: #f8f9fa;
   padding: 1.75rem;
   border-bottom: 1px solid rgba(52, 152, 219, 0.1);
   position: relative;
