@@ -698,9 +698,62 @@ watch(() => currentStepIndex.value, () => {
   highlightTarget()
 })
 
+// Keyboard navigation
+const handleKeydown = (event) => {
+  // Chỉ xử lý khi tour guide đang hiển thị
+  if (!props.show) return
+  
+  // Tránh xử lý khi đang focus vào input, textarea, select
+  const activeElement = document.activeElement
+  const isInputFocused = activeElement && (
+    activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
+    activeElement.tagName === 'SELECT' ||
+    activeElement.isContentEditable
+  )
+  
+  if (isInputFocused) return
+  
+  // Arrow Right: Next step
+  if (event.key === 'ArrowRight' || event.key === '>') {
+    event.preventDefault()
+    if (!isLastStep.value) {
+      nextStep()
+    }
+  }
+  // Arrow Left: Previous step
+  else if (event.key === 'ArrowLeft' || event.key === '<') {
+    event.preventDefault()
+    if (!isFirstStep.value) {
+      prevStep()
+    }
+  }
+  // Escape: Close tour
+  else if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('complete')
+  }
+}
+
 // Load when component mounts
 onMounted(() => {
   if (props.show) {
+    nextTick(() => {
+      highlightTarget()
+    })
+  }
+  // Add keyboard event listener
+  window.addEventListener('keydown', handleKeydown)
+})
+
+// Remove event listener when component unmounts
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
+
+// Watch for show prop changes to add/remove listener
+watch(() => props.show, (newVal) => {
+  if (newVal) {
     nextTick(() => {
       highlightTarget()
     })
