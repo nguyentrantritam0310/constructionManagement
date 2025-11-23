@@ -10,6 +10,8 @@ import { useMaterialManagement } from '../../composables/useMaterialManagement'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const {
   materials,
@@ -265,23 +267,130 @@ const unitPriceBounds = computed(() => {
     max: Math.max(...prices)
   }
 })
+
+// Tour Guide Steps
+const showTourGuide = ref(false)
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý vật tư. Tại đây bạn có thể xem, thêm, cập nhật và quản lý các vật tư trong hệ thống.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Đây là thanh công cụ. Bạn có thể thêm vật tư mới, lọc danh sách, xuất dữ liệu ra Excel hoặc nhập dữ liệu từ Excel.'
+  },
+  {
+    target: '[data-tour="add-button"]',
+    message: 'Nút "Thêm" cho phép bạn thêm vật tư mới vào hệ thống. Khi bấm vào nút này, một form sẽ mở ra để bạn nhập thông tin vật tư.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="add-button"]'
+    }
+  },
+  {
+    target: '[data-tour="create-form"]',
+    message: 'Đây là form thêm vật tư. Bạn có thể nhập thông tin về tên vật tư, loại vật tư, đơn vị tính, đơn giá và số lượng tồn kho. Sau khi điền xong, bấm "Lưu" để thêm vật tư mới.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng form trước khi tiếp tục
+        await new Promise(resolve => setTimeout(resolve, 300))
+        const modal = document.querySelector('[data-tour="create-form"]')
+        if (modal) {
+          const closeButton = modal.querySelector('.btn-close')
+          if (closeButton) {
+            closeButton.click()
+          }
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="filter-button"]',
+    message: 'Nút "Lọc" cho phép bạn ẩn/hiện phần lọc để tìm kiếm và lọc vật tư theo nhiều tiêu chí khác nhau.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đảm bảo filter section được mở
+        if (!showFilter.value) {
+          showFilter.value = true
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="filter-section"]',
+    message: 'Đây là phần lọc. Bạn có thể tìm kiếm vật tư theo mã hoặc tên, lọc theo loại vật tư, lọc theo khoảng tồn kho hoặc khoảng đơn giá. Bấm "Đặt lại" để xóa tất cả bộ lọc.'
+  },
+  {
+    target: '[data-tour="export-button"]',
+    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách vật tư ra file Excel. File Excel sẽ chứa tất cả thông tin về vật tư hiện có trong hệ thống.'
+  },
+  {
+    target: '[data-tour="import-button"]',
+    message: 'Nút "Nhập Excel" cho phép bạn nhập nhiều vật tư cùng lúc từ file Excel. Khi bấm vào nút này, một modal sẽ mở ra để bạn tải file mẫu và upload file đã điền.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="import-button"]'
+    }
+  },
+  {
+    target: '[data-tour="import-modal"]',
+    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu để xem định dạng, sau đó điền thông tin vật tư vào file mẫu và upload lên. Hệ thống sẽ tự động xử lý và thêm các vật tư vào danh sách.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal trước khi tiếp tục
+        await new Promise(resolve => setTimeout(resolve, 300))
+        const modal = document.querySelector('[data-tour="import-modal"]')
+        if (modal) {
+          const closeButton = modal.querySelector('.btn-close')
+          if (closeButton) {
+            closeButton.click()
+          }
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="table"]',
+    message: 'Đây là bảng danh sách vật tư. Bạn có thể xem thông tin về mã vật tư, tên vật tư, loại vật tư, tồn kho, đơn giá và đơn vị tính. Click vào nút "Cập nhật" ở cột "Thao tác" để chỉnh sửa thông tin vật tư.'
+  },
+  {
+    target: '[data-tour="pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều vật tư hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1 class="h3 mb-0">Quản Lý Vật Tư</h1>
-      <div class="d-flex gap-2">
-        <ActionButton icon="fas fa-plus" type="primary" tooltip="Thêm Vật Tư Mới" @click="openForm('create')">
+      <h1 class="h3 mb-0" data-tour="title">Quản Lý Vật Tư</h1>
+      <div class="d-flex gap-2" data-tour="toolbar">
+        <ActionButton icon="fas fa-plus" type="primary" tooltip="Thêm Vật Tư Mới" @click="openForm('create')" data-tour="add-button">
           <span class="ms-2">Thêm</span>
         </ActionButton>
-        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter" data-tour="filter-button">
           Lọc
         </ActionButton>
-        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
+        <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel" data-tour="export-button">
           Xuất Excel
         </ActionButton>
-        <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
+        <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true" data-tour="import-button">
           Nhập Excel
         </ActionButton>
       </div>
@@ -289,7 +398,7 @@ const unitPriceBounds = computed(() => {
 
     <!-- Filter Section -->
     <transition name="slide-fade">
-      <div class="filter-section mb-4" v-show="showFilter">
+      <div class="filter-section mb-4" v-show="showFilter" data-tour="filter-section">
       <div class="row g-3">
         <!-- Tìm kiếm -->
         <div class="col-lg-4 col-md-6">
@@ -439,7 +548,7 @@ const unitPriceBounds = computed(() => {
       { key: 'stockQuantity', label: 'Tồn Kho' },
       { key: 'unitPrice', label: 'Đơn Giá' },
       { key: 'unitOfMeasurement', label: 'Đơn Vị Tính' }
-    ]" :data="paginatedMaterials">
+    ]" :data="paginatedMaterials" data-tour="table">
       <template #actions="{ item }">
         <div class="d-flex justify-content-center gap-2">
           <ActionButton type="success" icon="fas fa-edit" tooltip="Cập nhật" @click.stop="openForm('update', item)" />
@@ -457,11 +566,12 @@ const unitPriceBounds = computed(() => {
         :items-per-page="itemsPerPage"
         :current-page="currentPage"
         @update:currentPage="handlePageChange"
+        data-tour="pagination"
       />
     </div>
 
     <!-- Modal for Add/Edit Form -->
-    <ModalDialog size="lg" v-model:show="showFormDialog" :title="formMode === 'create' ? 'Thêm Vật Tư' : 'Cập Nhật Vật Tư'">
+    <ModalDialog size="lg" v-model:show="showFormDialog" :title="formMode === 'create' ? 'Thêm Vật Tư' : 'Cập Nhật Vật Tư'" data-tour="create-form">
       <MaterialForm
         :mode="formMode"
         :material="selectedMaterial"
@@ -471,7 +581,7 @@ const unitPriceBounds = computed(() => {
     </ModalDialog>
 
     <!-- Import Excel Modal -->
-    <ModalDialog v-model:show="showImportModal" title="Nhập vật tư từ Excel" size="lg">
+    <ModalDialog v-model:show="showImportModal" title="Nhập vật tư từ Excel" size="lg" data-tour="import-modal">
       <div class="p-4">
         <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
         <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
@@ -487,6 +597,19 @@ const unitPriceBounds = computed(() => {
         </div>
       </div>
     </ModalDialog>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 

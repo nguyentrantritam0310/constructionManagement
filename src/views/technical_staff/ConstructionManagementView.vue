@@ -10,6 +10,8 @@ import ConstructionForm from '../../components/construction/ConstructionForm.vue
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ActionButton from '@/components/common/ActionButton.vue'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -320,13 +322,93 @@ const resetFilters = () => {
 watch([searchQuery, statusFilter, dateRangeFilter], () => {
   currentPage.value = 1
 }, { deep: true })
+
+// Tour Guide Steps
+const showTourGuide = ref(false)
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý công trình. Tại đây bạn có thể xem, tạo, cập nhật và quản lý các công trình xây dựng.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc công trình theo trạng thái và khoảng thời gian.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:first-child'
+    }
+  },
+  {
+    target: '[data-tour="filter"]',
+    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo tên công trình, địa điểm, mã công trình. Chọn trạng thái từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Bấm "Đặt lại" để xóa bộ lọc.'
+  },
+  {
+    target: '[data-tour="create-form"]',
+    message: 'Đây là form thêm công trình mới. Bạn có thể nhập tên công trình, loại dự án, địa điểm, tổng diện tích, ngày bắt đầu và ngày hoàn thành dự kiến. Sau khi điền đầy đủ, bấm "Lưu" để tạo công trình.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:nth-child(2)'
+    }
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách công trình ra file Excel để lưu trữ hoặc xử lý thêm.'
+  },
+  {
+    target: '[data-tour="import-modal"]',
+    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin công trình vào file Excel, sau đó chọn file và bấm "Xử lý" để import vào hệ thống.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:last-child'
+    }
+  },
+  {
+    target: '[data-tour="table"]',
+    message: 'Đây là bảng danh sách công trình. Bạn có thể xem thông tin chi tiết của từng công trình. Click vào một hàng để xem chi tiết công trình. Cột "Thao tác" chứa các nút để cập nhật và đổi trạng thái công trình.'
+  },
+  {
+    target: '[data-tour="pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều công trình hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
+    action: {
+      type: 'function',
+      func: async () => {
+        if (showImportModal.value) {
+          showImportModal.value = false
+        }
+        if (showCreateDialog.value) {
+          showCreateDialog.value = false
+        }
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Mở filter section nếu chưa mở
+  if (!showFilter.value) {
+    showFilter.value = true
+  }
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1>Quản Lý Công Trình</h1>
-      <div class="d-flex gap-2">
+      <h1 data-tour="title">Quản Lý Công Trình</h1>
+      <div class="d-flex gap-2" data-tour="toolbar">
         <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
           Lọc
         </ActionButton>
@@ -343,7 +425,7 @@ watch([searchQuery, statusFilter, dateRangeFilter], () => {
 
     <!-- Filter Section -->
     <transition name="slide-fade">
-      <div class="filter-section mb-4" v-show="showFilter">
+      <div class="filter-section mb-4" v-show="showFilter" data-tour="filter">
         <div class="row g-3">
           <div class="col-md-4">
             <div class="input-group">
@@ -392,7 +474,7 @@ watch([searchQuery, statusFilter, dateRangeFilter], () => {
 
     <!-- Constructions Table -->
     <DataTable :columns="columns" :data="paginatedConstructions" @row-click="handleRowClick"
-      class="construction-table">
+      class="construction-table" data-tour="table">
       <template #id="{ item }">
         <span class="fw-medium text-primary">CT-{{ item.id }}</span>
       </template>
@@ -428,12 +510,14 @@ watch([searchQuery, statusFilter, dateRangeFilter], () => {
         Hiển thị {{ paginatedConstructions.length }} trên {{ filteredConstructions.length }} công trình
       </div>
       <Pagination :total-items="filteredConstructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-        @update:currentPage="handlePageChange" />
+        @update:currentPage="handlePageChange" data-tour="pagination" />
     </div>
 
     <!-- Create Dialog -->
     <ModalDialog v-model:show="showCreateDialog" title="Thêm Công Trình Mới" size="lg">
-      <ConstructionForm mode="create" @close="handleCreateSubmit" />
+      <div data-tour="create-form">
+        <ConstructionForm mode="create" @close="handleCreateSubmit" />
+      </div>
     </ModalDialog>
 
     <!-- Update Dialog -->
@@ -448,7 +532,7 @@ watch([searchQuery, statusFilter, dateRangeFilter], () => {
       @update:show="showStatusDialog = $event" @submit="handleUpdateConstructionStatus" />
 
     <!-- Import Excel Modal -->
-    <ModalDialog v-model:show="showImportModal" title="Nhập công trình từ Excel" size="lg">
+    <ModalDialog v-model:show="showImportModal" title="Nhập công trình từ Excel" size="lg" data-tour="import-modal">
       <div class="p-4">
         <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
         <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
@@ -464,6 +548,19 @@ watch([searchQuery, statusFilter, dateRangeFilter], () => {
         </div>
       </div>
     </ModalDialog>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 

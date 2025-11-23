@@ -14,6 +14,7 @@ import * as XLSX from 'xlsx';
 import AttendanceMachineForm from '@/components/common/workshift/AttendanceMachineForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import TourGuide from '@/components/common/TourGuide.vue'
+import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 const {
   workshifts,
   fetchWorkShifts,
@@ -602,14 +603,6 @@ const startTour = () => {
         <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
           Nhập Excel
         </ActionButton>
-        <ActionButton 
-          type="secondary" 
-          icon="fas fa-question-circle me-2" 
-          @click="startTour"
-          title="Hướng dẫn sử dụng"
-        >
-          Hướng dẫn
-        </ActionButton>
       </div>
       <div class="d-flex gap-2" v-else-if="activeTab === 'machine'" data-tour="toolbar-machine">
         <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateFormAttendanceMachine = true">
@@ -624,14 +617,6 @@ const startTour = () => {
         </ActionButton>
         <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
           Nhập Excel
-        </ActionButton>
-        <ActionButton 
-          type="secondary" 
-          icon="fas fa-question-circle me-2" 
-          @click="startTour"
-          title="Hướng dẫn sử dụng"
-        >
-          Hướng dẫn
         </ActionButton>
       </div>
     </div>
@@ -758,6 +743,11 @@ const startTour = () => {
     :steps="tourSteps"
     @update:show="showTourGuide = $event"
     @complete="handleTourComplete"
+  />
+  <AIChatbotButton 
+    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+    title="Trợ lý AI"
+    @guide-click="startTour"
   />
   </div>
 </template>

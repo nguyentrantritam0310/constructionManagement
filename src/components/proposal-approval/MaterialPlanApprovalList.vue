@@ -110,7 +110,7 @@ const handleReject = async (item) => {
         <DataTable :columns="[
             ...columns
         ]" :data="mappedOrders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)"
-            @row-click="openDetails">
+            @row-click="openDetails" data-tour="material-table">
             <template #id="{ item }">
                 <span class="fw-medium text-primary">#{{ item.id }}</span>
             </template>
@@ -128,11 +128,11 @@ const handleReject = async (item) => {
             </template>
             <template #actions="{ item }">
                 <button class="btn btn-link text-success p-0 me-2" title="Duyệt" @click.stop="handleApprove(item)"
-                    :disabled="item.status !== 'Pending'" @approval="handleApprove(item)">
+                    :disabled="item.status !== 'Pending'" @approval="handleApprove(item)" data-tour="material-approve-button">
                     <FontAwesomeIcon :icon="faCheckCircle" size="xl" />
                 </button>
                 <button class="btn btn-link text-danger p-0" title="Từ chối" @click.stop="handleReject(item)"
-                    :disabled="item.status !== 'Pending'">
+                    :disabled="item.status !== 'Pending'" data-tour="material-reject-button">
                     <FontAwesomeIcon :icon="faTimesCircle" size="xl" />
                 </button>
             </template>
@@ -145,8 +145,8 @@ const handleReject = async (item) => {
             <Pagination :total-items="mappedOrders.length" :items-per-page="itemsPerPage" :current-page="currentPage"
                 @update:currentPage="handlePageChange" />
         </div>
-        <ModalDialog v-model:show="showDetails" title="Chi Tiết Đơn Hàng" size="xl">
-            <div v-if="selectedOrder">
+        <ModalDialog v-model:show="showDetails" title="Chi Tiết Đơn Hàng" size="xl" data-tour="material-detail-modal">
+            <div v-if="selectedOrder" data-tour="material-detail-content">
                 <WarehouseEntryForm :readonly="true" mode="update" :order="selectedOrder"
                     :material-plans="materialPlans" approvalMode @cancel="closeDetails" />
             </div>

@@ -23,8 +23,35 @@ const isFirstStep = computed(() => currentStepIndex.value === 0)
 const isLastStep = computed(() => currentStepIndex.value === props.steps.length - 1)
 
 // Kiểm tra xem có modal đang mở không
+// Reactive ref để track modal state
+const modalState = ref(0) // Dùng counter để force reactivity
+
 const hasOpenModal = computed(() => {
-  return !!document.querySelector('.modal.show, .modal-dialog.show')
+  // Force reactivity bằng cách access modalState
+  const _ = modalState.value
+  
+  // Tìm modal đang mở với nhiều cách
+  const openModal = document.querySelector('.modal.show') || 
+                    document.querySelector('.modal-dialog.show') ||
+                    document.querySelector('[data-tour="plan-modal"]')?.closest('.modal.show') ||
+                    document.querySelector('[data-tour="assignment-modal"]')?.closest('.modal.show') ||
+                    document.querySelector('[data-tour="plan-detail-modal"]')?.closest('.modal.show')
+  
+  // Nếu không tìm thấy, kiểm tra bằng cách khác
+  if (!openModal) {
+    const allModals = document.querySelectorAll('.modal, .modal-dialog, [data-tour*="modal"]')
+    for (const modal of allModals) {
+      const style = window.getComputedStyle(modal)
+      if (style.display !== 'none' && style.visibility !== 'hidden' && modal.offsetParent !== null) {
+        const rect = modal.getBoundingClientRect()
+        if (rect.width > 0 && rect.height > 0) {
+          return true
+        }
+      }
+    }
+  }
+  
+  return !!openModal
 })
 
 // Đóng modal/form nếu đang mở (trước khi thực hiện action mới)
@@ -72,6 +99,24 @@ const executeStepAction = async () => {
   
   // Kiểm tra xem target có nằm trong modal không
   const isTargetInModal = targetSelector && (
+    String(targetSelector).includes('plan-detail-modal') ||
+    String(targetSelector).includes('plan-header') ||
+    String(targetSelector).includes('add-task-button') ||
+    String(targetSelector).includes('tasks-table') ||
+    String(targetSelector).includes('workload-column') ||
+    String(targetSelector).includes('actual-workload-input') ||
+    String(targetSelector).includes('current-volume-column') ||
+    String(targetSelector).includes('plan-actions') ||
+    String(targetSelector).includes('plan-modal') ||
+    String(targetSelector).includes('assignment-modal') ||
+    String(targetSelector).includes('material-norm-modal') ||
+    String(targetSelector).includes('material-summary') ||
+    String(targetSelector).includes('material-detail') ||
+    String(targetSelector).includes('select-workers') ||
+    String(targetSelector).includes('select-date-range') ||
+    String(targetSelector).includes('select-work-shifts') ||
+    String(targetSelector).includes('assign-button') ||
+    String(targetSelector).includes('first-task-row') ||
     String(targetSelector).includes('bulk-assign-modal') ||
     String(targetSelector).includes('bulk-shift-info') ||
     String(targetSelector).includes('bulk-date-range') ||
@@ -96,7 +141,19 @@ const executeStepAction = async () => {
     String(targetSelector).includes('overtime-modal') ||
     String(targetSelector).includes('image-modal') ||
     String(targetSelector).includes('create-form') ||
-    String(targetSelector).includes('import-modal')
+    String(targetSelector).includes('import-modal') ||
+    String(targetSelector).includes('family-modal') ||
+    String(targetSelector).includes('family-form-modal') ||
+    String(targetSelector).includes('family-table') ||
+    String(targetSelector).includes('extend-modal') ||
+    String(targetSelector).includes('terminate-modal') ||
+    String(targetSelector).includes('material-norm-modal') ||
+    String(targetSelector).includes('material-summary') ||
+    String(targetSelector).includes('material-detail') ||
+    String(targetSelector).includes('order-detail-modal') ||
+    String(targetSelector).includes('warehouse-form') ||
+    String(targetSelector).includes('stock-out-detail-modal') ||
+    String(targetSelector).includes('stock-out-detail')
   )
   
   if (!action) {
@@ -161,6 +218,13 @@ const highlightTarget = async () => {
     return
   }
 
+  // Kiểm tra xem có bỏ highlight không
+  if (currentStep.value.noHighlight === true) {
+    highlightedElement.value = null
+    highlightRect.value = null
+    return
+  }
+  
   const targetSelector = currentStep.value.target
   
   // Kiểm tra xem có phải pagination không - nếu là pagination thì không highlight
@@ -174,9 +238,11 @@ const highlightTarget = async () => {
     return
   }
 
-  // Đợi một chút để DOM update (30ms)
+  // Đợi một chút để DOM update
+  // Nếu target là first-task-row, đợi lâu hơn để đảm bảo data-tour đã được thêm
+  const waitTime = targetSelector.includes('first-task-row') ? 200 : 30
   await nextTick()
-  await new Promise(resolve => setTimeout(resolve, 30))
+  await new Promise(resolve => setTimeout(resolve, waitTime))
   
   let target = null
 
@@ -210,64 +276,74 @@ const highlightTarget = async () => {
         }
       }
     } else {
-      // Try querySelector first
-      target = document.querySelector(targetSelector)
-      
-      // If not found and it's a class selector
-      if (!target && targetSelector.startsWith('.')) {
-        // Handle multiple classes like ".d-flex.gap-2"
-        const classes = targetSelector.substring(1).split('.')
-        if (classes.length > 1) {
-          // Try to find element that has all classes
-          const allElements = document.querySelectorAll('.' + classes[0])
-          for (const el of allElements) {
-            if (classes.every(cls => el.classList.contains(cls))) {
-              target = el
-              break
-            }
+    // Try querySelector first
+    target = document.querySelector(targetSelector)
+    
+    // If not found and it's a class selector
+    if (!target && targetSelector.startsWith('.')) {
+      // Handle multiple classes like ".d-flex.gap-2"
+      const classes = targetSelector.substring(1).split('.')
+      if (classes.length > 1) {
+        // Try to find element that has all classes
+        const allElements = document.querySelectorAll('.' + classes[0])
+        for (const el of allElements) {
+          if (classes.every(cls => el.classList.contains(cls))) {
+            target = el
+            break
           }
+        }
+      } else {
+        // Single class
+        const className = classes[0]
+        target = document.querySelector(`[class*="${className}"]`) ||
+                 document.getElementsByClassName(className)[0]
+      }
+    }
+    
+    // If still not found, try data attribute
+    if (!target && targetSelector.includes('[data-')) {
+      const match = targetSelector.match(/\[data-([^\]]+)\]/)
+      if (match) {
+        const attr = match[1].split('=')
+        if (attr.length === 2) {
+          const key = attr[0].trim()
+          const value = attr[1].trim().replace(/['"]/g, '')
+          target = document.querySelector(`[data-${key}="${value}"]`)
         } else {
-          // Single class
-          const className = classes[0]
-          target = document.querySelector(`[class*="${className}"]`) ||
-                   document.getElementsByClassName(className)[0]
+          // Just attribute name without value
+          const key = match[1].trim()
+          target = document.querySelector(`[data-${key}]`)
         }
       }
-      
-      // If still not found, try data attribute
-      if (!target && targetSelector.includes('[data-')) {
-        const match = targetSelector.match(/\[data-([^\]]+)\]/)
-        if (match) {
-          const attr = match[1].split('=')
-          if (attr.length === 2) {
-            const key = attr[0].trim()
-            const value = attr[1].trim().replace(/['"]/g, '')
-            target = document.querySelector(`[data-${key}="${value}"]`)
-          } else {
-            // Just attribute name without value
-            const key = match[1].trim()
-            target = document.querySelector(`[data-${key}]`)
-          }
-        }
-      }
+    }
       
       // Nếu vẫn không tìm thấy, thử tìm bằng data-tour trực tiếp
       if (!target && targetSelector.includes('data-tour')) {
         const match = targetSelector.match(/data-tour="([^"]+)"/)
         if (match) {
           const tourValue = match[1]
-          target = document.querySelector(`[data-tour="${tourValue}"]`)
+          // Nếu là first-task-row, ưu tiên tìm trong modal đang mở
+          if (tourValue === 'first-task-row') {
+            const openModal = document.querySelector('.modal.show, [data-tour="plan-modal"]')
+            if (openModal) {
+              target = openModal.querySelector(`[data-tour="${tourValue}"]`)
+            }
+          }
+          // Nếu chưa tìm thấy, tìm trong toàn bộ document
+          if (!target) {
+            target = document.querySelector(`[data-tour="${tourValue}"]`)
+          }
         }
       }
-      
-      // Last resort: try to find by text content or other methods
-      if (!target && targetSelector.includes('title')) {
-        const elements = document.querySelectorAll('h4, h5, h1')
-        for (const el of elements) {
-          if (el.textContent?.includes('Danh sách đơn nghỉ phép')) {
-            target = el
-            break
-          }
+    
+    // Last resort: try to find by text content or other methods
+    if (!target && targetSelector.includes('title')) {
+      const elements = document.querySelectorAll('h4, h5, h1')
+      for (const el of elements) {
+        if (el.textContent?.includes('Danh sách đơn nghỉ phép')) {
+          target = el
+          break
+        }
         }
       }
       
@@ -420,7 +496,25 @@ const nextStep = async () => {
     const nextAction = nextStep?.action
     
     // Kiểm tra bước hiện tại có đang ở modal không
-    const isCurrentStepModal = currentTarget.includes('bulk-assign-modal') ||
+    const isCurrentStepModal = currentTarget.includes('plan-detail-modal') ||
+                                currentTarget.includes('plan-header') ||
+                                currentTarget.includes('add-task-button') ||
+                                currentTarget.includes('tasks-table') ||
+                                currentTarget.includes('workload-column') ||
+                                currentTarget.includes('actual-workload-input') ||
+                                currentTarget.includes('current-volume-column') ||
+                                currentTarget.includes('plan-actions') ||
+                                currentTarget.includes('plan-modal') ||
+                                currentTarget.includes('assignment-modal') ||
+                                currentTarget.includes('material-norm-modal') ||
+                                currentTarget.includes('material-summary') ||
+                                currentTarget.includes('material-detail') ||
+                                currentTarget.includes('select-workers') ||
+                                currentTarget.includes('select-date-range') ||
+                                currentTarget.includes('select-work-shifts') ||
+                                currentTarget.includes('assign-button') ||
+                                currentTarget.includes('first-task-row') ||
+                                currentTarget.includes('bulk-assign-modal') ||
                                 currentTarget.includes('bulk-shift-info') ||
                                 currentTarget.includes('bulk-date-range') ||
                                 currentTarget.includes('bulk-employee-selection') ||
@@ -445,11 +539,40 @@ const nextStep = async () => {
                                 currentTarget.includes('image-modal') ||
                                 currentTarget.includes('create-form') ||
                                 currentTarget.includes('import-modal') ||
+                                currentTarget.includes('family-modal') ||
+                                currentTarget.includes('family-form-modal') ||
+                                currentTarget.includes('family-table') ||
+                                currentTarget.includes('extend-modal') ||
+                                currentTarget.includes('terminate-modal') ||
+                                currentTarget.includes('material-norm-modal') ||
+                                currentTarget.includes('material-summary') ||
+                                currentTarget.includes('material-detail') ||
+                                currentTarget.includes('material-approve-button') ||
+                                currentTarget.includes('material-reject-button') ||
+                                currentTarget.includes('order-detail-modal') ||
+                                currentTarget.includes('warehouse-form') ||
+                                currentTarget.includes('stock-out-detail-modal') ||
+                                currentTarget.includes('stock-out-detail') ||
                                 currentTarget.includes('[data-tour="create-form"]') ||
                                 currentTarget.includes('[data-tour="import-modal"]')
     
     // Kiểm tra bước tiếp theo có target là modal không
     const isNextStepModal = nextTarget && (
+      String(nextTarget).includes('plan-detail-modal') ||
+      String(nextTarget).includes('plan-header') ||
+      String(nextTarget).includes('add-task-button') ||
+      String(nextTarget).includes('tasks-table') ||
+      String(nextTarget).includes('workload-column') ||
+      String(nextTarget).includes('actual-workload-input') ||
+      String(nextTarget).includes('current-volume-column') ||
+      String(nextTarget).includes('plan-actions') ||
+      String(nextTarget).includes('plan-modal') ||
+      String(nextTarget).includes('assignment-modal') ||
+      String(nextTarget).includes('select-workers') ||
+      String(nextTarget).includes('select-date-range') ||
+      String(nextTarget).includes('select-work-shifts') ||
+      String(nextTarget).includes('assign-button') ||
+      String(nextTarget).includes('first-task-row') ||
       String(nextTarget).includes('bulk-assign-modal') ||
       String(nextTarget).includes('bulk-shift-info') ||
       String(nextTarget).includes('bulk-date-range') ||
@@ -474,7 +597,21 @@ const nextStep = async () => {
       String(nextTarget).includes('overtime-modal') ||
       String(nextTarget).includes('image-modal') ||
       String(nextTarget).includes('create-form') ||
-      String(nextTarget).includes('import-modal')
+      String(nextTarget).includes('import-modal') ||
+      String(nextTarget).includes('family-modal') ||
+      String(nextTarget).includes('family-form-modal') ||
+      String(nextTarget).includes('family-table') ||
+      String(nextTarget).includes('extend-modal') ||
+      String(nextTarget).includes('terminate-modal') ||
+      String(nextTarget).includes('material-norm-modal') ||
+      String(nextTarget).includes('material-summary') ||
+      String(nextTarget).includes('material-detail') ||
+      String(nextTarget).includes('material-approve-button') ||
+      String(nextTarget).includes('material-reject-button') ||
+      String(nextTarget).includes('order-detail-modal') ||
+      String(nextTarget).includes('warehouse-form') ||
+      String(nextTarget).includes('stock-out-detail-modal') ||
+      String(nextTarget).includes('stock-out-detail')
     )
     
     // Kiểm tra bước tiếp theo có mở modal mới không (có action click)
@@ -546,6 +683,97 @@ const skipTour = () => {
 // Tính toán vị trí modal tour guide (né modal đang mở) với smooth updates
 let lastPosition = null
 const getModalPosition = () => {
+  const modalWidth = 420
+  const modalHeight = 320
+  const padding = 20
+  const gap = 20
+  
+  // Kiểm tra xem có modal nào đang mở không (luôn query lại để đảm bảo tìm được modal mới nhất)
+  // Tìm tất cả các modal có thể: .modal.show, .modal-dialog.show, hoặc modal có data-tour
+  let openModal = document.querySelector('.modal.show') || 
+                  document.querySelector('.modal-dialog.show') ||
+                  document.querySelector('[data-tour="plan-detail-modal"]')?.closest('.modal.show') ||
+                  document.querySelector('[data-tour="plan-modal"]')?.closest('.modal.show') ||
+                  document.querySelector('[data-tour="assignment-modal"]')?.closest('.modal.show') ||
+                  document.querySelector('[data-tour="extend-modal"]')?.closest('.modal.show') ||
+                  document.querySelector('[data-tour="terminate-modal"]')?.closest('.modal.show')
+  
+  // Nếu không tìm thấy, thử tìm bằng cách kiểm tra style display
+  if (!openModal) {
+    const allModals = document.querySelectorAll('.modal, .modal-dialog, [data-tour*="modal"]')
+    for (const modal of allModals) {
+      const style = window.getComputedStyle(modal)
+      if (style.display !== 'none' && style.visibility !== 'hidden' && modal.offsetParent !== null) {
+        // Kiểm tra xem có phải modal đang hiển thị không
+        const rect = modal.getBoundingClientRect()
+        if (rect.width > 0 && rect.height > 0) {
+          openModal = modal
+          break
+        }
+      }
+    }
+  }
+  
+  let modalRect = null
+  const hasOpenModal = !!openModal
+  if (openModal) {
+    const modalDialog = openModal.querySelector('.modal-dialog') || openModal
+    modalRect = modalDialog.getBoundingClientRect()
+    // Đảm bảo modal có kích thước hợp lệ
+    if (modalRect.width === 0 || modalRect.height === 0) {
+      modalRect = null
+    }
+  }
+  
+  // Nếu có modal đang mở, LUÔN ưu tiên né modal (bất kể có highlight hay không)
+  if (modalRect) {
+    // Ưu tiên 1: Đặt bên trái modal
+    if (modalRect.left - modalWidth - gap >= padding) {
+      lastPosition = null
+      return {
+        top: Math.max(padding, modalRect.top) + 'px',
+        left: (modalRect.left - modalWidth - gap) + 'px',
+        transform: 'none',
+        position: 'fixed',
+        transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+      }
+    }
+    // Ưu tiên 2: Bên phải modal
+    else if (modalRect.right + gap + modalWidth <= window.innerWidth - padding) {
+      lastPosition = null
+      return {
+        top: Math.max(padding, modalRect.top) + 'px',
+        left: (modalRect.right + gap) + 'px',
+        transform: 'none',
+        position: 'fixed',
+        transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+      }
+    }
+    // Ưu tiên 3: Phía trên modal
+    else if (modalRect.top - modalHeight - gap >= padding) {
+      lastPosition = null
+      return {
+        top: (modalRect.top - modalHeight - gap) + 'px',
+        left: Math.max(padding, modalRect.left) + 'px',
+        transform: 'none',
+        position: 'fixed',
+        transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+      }
+    }
+    // Ưu tiên 4: Phía dưới modal
+    else if (modalRect.bottom + gap + modalHeight <= window.innerHeight - padding) {
+      lastPosition = null
+      return {
+        top: (modalRect.bottom + gap) + 'px',
+        left: Math.max(padding, modalRect.left) + 'px',
+        transform: 'none',
+        position: 'fixed',
+        transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+      }
+    }
+  }
+  
+  // Nếu không có highlight và không có modal, đặt ở giữa màn hình
   if (!highlightRect.value) {
     lastPosition = null
     return {
@@ -556,18 +784,6 @@ const getModalPosition = () => {
     }
   }
 
-  const modalWidth = 420
-  const modalHeight = 320
-  const padding = 20
-  const gap = 20
-  
-  // Kiểm tra xem có modal nào đang mở không
-  const openModal = document.querySelector('.modal.show, .modal-dialog.show')
-  let modalRect = null
-  const hasOpenModal = !!openModal
-  if (openModal) {
-    modalRect = openModal.getBoundingClientRect()
-  }
 
   // Kiểm tra xem có phải pagination không
   const isPagination = highlightedElement.value?.getAttribute('data-tour') === 'pagination' ||
@@ -576,7 +792,7 @@ const getModalPosition = () => {
                          highlightedElement.value.classList.contains('pagination') ||
                          highlightedElement.value.querySelector('.pagination')
                        ))
-
+  
   // Use clientTop/clientLeft for viewport-relative positioning
   // Nếu là pagination, đặt modal phía trên
   let top = isPagination 
@@ -586,30 +802,68 @@ const getModalPosition = () => {
 
   // Nếu có modal đang mở, đặt tour guide bên ngoài modal
   if (modalRect) {
-    // Đặt tour guide bên trái modal nếu có chỗ
-    if (modalRect.left - modalWidth - gap >= padding) {
-      left = modalRect.left - modalWidth - gap
-      top = Math.max(padding, modalRect.top)
-    } 
-    // Hoặc bên phải modal
-    else if (modalRect.right + gap + modalWidth <= window.innerWidth - padding) {
-      left = modalRect.right + gap
-      top = Math.max(padding, modalRect.top)
-    }
-    // Hoặc phía trên modal
-    else if (modalRect.top - modalHeight - gap >= padding) {
-      left = Math.max(padding, modalRect.left)
-      top = modalRect.top - modalHeight - gap
-    }
-    // Hoặc phía dưới modal
-    else if (modalRect.bottom + gap + modalHeight <= window.innerHeight - padding) {
-      left = Math.max(padding, modalRect.left)
-      top = modalRect.bottom + gap
-    }
-    // Nếu không có chỗ, đặt ở góc màn hình
-    else {
-      left = padding
-      top = padding
+    // Kiểm tra xem target có nằm trong modal không
+    const targetInModal = highlightedElement.value && (
+      modalRect.left <= highlightRect.value.clientLeft &&
+      highlightRect.value.clientRight <= modalRect.right &&
+      modalRect.top <= highlightRect.value.clientTop &&
+      highlightRect.value.clientBottom <= modalRect.bottom
+    )
+    
+    // Nếu target nằm trong modal, ưu tiên đặt bên trái modal
+    if (targetInModal) {
+      // Ưu tiên 1: Bên trái modal
+      if (modalRect.left - modalWidth - gap >= padding) {
+        left = modalRect.left - modalWidth - gap
+        top = Math.max(padding, modalRect.top)
+      }
+      // Ưu tiên 2: Bên phải modal
+      else if (modalRect.right + gap + modalWidth <= window.innerWidth - padding) {
+        left = modalRect.right + gap
+        top = Math.max(padding, modalRect.top)
+      }
+      // Ưu tiên 3: Phía trên modal
+      else if (modalRect.top - modalHeight - gap >= padding) {
+        left = Math.max(padding, modalRect.left)
+        top = modalRect.top - modalHeight - gap
+      }
+      // Cuối cùng: Phía dưới modal (tránh nếu có thể)
+      else if (modalRect.bottom + gap + modalHeight <= window.innerHeight - padding) {
+        left = Math.max(padding, modalRect.left)
+        top = modalRect.bottom + gap
+      }
+      // Nếu không có chỗ, đặt ở góc trái trên
+      else {
+        left = padding
+        top = padding
+      }
+    } else {
+      // Target không nằm trong modal, đặt như bình thường nhưng vẫn ưu tiên bên trái modal
+      // Đặt tour guide bên trái modal nếu có chỗ
+      if (modalRect.left - modalWidth - gap >= padding) {
+        left = modalRect.left - modalWidth - gap
+        top = Math.max(padding, modalRect.top)
+      } 
+      // Hoặc bên phải modal
+      else if (modalRect.right + gap + modalWidth <= window.innerWidth - padding) {
+        left = modalRect.right + gap
+        top = Math.max(padding, modalRect.top)
+      }
+      // Hoặc phía trên modal
+      else if (modalRect.top - modalHeight - gap >= padding) {
+        left = Math.max(padding, modalRect.left)
+        top = modalRect.top - modalHeight - gap
+      }
+      // Hoặc phía dưới modal
+      else if (modalRect.bottom + gap + modalHeight <= window.innerHeight - padding) {
+        left = Math.max(padding, modalRect.left)
+        top = modalRect.bottom + gap
+      }
+      // Nếu không có chỗ, đặt ở góc màn hình
+      else {
+        left = padding
+        top = padding
+      }
     }
   } else {
     // Không có modal, đặt như bình thường
@@ -620,33 +874,33 @@ const getModalPosition = () => {
         top = Math.max(padding, (window.innerHeight - modalHeight) / 2)
       }
     } else {
-      // Kiểm tra nếu modal vượt quá bottom của màn hình
-      if (top + modalHeight > window.innerHeight - padding) {
-        // Đặt modal phía trên phần tử
-        top = highlightRect.value.clientTop - modalHeight - gap
-        // Nếu vẫn vượt quá top, đặt ở giữa màn hình
-        if (top < padding) {
-          top = Math.max(padding, (window.innerHeight - modalHeight) / 2)
+  // Kiểm tra nếu modal vượt quá bottom của màn hình
+  if (top + modalHeight > window.innerHeight - padding) {
+    // Đặt modal phía trên phần tử
+    top = highlightRect.value.clientTop - modalHeight - gap
+    // Nếu vẫn vượt quá top, đặt ở giữa màn hình
+    if (top < padding) {
+      top = Math.max(padding, (window.innerHeight - modalHeight) / 2)
         }
-      }
     }
+  }
 
-    // Điều chỉnh left để modal không vượt quá màn hình
-    // Ưu tiên đặt modal bên phải phần tử
-    if (highlightRect.value.clientRight + gap + modalWidth <= window.innerWidth - padding) {
-      left = highlightRect.value.clientRight + gap
-    } else if (highlightRect.value.clientLeft - modalWidth - gap >= padding) {
-      // Nếu không đủ chỗ bên phải, đặt bên trái
-      left = highlightRect.value.clientLeft - modalWidth - gap
-    } else {
-      // Nếu cả hai bên đều không đủ chỗ, đặt ở giữa phần tử
-      left = highlightRect.value.clientLeft + (highlightRect.value.width - modalWidth) / 2
-      // Đảm bảo không vượt quá màn hình
-      if (left < padding) {
-        left = padding
-      }
-      if (left + modalWidth > window.innerWidth - padding) {
-        left = window.innerWidth - modalWidth - padding
+  // Điều chỉnh left để modal không vượt quá màn hình
+  // Ưu tiên đặt modal bên phải phần tử
+  if (highlightRect.value.clientRight + gap + modalWidth <= window.innerWidth - padding) {
+    left = highlightRect.value.clientRight + gap
+  } else if (highlightRect.value.clientLeft - modalWidth - gap >= padding) {
+    // Nếu không đủ chỗ bên phải, đặt bên trái
+    left = highlightRect.value.clientLeft - modalWidth - gap
+  } else {
+    // Nếu cả hai bên đều không đủ chỗ, đặt ở giữa phần tử
+    left = highlightRect.value.clientLeft + (highlightRect.value.width - modalWidth) / 2
+    // Đảm bảo không vượt quá màn hình
+    if (left < padding) {
+      left = padding
+    }
+    if (left + modalWidth > window.innerWidth - padding) {
+      left = window.innerWidth - modalWidth - padding
       }
     }
   }
@@ -654,12 +908,17 @@ const getModalPosition = () => {
   // Nếu có modal đang mở, di chuyển nhanh hơn
   const transitionDuration = hasOpenModal ? '0.15s' : '0.3s'
   
+  // Kiểm tra xem modal có đang ở phía dưới không (so với viewport center)
+  const viewportCenter = window.innerHeight / 2
+  const isBelow = top > viewportCenter
+  
   const newPosition = {
     top: top + 'px',
     left: left + 'px',
     transform: 'none',
     position: 'fixed',
-    transition: `all ${transitionDuration} cubic-bezier(0.4, 0, 0.2, 1)`
+    transition: `all ${transitionDuration} cubic-bezier(0.4, 0, 0.2, 1)`,
+    '--is-below': isBelow ? '1' : '0'
   }
   
   // Chỉ update nếu vị trí thay đổi để tránh di chuyển không cần thiết
@@ -696,6 +955,98 @@ watch(() => props.show, async (newVal) => {
 // Watch current step
 watch(() => currentStepIndex.value, () => {
   highlightTarget()
+})
+
+// Watch for modal open/close to update tour guide position
+watch(() => hasOpenModal.value, () => {
+  // Force update modal position when modal opens/closes
+  if (props.show) {
+    // Update modalState để trigger reactivity
+    modalState.value++
+    
+    // Use requestAnimationFrame to ensure DOM is updated
+    requestAnimationFrame(() => {
+      // Trigger position recalculation by calling highlightTarget again
+      // This will recalculate position based on current modal state
+      if (highlightRect.value) {
+        const currentRect = { ...highlightRect.value }
+        highlightRect.value = null
+        nextTick(() => {
+          highlightRect.value = currentRect
+        })
+      } else {
+        // Nếu không có highlight, vẫn cần cập nhật vị trí để né modal
+        // Force re-render bằng cách trigger computed position
+        nextTick(() => {
+          // Trigger position update by accessing modalPosition
+          const pos = modalPosition.value
+        })
+      }
+    })
+  }
+})
+
+// Also watch for DOM changes to catch modal open/close
+let modalObserver = null
+watch(() => props.show, (newVal) => {
+  if (newVal) {
+    // Create MutationObserver to watch for modal open/close
+    modalObserver = new MutationObserver((mutations) => {
+      // Only react to class changes on modal elements
+      const hasModalChange = mutations.some(mutation => {
+        const target = mutation.target
+        return (target.classList?.contains('modal') || 
+                target.classList?.contains('modal-dialog') ||
+                target.closest('.modal')) &&
+               mutation.type === 'attributes' &&
+               mutation.attributeName === 'class'
+      })
+      
+      if (hasModalChange && props.show) {
+        // Update modalState để trigger reactivity
+        modalState.value++
+        
+        // Debounce to avoid too many updates
+        requestAnimationFrame(() => {
+          if (highlightRect.value) {
+            const currentRect = { ...highlightRect.value }
+            highlightRect.value = null
+            nextTick(() => {
+              highlightRect.value = currentRect
+            })
+          } else {
+            // Nếu không có highlight, vẫn cần cập nhật vị trí để né modal
+            nextTick(() => {
+              // Force position recalculation
+              const pos = modalPosition.value
+            })
+          }
+        })
+      }
+    })
+    
+    // Observe body for modal class changes
+    modalObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class']
+    })
+  } else {
+    // Disconnect observer when tour guide closes
+    if (modalObserver) {
+      modalObserver.disconnect()
+      modalObserver = null
+    }
+  }
+})
+
+// Cleanup on unmount
+onUnmounted(() => {
+  if (modalObserver) {
+    modalObserver.disconnect()
+    modalObserver = null
+  }
 })
 
 // Keyboard navigation
@@ -781,7 +1132,10 @@ watch(() => props.show, (newVal) => {
       <!-- Modal Guide -->
       <div
         class="tour-guide-modal"
-        :class="{ 'has-modal-open': hasOpenModal }"
+        :class="{ 
+          'has-modal-open': hasOpenModal,
+          'is-below': getModalPosition()['--is-below'] === '1'
+        }"
         :style="getModalPosition()"
       >
         <div class="tour-guide-content">
@@ -821,8 +1175,8 @@ watch(() => props.show, (newVal) => {
             <div class="ai-avatar">
               <div class="ai-icon-wrapper">
                 <div class="ai-robot-face">
-                  <i class="fas fa-robot"></i>
-                </div>
+              <i class="fas fa-robot"></i>
+            </div>
                 <div class="ai-scan-line"></div>
                 <div class="ai-glow"></div>
                 <div class="ai-ring-ring"></div>
@@ -854,16 +1208,16 @@ watch(() => props.show, (newVal) => {
                   <div class="message-icon">
                     <i class="fas fa-comment-dots"></i>
                   </div>
-                  <p class="tour-message">{{ currentStep?.message }}</p>
-                </div>
-                <div class="bubble-tail"></div>
+                <p class="tour-message">{{ currentStep?.message }}</p>
+              </div>
+              <div class="bubble-tail"></div>
                 <div class="message-shine"></div>
               </div>
             </div>
           </div>
 
           <!-- Navigation -->
-          <div class="tour-navigation">
+          <div class="tour-navigation" :class="{ 'navigation-top': getModalPosition()['--is-below'] === '1' }">
             <div class="tour-progress">
               <span class="progress-text">
                 Bước {{ currentStepIndex + 1 }} / {{ steps.length }}
@@ -997,6 +1351,8 @@ watch(() => props.show, (newVal) => {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  flex-direction: column;
 }
 
 .ai-assistant {
@@ -1572,6 +1928,24 @@ watch(() => props.show, (newVal) => {
   background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
   border-top: 1px solid rgba(0, 0, 0, 0.05);
   position: relative;
+}
+
+/* Navigation ở trên đầu khi modal ở phía dưới */
+.tour-navigation.navigation-top {
+  border-top: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  order: -1;
+}
+
+.tour-navigation.navigation-top::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.3), transparent);
+  top: auto;
 }
 
 .tour-navigation::before {

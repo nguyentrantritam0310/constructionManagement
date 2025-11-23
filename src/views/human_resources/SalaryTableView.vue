@@ -7,6 +7,8 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import { useSalary } from '../../composables/useSalary.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
 import { useAuth } from '../../composables/useAuth.js'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 
@@ -145,6 +147,7 @@ const goToCurrentYear = () => {
 
 const showOvertimeModal = ref(false)
 const selectedOvertimeEmployee = ref(null)
+const showTourGuide = ref(false)
 
 const openOvertimeModal = (employee) => {
   selectedOvertimeEmployee.value = employee
@@ -748,6 +751,64 @@ const printTaxFinalizationReport = () => {
     showMessage('Có lỗi khi in báo cáo!', 'error')
   }
 }
+
+// Tour Guide Steps
+const tourSteps = [
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý bảng lương. Bạn có thể xem bảng lương, bảng lương cá nhân, bảo hiểm theo tháng, thuế TNCN và quyết toán thuế TNCN.'
+  },
+  {
+    target: '[data-tour="salary-tab"]',
+    message: 'Tab "Quản lý bảng lương" hiển thị bảng lương tổng hợp của tất cả nhân viên trong tháng được chọn. Bạn có thể xem chi tiết lương, các khoản phụ cấp, các khoản trừ và thực lãnh của từng nhân viên. Bấm vào số ngày tăng ca để xem chi tiết.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="salary-tab"]'
+    }
+  },
+  {
+    target: '[data-tour="personal-salary-tab"]',
+    message: 'Tab "Bảng lương cá nhân" hiển thị chi tiết bảng lương của bạn. Bạn có thể xem thông tin lương cơ bản, tăng ca, nghỉ phép, các khoản phụ cấp, các khoản trừ và thực lãnh.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="personal-salary-tab"]'
+    }
+  },
+  {
+    target: '[data-tour="insurance-tab"]',
+    message: 'Tab "Bảo hiểm theo tháng" hiển thị chi tiết các khoản bảo hiểm của nhân viên trong tháng được chọn, bao gồm BHXH, BHYT, BHTN cho cả nhân viên và doanh nghiệp.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="insurance-tab"]'
+    }
+  },
+  {
+    target: '[data-tour="tax-tab"]',
+    message: 'Tab "Thuế TNCN" hiển thị thông tin thuế thu nhập cá nhân của nhân viên trong tháng được chọn, bao gồm tổng thu nhập, thu nhập chịu thuế và số thuế phải nộp.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="tax-tab"]'
+    }
+  },
+  {
+    target: '[data-tour="tax-finalization-tab"]',
+    message: 'Tab "Quyết toán thuế TNCN" hiển thị bảng quyết toán thuế thu nhập cá nhân theo năm, bao gồm tổng hợp theo năm và chi tiết từng tháng. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
+    action: {
+      type: 'click',
+      selector: '[data-tour="tax-finalization-tab"]'
+    }
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
@@ -779,13 +840,14 @@ const printTaxFinalizationReport = () => {
     </div>
 
     <!-- Tabs -->
-    <div v-else class="salary-tabs-bar mb-3">
+    <div v-else class="salary-tabs-bar mb-3" data-tour="tabs">
       <button
         v-for="tab in tabs"
         :key="tab.key"
         class="tab-bar-item"
         :class="{ active: activeTab === tab.key }"
         @click="setActiveTab(tab.key)"
+        :data-tour="tab.key === 'salary' ? 'salary-tab' : tab.key === 'personalSalary' ? 'personal-salary-tab' : tab.key === 'insurance' ? 'insurance-tab' : tab.key === 'tax' ? 'tax-tab' : tab.key === 'taxFinalization' ? 'tax-finalization-tab' : ''"
       >
         {{ tab.label }}
       </button>
@@ -1689,6 +1751,19 @@ const printTaxFinalizationReport = () => {
       </div>
     </div>
   </ModalDialog>
+
+  <!-- Tour Guide -->
+  <TourGuide
+    :show="showTourGuide"
+    :steps="tourSteps"
+    @update:show="showTourGuide = $event"
+    @complete="handleTourComplete"
+  />
+  <AIChatbotButton 
+    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+    title="Trợ lý AI"
+    @guide-click="startTour"
+  />
 </template>
 
 <style scoped>

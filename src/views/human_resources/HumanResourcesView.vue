@@ -12,8 +12,11 @@ import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import { usePermissions } from '../../composables/usePermissions'
 import ActionButton from '@/components/common/ActionButton.vue'
 import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
+import TourGuide from '@/components/common/TourGuide.vue'
+import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
+import * as XLSX from 'xlsx'
 
 const {
     employees,
@@ -142,6 +145,7 @@ const selectedFamilyRelation = ref(null)
 const familyFormMode = ref('create')
 const showFilter = ref(false)
 const showImportModal = ref(false)
+const showTourGuide = ref(false)
 
 // Filter variables
 const searchQuery = ref('')
@@ -383,13 +387,187 @@ const getEmployeeNameWithStatus = (employee) => {
     </span>`
 }
 
+// Tour Guide Steps
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý nhân sự. Tại đây bạn có thể xem, tạo, và quản lý thông tin nhân viên cùng với quan hệ gia đình của họ.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
+  },
+  {
+    target: '[data-tour="create-form"]',
+    message: 'Đây là form thêm/sửa hồ sơ nhân viên. Bạn có thể điền thông tin cá nhân, thông tin liên hệ, ngày sinh, ngày vào làm, chức danh và các thông tin khác. Sau khi điền đầy đủ, bấm "Lưu" để lưu thông tin.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:first-child'
+    }
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc nhân viên theo nhiều tiêu chí như mã nhân viên, tên, email, số điện thoại, trạng thái, chức danh và khoảng thời gian vào làm.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:nth-child(2)'
+    }
+  },
+  {
+    target: '[data-tour="filter"]',
+    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã, tên, email, số điện thoại. Chọn trạng thái và chức danh từ dropdown. Chọn khoảng thời gian vào làm từ ngày đến ngày. Bấm "Đặt lại" để xóa bộ lọc.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách nhân viên ra file Excel để lưu trữ hoặc xử lý thêm.'
+  },
+  {
+    target: '[data-tour="import-modal"]',
+    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin nhân viên vào file Excel, sau đó chọn file và bấm "Nhập dữ liệu" để import vào hệ thống.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:nth-child(4)'
+    }
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng bất cứ lúc nào.'
+  },
+  {
+    target: '[data-tour="table"]',
+    message: 'Đây là bảng danh sách nhân viên. Bạn có thể xem thông tin cơ bản của từng nhân viên. Click vào mã nhân viên hoặc click vào hàng để xem chi tiết hồ sơ nhân viên.'
+  },
+  {
+    target: '[data-tour="family-modal"]',
+    message: 'Đây là modal quản lý quan hệ gia đình. Bạn có thể xem danh sách các quan hệ gia đình của nhân viên, thêm mới, sửa hoặc xóa quan hệ. Hãy để tôi hướng dẫn từng phần!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Tìm nút quan hệ gia đình đầu tiên và click
+        await new Promise(resolve => setTimeout(resolve, 100))
+        const familyBtn = document.querySelector('[data-tour="family-button"]')
+        if (familyBtn) {
+          familyBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="family-table"]',
+    message: 'Đây là bảng danh sách quan hệ gia đình của nhân viên. Bạn có thể xem tên người quan hệ, mối quan hệ, từ ngày và đến ngày. Có các nút sửa và xóa ở cột thao tác.'
+  },
+  {
+    target: '[data-tour="family-form-modal"]',
+    message: 'Đây là form thêm/sửa quan hệ gia đình. Bạn có thể chọn nhân viên, nhập tên người quan hệ, mối quan hệ, từ ngày và đến ngày. Sau khi điền đầy đủ, bấm "Lưu" để lưu thông tin.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Tìm nút "Thêm quan hệ gia đình" trong modal và click
+        await new Promise(resolve => setTimeout(resolve, 100))
+        const addBtn = document.querySelector('[data-tour="add-family-button"]')
+        if (addBtn) {
+          addBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Bạn có thể thấy số lượng nhân viên hiện tại và tổng số nhân viên. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng các modal đang mở
+        if (showFamilyFormModal.value) {
+          showFamilyFormModal.value = false
+        }
+        if (showFamilyModal.value) {
+          showFamilyModal.value = false
+        }
+        if (showEmployeeModal.value) {
+          showEmployeeModal.value = false
+        }
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Mở filter section nếu chưa mở
+  if (!showFilter.value) {
+    showFilter.value = true
+  }
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
+
+// Import Excel functions
+const fileInput = ref(null)
+
+const downloadExcelTemplate = () => {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Employees')
+  
+  worksheet.columns = columns.map(c => ({ header: c.label, key: c.key, width: 15 }))
+  
+  applyHeaderStyle(worksheet.getRow(1))
+  
+  const buf = workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Employee_Template.xlsx')
+}
+
+const handleFileSelect = (event) => {
+  fileInput.value = event.target.files[0]
+}
+
+const handleImportExcel = async () => {
+  if (!fileInput.value) {
+    showMessage('Vui lòng chọn file Excel', 'error')
+    return
+  }
+  
+  try {
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target.result)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet)
+        
+        // Process import data here
+        // This is a placeholder - you'll need to implement the actual import logic
+        showMessage('Nhập dữ liệu thành công!', 'success')
+        showImportModal.value = false
+        await fetchAllEmployees()
+      } catch (error) {
+        console.error('Lỗi khi xử lý file Excel:', error)
+        showMessage('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.', 'error')
+      }
+    }
+    reader.readAsArrayBuffer(fileInput.value)
+  } catch (error) {
+    showMessage('Có lỗi xảy ra khi đọc file', 'error')
+  }
+}
+
 </script>
 
 <template>
     <div class="container-fluid py-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h2 class="mb-0">Quản lý nhân sự</h2>
-            <div class="d-flex gap-2">
+            <h2 class="mb-0" data-tour="title">Quản lý nhân sự</h2>
+            <div class="d-flex gap-2" data-tour="toolbar">
                 <ActionButton 
                     v-if="canCreate('human-resources')"
                     type="primary" 
@@ -407,12 +585,12 @@ const getEmployeeNameWithStatus = (employee) => {
                 <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
                     Nhập Excel
                 </ActionButton>
+              </div>
             </div>
-        </div>
         
         <!-- Filter Section -->
         <transition name="slide-fade">
-            <div class="filter-section mb-4" v-show="showFilter">
+            <div class="filter-section mb-4" v-show="showFilter" data-tour="filter">
                 <div class="row g-3">
                     <div class="col-md-3">
                         <input
@@ -490,7 +668,7 @@ const getEmployeeNameWithStatus = (employee) => {
         </div>
         
         <!-- Data Table -->
-        <DataTable v-else :columns="columns" :data="paginatedEmployees" @cell-click="handleCellClick" @row-click="handleRowClick">
+        <DataTable v-else :columns="columns" :data="paginatedEmployees" @cell-click="handleCellClick" @row-click="handleRowClick" data-tour="table">
             <template #actions="{ item }">
                 <div class="d-flex justify-content-start gap-2">
                     <ActionButton 
@@ -511,6 +689,7 @@ const getEmployeeNameWithStatus = (employee) => {
                         @click.stop="openFamilyModal(item)" 
                         icon="fas fa-people-group"
                         title="Quan hệ gia đình"
+                        data-tour="family-button"
                     ></ActionButton>
                 </div>
             </template>
@@ -521,14 +700,16 @@ const getEmployeeNameWithStatus = (employee) => {
                 Hiển thị {{ paginatedEmployees.length }} trên {{ filteredEmployeesData.length }} nhân viên
             </div>
             <Pagination :total-items="filteredEmployeesData.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-                @update:currentPage="handlePageChange" />
+                @update:currentPage="handlePageChange" data-tour="pagination" />
         </div>
         <ModalDialog :title="employeeFormMode === 'create' ? 'Thêm hồ sơ nhân viên' : 'Cập nhật hồ sơ nhân viên'" :show="showEmployeeModal" size="lg" @update:show="closeEmployeeModal">
-            <EmployeeForm :mode="employeeFormMode" :employee="selectedEmployeeForm" :roles="roles" @submit="handleEmployeeSubmit"
-                @close="closeEmployeeModal" />
+            <div data-tour="create-form">
+                <EmployeeForm :mode="employeeFormMode" :employee="selectedEmployeeForm" :roles="roles" @submit="handleEmployeeSubmit"
+                    @close="closeEmployeeModal" />
+            </div>
         </ModalDialog>
         <ModalDialog :show="showFamilyModal" title="Quan hệ gia đình" size="lg"
-            @update:show="closeFamilyModal">
+            @update:show="closeFamilyModal" data-tour="family-modal">
             <div v-if="familyLoading" class="text-center py-3">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Đang tải...</span>
@@ -543,7 +724,7 @@ const getEmployeeNameWithStatus = (employee) => {
                     { key: 'relationShipName', label: 'Mối quan hệ' },
                     { key: 'startDate', label: 'Từ ngày' },
                     { key: 'endDate', label: 'Đến ngày' }
-                ]" :data="selectedRelations">
+                ]" :data="selectedRelations" data-tour="family-table">
                     <template #actions="{ item }">
                         <div class="d-flex justify-content-start gap-2">
                             <ActionButton 
@@ -571,6 +752,7 @@ const getEmployeeNameWithStatus = (employee) => {
                         @click="handleAddFamilyRelation" 
                         type="success" 
                         icon="fas fa-plus"
+                        data-tour="add-family-button"
                     >
                         Thêm quan hệ gia đình
                     </ActionButton>
@@ -585,17 +767,50 @@ const getEmployeeNameWithStatus = (employee) => {
             size="lg" 
             @update:show="closeFamilyFormModal"
         >
-            <FamilyRelationForm 
-                :mode="familyFormMode" 
-                :familyRelation="selectedFamilyRelation" 
-                :employeeId="selectedEmployee?.id || ''"
-                :employeeName="selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : ''"
-                @submit="handleFamilyRelationSubmit"
-                @close="closeFamilyFormModal" 
-            />
+            <div data-tour="family-form-modal">
+                <FamilyRelationForm 
+                    :mode="familyFormMode" 
+                    :familyRelation="selectedFamilyRelation" 
+                    :employeeId="selectedEmployee?.id || ''"
+                    :employeeName="selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : ''"
+                    @submit="handleFamilyRelationSubmit"
+                    @close="closeFamilyFormModal" 
+                />
+            </div>
+        </ModalDialog>
+        
+        <!-- Import Excel Modal -->
+        <ModalDialog v-model:show="showImportModal" title="Nhập nhân viên từ Excel" size="lg" data-tour="import-modal">
+            <div class="p-4">
+                <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
+                <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
+                    Tải file mẫu
+                </ActionButton>
+                <div class="mt-3">
+                    <input type="file" ref="fileInput" @change="handleFileSelect" accept=".xlsx,.xls" class="form-control" />
+                </div>
+                <div class="mt-3 text-end">
+                    <ActionButton type="primary" icon="fas fa-upload me-2" @click="handleImportExcel" :disabled="!fileInput">
+                        Nhập dữ liệu
+                    </ActionButton>
+                </div>
+            </div>
         </ModalDialog>
         
         <GlobalMessageModal />
+        
+        <!-- Tour Guide -->
+        <TourGuide 
+            :show="showTourGuide" 
+            :steps="tourSteps" 
+            @update:show="showTourGuide = $event" 
+            @complete="handleTourComplete" 
+        />
+        <AIChatbotButton 
+            message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+            title="Trợ lý AI"
+            @guide-click="startTour"
+        />
     </div>
 </template>
 

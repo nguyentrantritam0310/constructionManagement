@@ -6,6 +6,8 @@ import { useManagementReport } from '../../composables/useManagementReport'
 import { useAuth } from '../../composables/useAuth'
 import { useMaterialPlan } from '../../composables/useMaterialPlan'
 import { useImportOrder } from '../../composables/useImportOrder'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const { constructions, fetchConstructions } = useConstructionManagement()
 const { materials, fetchMaterials } = useMaterialManagement()
@@ -185,13 +187,61 @@ const formatCurrency = (value) => {
     currency: 'VND'
   }).format(value)
 }
+
+// Tour Guide Steps - Dynamic based on role
+const showTourGuide = ref(false)
+const tourSteps = computed(() => {
+  const steps = [
+    {
+      target: '[data-tour="title"]',
+      message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là bảng điều khiển (Dashboard). Trang này hiển thị tổng quan về các thống kê và thông tin quan trọng của hệ thống.'
+    },
+    {
+      target: '[data-tour="construction-stats"]',
+      message: 'Đây là phần thống kê công trình. Hiển thị tổng số công trình và số lượng công trình theo từng trạng thái như chờ khởi công, đang thi công, đã hoàn thành, tạm dừng và đã hủy.'
+    }
+  ]
+
+  // Thêm step cho Manager
+  if (isManager.value) {
+    steps.push({
+      target: '[data-tour="material-stats"]',
+      message: 'Đây là phần thống kê vật tư (chỉ hiển thị cho Quản lý). Hiển thị tổng số vật tư, số vật tư sắp hết và tổng giá trị vật tư trong kho.'
+    })
+  }
+
+  // Thêm step cho Director
+  if (isDirector.value) {
+    steps.push({
+      target: '[data-tour="report-stats"]',
+      message: 'Đây là phần thống kê báo cáo và kế hoạch vật tư (chỉ hiển thị cho Giám đốc). Hiển thị thống kê về báo cáo sự cố thi công, sự cố kỹ thuật và kế hoạch vật tư cần duyệt.'
+    })
+  }
+
+  steps.push({
+    target: '[data-tour="upcoming-deadlines"]',
+    message: 'Đây là phần công trình sắp đến hạn và thống kê theo loại. Hiển thị danh sách công trình có ngày hoàn thành dự kiến trong vòng 30 ngày tới và số lượng công trình theo từng loại (Dân dụng, Công nghiệp, Cầu đường, Thủy lợi).'
+  })
+
+  return steps
+})
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
   <div class="dashboard">
     <div class="dashboard-header">
       <div class="welcome-section">
-      <h2>
+      <h2 data-tour="title">
         <i class="fas fa-tachometer-alt"></i>
         Bảng Điều Khiển
       </h2>
@@ -205,7 +255,7 @@ const formatCurrency = (value) => {
     </div>
 
     <!-- Thống kê công trình -->
-    <div class="stats-section mb-4">
+    <div class="stats-section mb-4" data-tour="construction-stats">
       <h3 class="section-title">
         <i class="fas fa-building"></i>
         Thống kê công trình
@@ -286,7 +336,7 @@ const formatCurrency = (value) => {
     </div>
 
     <!-- Thống kê vật tư - Chỉ hiển thị cho Manager -->
-    <div v-if="isManager" class="stats-section mb-4">
+    <div v-if="isManager" class="stats-section mb-4" data-tour="material-stats">
       <h3 class="section-title">
         <i class="fas fa-boxes"></i>
         Thống kê vật tư
@@ -319,14 +369,14 @@ const formatCurrency = (value) => {
     </div>
 
     <!-- Thống kê báo cáo - Chỉ hiển thị cho Giám đốc -->
-    <div v-if="isDirector" class="stats-section mb-4">
+    <div v-if="isDirector" class="stats-section mb-4" data-tour="report-stats">
       <h3 class="section-title">
         <i class="fas fa-file-alt"></i>
         Thống kê báo cáo
       </h3>
 
       <!-- Báo cáo sự cố thi công -->
-      <div class="report-category mb-4">
+      <div class="report-category mb-4" data-tour="construction-reports">
         <h4 class="category-title">
           <i class="fas fa-hard-hat"></i>
           Sự cố thi công ({{ detailedReportStats.construction.total }})
@@ -368,7 +418,7 @@ const formatCurrency = (value) => {
       </div>
 
       <!-- Báo cáo sự cố kỹ thuật -->
-      <div class="report-category mb-4">
+      <div class="report-category mb-4" data-tour="technical-reports">
         <h4 class="category-title">
           <i class="fas fa-tools"></i>
           Sự cố kỹ thuật ({{ detailedReportStats.technical.total }})
@@ -410,7 +460,7 @@ const formatCurrency = (value) => {
       </div>
 
       <!-- Kế hoạch vật tư -->
-      <div class="report-category">
+      <div class="report-category" data-tour="material-plans">
         <h4 class="category-title">
           <i class="fas fa-clipboard-list"></i>
           Kế hoạch vật tư ({{ importOrderStats.total }} kế hoạch)
@@ -454,7 +504,7 @@ const formatCurrency = (value) => {
 
     <div class="dashboard-content">
       <!-- Công trình sắp đến hạn -->
-      <div class="upcoming-deadlines">
+      <div class="upcoming-deadlines" data-tour="upcoming-deadlines">
         <div class="section-header">
           <h3>
             <i class="fas fa-calendar-alt"></i>
@@ -489,7 +539,7 @@ const formatCurrency = (value) => {
       </div>
 
       <!-- Thống kê theo loại Công trình -->
-      <div class="project-types">
+      <div class="project-types" data-tour="project-types">
         <div class="section-header">
           <h3>
             <i class="fas fa-chart-pie"></i>
@@ -510,6 +560,19 @@ const formatCurrency = (value) => {
         </div>
       </div>
     </div>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 

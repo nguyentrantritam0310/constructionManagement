@@ -16,6 +16,7 @@ import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
 import { isApprovedStatus } from '../../constants/status.js'
 import TourGuide from '@/components/common/TourGuide.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
+import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 
 // Composables
 const { employees, fetchAllEmployees, loading: employeeLoading, error: employeeError } = useEmployee()
@@ -614,14 +615,6 @@ const startTour = () => {
         <button class="btn btn-sm btn-outline-success" @click="reloadData">
           <i class="fas fa-sync me-1"></i> Reload
         </button>
-        <ActionButton 
-          type="secondary" 
-          icon="fas fa-question-circle me-2" 
-          @click="startTour"
-          title="Hướng dẫn sử dụng"
-        >
-          Hướng dẫn
-        </ActionButton>
       </div>
       <div class="text-muted">
         <i class="fas fa-calendar-alt me-2"></i>
@@ -873,6 +866,11 @@ const startTour = () => {
     :steps="tourSteps"
     @update:show="showTourGuide = $event"
     @complete="handleTourComplete"
+  />
+  <AIChatbotButton 
+    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+    title="Trợ lý AI"
+    @guide-click="startTour"
   />
   </div>
 </template>

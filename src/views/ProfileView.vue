@@ -5,7 +5,7 @@
       <div class="profile-header mb-4">
         <div class="d-flex align-items-center justify-content-between">
           <div>
-            <h2 class="mb-1">
+            <h2 class="mb-1" data-tour="title">
               <i class="fas fa-user me-2"></i>
               {{ isOwnProfile ? 'Thông tin cá nhân' : 'Thông tin nhân viên' }}
             </h2>
@@ -26,7 +26,7 @@
       <div class="row">
         <!-- Profile Card -->
         <div class="col-lg-4 col-md-5 mb-4">
-          <div class="profile-card">
+          <div class="profile-card" data-tour="profile-card">
             <div class="profile-avatar">
               <div class="avatar-circle">
                 <i class="fas fa-user"></i>
@@ -82,7 +82,7 @@
         <!-- Profile Details -->
         <div class="col-lg-8 col-md-7">
           <!-- Basic Information -->
-          <div class="profile-details-card">
+          <div class="profile-details-card" data-tour="basic-info">
             <div class="card-header">
               <h5 class="mb-0">
                 <i class="fas fa-info-circle me-2"></i>
@@ -155,7 +155,7 @@
           </div>
 
           <!-- Contract Information -->
-          <div class="profile-details-card mt-4">
+          <div class="profile-details-card mt-4" data-tour="contract-info">
             <div class="card-header">
               <h5 class="mb-0">
                 <i class="fas fa-file-contract me-2"></i>
@@ -262,6 +262,19 @@
         </div>
       </div>
     </div>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 
@@ -271,6 +284,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useEmployee } from '../composables/useEmployee'
 import { useContract } from '../composables/useContract'
+import TourGuide from '../components/common/TourGuide.vue'
+import AIChatbotButton from '../components/common/AIChatbotButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -443,6 +458,37 @@ const getValidityStatusText = (contract) => {
   const endDate = new Date(contract.endDate)
   const today = new Date()
   return endDate > today ? 'Còn hiệu lực' : 'Hết hiệu lực'
+}
+
+// Tour Guide Steps
+const showTourGuide = ref(false)
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang thông tin cá nhân. Tại đây bạn có thể xem thông tin chi tiết về nhân viên, bao gồm thông tin cơ bản (mã nhân viên, email, số điện thoại, ngày sinh, giới tính), thông tin hợp đồng (số hợp đồng, loại hợp đồng, ngày bắt đầu, ngày hết hạn, lương hợp đồng, lương bảo hiểm, trạng thái duyệt và hiệu lực).'
+  },
+  {
+    target: '[data-tour="profile-card"]',
+    message: 'Đây là phần thông tin cá nhân. Hiển thị avatar, tên nhân viên, chức vụ, trạng thái hoạt động, ngày vào làm, phòng ban và số hợp đồng (nếu có).'
+  },
+  {
+    target: '[data-tour="basic-info"]',
+    message: 'Đây là phần thông tin cơ bản. Hiển thị mã nhân viên, email, số điện thoại, chức vụ, ngày sinh và giới tính của nhân viên.'
+  },
+  {
+    target: '[data-tour="contract-info"]',
+    message: 'Đây là phần thông tin hợp đồng. Hiển thị số hợp đồng, loại hợp đồng, ngày bắt đầu, ngày hết hạn, lương hợp đồng, lương bảo hiểm, trạng thái duyệt và hiệu lực của hợp đồng. Nếu nhân viên chưa có hợp đồng, sẽ hiển thị thông báo "Chưa có thông tin hợp đồng".'
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
 }
 </script>
 

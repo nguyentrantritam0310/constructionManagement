@@ -21,6 +21,9 @@ import { attendanceService } from '../../services/attendanceService'
 import { useWorkShift } from '../../composables/useWorkShift'
 import { shiftAssignmentService } from '../../services/shiftAssignmentService'
 import FormField from '@/components/common/FormField.vue'
+import TourGuide from '../../components/common/TourGuide.vue'
+import ActionButton from '../../components/common/ActionButton.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import api from '../../api.js'
 const { showMessage } = useGlobalMessage()
 const route = useRoute()
@@ -51,6 +54,7 @@ const itemsPerPage = 5
 const currentPlanPage = ref(1)
 const plansPerPage = 5
 const showPlanModal = ref(false)
+const showTourGuide = ref(false)
 
 const { selectedConstruction, fetchConstructionDetail } = useConstructionManagement()
 const { plans, loading: plansLoading, error: plansError, fetchPlans } = useConstructionPlan()
@@ -862,6 +866,188 @@ const downloadDesign = async () => {
     showMessage('Không thể tải file thiết kế', 'error')
   }
 }
+
+// Tour Guide Steps
+const itemsTourSteps = [
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Hạng mục thi công". Tại đây bạn có thể xem danh sách tất cả các hạng mục thi công của công trình này.',
+    noHighlight: true
+  },
+  {
+    target: '[data-tour="items-table"]',
+    message: 'Đây là bảng danh sách hạng mục thi công. Bạn có thể xem thông tin chi tiết của từng hạng mục như mã hạng mục, tên hạng mục, ngày bắt đầu, ngày kết thúc, tổng khối lượng, đơn vị và trạng thái.',
+    noHighlight: true
+  },
+  {
+    target: '[data-tour="items-pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều hạng mục hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Hạng mục thi công"!',
+    noHighlight: true
+  }
+]
+
+const plansTourSteps = [
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Kế hoạch thi công". Tại đây bạn có thể xem danh sách các kế hoạch thi công và quản lý nhiệm vụ cho từng kế hoạch.',
+    noHighlight: true
+  },
+  {
+    target: '[data-tour="plans-table"]',
+    message: 'Đây là bảng danh sách kế hoạch thi công. Bạn có thể xem thông tin chi tiết của từng kế hoạch như mã kế hoạch, hạng mục, người phụ trách, ngày bắt đầu, ngày kết thúc và trạng thái. Click vào một hàng để xem danh sách nhiệm vụ của kế hoạch đó.',
+    noHighlight: true
+  },
+  {
+    target: '[data-tour="plan-modal"]',
+    message: 'Đây là modal danh sách nhiệm vụ của kế hoạch. Tại đây bạn có thể xem tất cả các nhiệm vụ thi công thuộc kế hoạch này, bao gồm mã nhiệm vụ, khối lượng hoạch định, khối lượng thực tế, khối lượng còn lại và trạng thái. Cột "Thao tác" chứa nút để phân công công nhân cho nhiệm vụ.',
+    noHighlight: true,
+    action: {
+      type: 'function',
+      func: async () => {
+        // Tìm kế hoạch có nhiệm vụ
+        await new Promise(resolve => setTimeout(resolve, 100))
+        let planWithTasks = null
+        
+        // Tìm kế hoạch đầu tiên có nhiệm vụ
+        for (const plan of paginatedPlans.value) {
+          try {
+            await fetchTasks(plan.id)
+            if (tasks.value && tasks.value.length > 0) {
+              planWithTasks = plan
+              break
+            }
+          } catch (error) {
+            console.error('Error fetching tasks for plan:', plan.id, error)
+            continue
+          }
+        }
+        
+        // Nếu tìm thấy kế hoạch có nhiệm vụ, mở modal
+        if (planWithTasks) {
+          selectedPlan.value = planWithTasks
+          selectedTasks.value = tasks.value
+          showPlanModal.value = true
+          // Đợi modal render xong
+          await new Promise(resolve => setTimeout(resolve, 300))
+        } else {
+          // Nếu không có kế hoạch nào có nhiệm vụ, chỉ hiển thị thông báo
+          showMessage('Không có kế hoạch nào có nhiệm vụ để hiển thị', 'info')
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="assign-button"]',
+    message: 'Nút "Phân công công nhân" cho phép bạn phân công công nhân cho nhiệm vụ này. Khi bấm vào nút này, một modal sẽ mở ra với quy trình phân công 3 bước. Hãy để tôi giải thích chi tiết!',
+    noHighlight: true,
+    action: {
+      type: 'function',
+      func: async () => {
+        // Tìm nút phân công trong modal và click
+        await new Promise(resolve => setTimeout(resolve, 100))
+        const assignBtn = document.querySelector('[data-tour="assign-button"]')
+        if (assignBtn) {
+          assignBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="assignment-modal"]',
+    message: 'Đây là modal phân công công nhân. Quy trình phân công gồm 3 bước: Bước 1 - Chọn công nhân, Bước 2 - Chọn khoảng thời gian, Bước 3 - Chọn ca làm việc. Hãy để tôi giải thích từng bước!',
+    noHighlight: true
+  },
+  {
+    target: '[data-tour="select-workers"]',
+    message: 'Bước 1: Chọn công nhân. Bạn có thể tìm kiếm và chọn các công nhân từ danh sách bên trái. Các công nhân đã được phân công sẽ hiển thị ở cột bên phải. Sau khi chọn xong, bấm "Tiếp theo" để chuyển sang bước 2.',
+    noHighlight: true
+  },
+  {
+    target: '[data-tour="select-date-range"]',
+    message: 'Bước 2: Chọn khoảng thời gian. Bạn cần chọn "Từ ngày" và "Đến ngày" để xác định khoảng thời gian mà các công nhân sẽ làm việc. Sau khi chọn xong, bấm "Tiếp theo" để chuyển sang bước 3.',
+    noHighlight: true,
+    action: {
+      type: 'function',
+      func: async () => {
+        // Nếu đang ở bước 1, chuyển sang bước 2
+        if (assignmentStep.value === 'select-workers' && selectedWorkers.value.length === 0) {
+          // Chọn công nhân đầu tiên nếu chưa chọn
+          if (employees.value.length > 0) {
+            selectedWorkers.value = [employees.value[0]]
+          }
+        }
+        if (assignmentStep.value === 'select-workers') {
+          assignmentStep.value = 'select-date-range'
+          // Set default date range
+          const today = new Date()
+          assignmentStartDate.value = today.toISOString().split('T')[0]
+          const endDate = new Date(today)
+          endDate.setDate(endDate.getDate() + 7)
+          assignmentEndDate.value = endDate.toISOString().split('T')[0]
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="select-work-shifts"]',
+    message: 'Bước 3: Chọn ca làm việc. Bạn cần chọn các ca làm việc mà các công nhân đã chọn sẽ làm việc trong khoảng thời gian đã chọn. Logic phân ca: Hệ thống sẽ tự động tìm tất cả ShiftAssignment của các công nhân đã chọn, có ca làm việc được chọn, trong khoảng thời gian đã chọn, và gán nhiệm vụ này cho các ShiftAssignment đó.',
+    noHighlight: true,
+    action: {
+      type: 'function',
+      func: async () => {
+        // Nếu đang ở bước 2, chuyển sang bước 3
+        if (assignmentStep.value === 'select-date-range') {
+          assignmentStep.value = 'select-work-shifts'
+          // Chọn ca làm việc đầu tiên nếu có
+          if (workshifts.value.length > 0 && selectedWorkShiftIds.value.length === 0) {
+            selectedWorkShiftIds.value = [workshifts.value[0].id]
+          }
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="plans-pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều kế hoạch hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Kế hoạch thi công"!',
+    noHighlight: true,
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng các modal đang mở
+        if (showAssignmentModal.value) {
+          showAssignmentModal.value = false
+        }
+        if (showPlanModal.value) {
+          showPlanModal.value = false
+        }
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
+  }
+]
+
+const tourSteps = computed(() => {
+  if (activeTab.value === 'items') {
+    return itemsTourSteps
+  } else if (activeTab.value === 'plans') {
+    return plansTourSteps
+  }
+  return []
+})
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
@@ -944,29 +1130,31 @@ const downloadDesign = async () => {
 
         <!-- Main Content Tabs -->
         <div class="content-tabs">
-          <ul class="nav nav-tabs nav-tabs-custom">
-            <li class="nav-item">
-              <a class="nav-link" :class="{ active: activeTab === 'info' }" @click.prevent="activeTab = 'info'"
-                href="#">
-                <i class="fas fa-info-circle me-2"></i>
-                Thông tin chung
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" :class="{ active: activeTab === 'items' }" @click.prevent="activeTab = 'items'"
-                href="#">
-                <i class="fas fa-list me-2"></i>
-                Hạng mục thi công
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" :class="{ active: activeTab === 'plans' }" @click.prevent="activeTab = 'plans'"
-                href="#">
-                <i class="fa-solid fa-clipboard me-2"></i>
-                Kế hoạch thi công
-              </a>
-            </li>
-          </ul>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <ul class="nav nav-tabs nav-tabs-custom" data-tour="tabs">
+              <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'info' }" @click.prevent="activeTab = 'info'"
+                  href="#">
+                  <i class="fas fa-info-circle me-2"></i>
+                  Thông tin chung
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'items' }" @click.prevent="activeTab = 'items'"
+                  href="#">
+                  <i class="fas fa-list me-2"></i>
+                  Hạng mục thi công
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'plans' }" @click.prevent="activeTab = 'plans'"
+                  href="#">
+                  <i class="fa-solid fa-clipboard me-2"></i>
+                  Kế hoạch thi công
+                </a>
+              </li>
+            </ul>
+          </div>
 
           <!-- Tab Content -->
           <div class="tab-content p-4 bg-white rounded-bottom shadow-sm">
@@ -1091,7 +1279,7 @@ const downloadDesign = async () => {
                   </h2>
                 </div>
                 <DataTable :columns="constructionItemColumns" :data="paginatedItems"
-                  class="custom-table">
+                  class="custom-table" data-tour="items-table">
                   <template #id="{ item }">
                     <div class="fw-medium text-primary">HM-{{ item.id }}</div>
                   </template>
@@ -1127,7 +1315,7 @@ const downloadDesign = async () => {
                     Hiển thị {{ paginatedItems.length }} trên {{ construction?.constructionItems.length || 0 }} hạng mục
                   </div>
                   <Pagination :total-items="construction?.constructionItems.length || 0" :items-per-page="itemsPerPage"
-                    :current-page="currentPage" @update:currentPage="handlePageChange" />
+                    :current-page="currentPage" @update:currentPage="handlePageChange" data-tour="items-pagination" />
                 </div>
               </div>
             </template>
@@ -1153,7 +1341,7 @@ const downloadDesign = async () => {
 
                 <div v-else>
                   <DataTable :columns="planColumns" :data="paginatedPlans" @row-click="handlePlanClick"
-                    class="custom-table">
+                    class="custom-table" data-tour="plans-table">
                     <template #id="{ item }">
                       <div class="fw-medium text-primary">KH-{{ item.id }}</div>
                     </template>
@@ -1197,7 +1385,7 @@ const downloadDesign = async () => {
                       Hiển thị {{ paginatedPlans.length }} trên {{ plans?.length || 0 }} kế hoạch
                     </div>
                     <Pagination :total-items="plans?.length || 0" :items-per-page="plansPerPage"
-                      :current-page="currentPlanPage" @update:currentPage="handlePlanPageChange" />
+                      :current-page="currentPlanPage" @update:currentPage="handlePlanPageChange" data-tour="plans-pagination" />
                   </div>
                 </div>
               </div>
@@ -1228,14 +1416,14 @@ const downloadDesign = async () => {
     <template v-if="selectedTask">
       <ModalDialog :show="showAssignmentModal" @update:show="showAssignmentModal = $event" 
         :title="assignmentStep === 'select-workers' ? 'Phân công công nhân' : assignmentStep === 'select-date-range' ? 'Chọn khoảng thời gian' : 'Chọn ca làm việc'"
-        size="lg">
+        size="lg" data-tour="assignment-modal">
         <div v-if="selectedTask.statusName !== 'Chờ khởi công'" class="alert alert-warning mb-3">
           <i class="fas fa-exclamation-triangle me-2"></i>
           Chỉ có thể phân công công nhân cho nhiệm vụ chờ khởi công
         </div>
         
         <!-- Step 1: Chọn công nhân -->
-        <form v-if="assignmentStep === 'select-workers'" @submit.prevent="assignWorkers">
+        <form v-if="assignmentStep === 'select-workers'" @submit.prevent="assignWorkers" data-tour="select-workers">
           <div class="row g-4">
             <!-- Right Column: Add New Workers -->
             <div class="col-md-6">
@@ -1346,7 +1534,7 @@ const downloadDesign = async () => {
         </form>
 
         <!-- Step 2: Chọn khoảng thời gian -->
-        <div v-else-if="assignmentStep === 'select-date-range'">
+        <div v-else-if="assignmentStep === 'select-date-range'" data-tour="select-date-range">
           <div class="alert alert-info mb-3">
             <h6 class="mb-1">Nhiệm vụ #{{ selectedTask.id }}</h6>
             <p class="mb-0">Đã chọn <strong>{{ selectedWorkers.length }}</strong> công nhân. Chọn khoảng thời gian để chọn ca làm việc.</p>
@@ -1394,7 +1582,7 @@ const downloadDesign = async () => {
         </div>
 
         <!-- Step 3: Chọn ca làm việc -->
-        <div v-else-if="assignmentStep === 'select-work-shifts'">
+        <div v-else-if="assignmentStep === 'select-work-shifts'" data-tour="select-work-shifts">
           <div class="alert alert-info mb-3">
             <h6 class="mb-1">Nhiệm vụ #{{ selectedTask.id }}</h6>
             <p class="mb-0">
@@ -1487,7 +1675,7 @@ const downloadDesign = async () => {
     <!-- Plan Details Modal -->
     <template v-if="selectedPlan">
       <ModalDialog :show="showPlanModal" @update:show="showPlanModal = $event"
-        :title="'Danh sách nhiệm vụ - KH-' + selectedPlan.id" size="xl">
+        :title="'Danh sách nhiệm vụ - KH-' + selectedPlan.id" size="xl" data-tour="plan-modal">
         <div v-if="tasksLoading" class="text-center py-4">
           <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
@@ -1499,7 +1687,7 @@ const downloadDesign = async () => {
         </div>
 
         <div v-else>
-          <DataTable :columns="taskColumns" :data="selectedTasks" class="task-table">
+          <DataTable :columns="taskColumns" :data="selectedTasks" class="task-table" data-tour="tasks-table">
             <template #id="{ item }">
               <div class="fw-medium text-primary">NV-{{ item.id }}</div>
             </template>
@@ -1522,7 +1710,7 @@ const downloadDesign = async () => {
             </template>
 
             <template #actions="{ item }">
-              <button class="btn btn-icon" @click.stop="handleAssignWorkers(item)" title="Phân công công nhân">
+              <button class="btn btn-icon" @click.stop="handleAssignWorkers(item)" title="Phân công công nhân" data-tour="assign-button">
                 <i class="fas fa-user-plus"></i>
               </button>
             </template>
@@ -1562,6 +1750,20 @@ const downloadDesign = async () => {
         </div>
       </div>
     </ModalDialog>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      v-if="activeTab === 'items' || activeTab === 'plans'"
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 

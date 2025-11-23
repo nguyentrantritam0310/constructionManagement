@@ -13,6 +13,8 @@ import Pagination from '../../components/common/Pagination.vue'
 import UpdateReportForm from '../../components/incident-report/UpdateReportForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -379,13 +381,92 @@ const isResubmitMode = computed(() => {
   }
   return false
 })
+
+const showTourGuide = ref(false)
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý báo cáo sự cố thi công. Tại đây bạn có thể tạo, xem, cập nhật và quản lý các báo cáo sự cố thi công.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
+  },
+  {
+    target: '[data-tour="create-form"]',
+    message: 'Đây là form tạo báo cáo sự cố thi công mới. Bạn có thể chọn công trình, mô tả sự cố, chọn mức độ nghiêm trọng và đính kèm hình ảnh. Sau khi điền đầy đủ, bấm "Tạo báo cáo" để gửi.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:first-child'
+    }
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc báo cáo theo trạng thái, mức độ và khoảng thời gian.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:nth-child(2)'
+    }
+  },
+  {
+    target: '[data-tour="filter"]',
+    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã, tên công trình, mô tả. Chọn trạng thái và mức độ từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Bấm "Đặt lại" để xóa bộ lọc.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách báo cáo ra file Excel để lưu trữ hoặc xử lý thêm.'
+  },
+  {
+    target: '[data-tour="import-modal"]',
+    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin báo cáo vào file Excel, sau đó chọn file và bấm "Nhập" để import vào hệ thống.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:last-child'
+    }
+  },
+  {
+    target: '[data-tour="table"]',
+    message: 'Đây là bảng danh sách báo cáo sự cố thi công. Bạn có thể xem thông tin chi tiết của từng báo cáo. Click vào một hàng để xem chi tiết báo cáo. Cột "Thao tác" chứa nút để cập nhật báo cáo.'
+  },
+  {
+    target: '[data-tour="pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều báo cáo hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
+    action: {
+      type: 'function',
+      func: async () => {
+        if (showImportModal.value) {
+          showImportModal.value = false
+        }
+        if (showCreateForm.value) {
+          showCreateForm.value = false
+        }
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Mở filter section nếu chưa mở
+  if (!showFilter.value) {
+    showFilter.value = true
+  }
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
   <div class="management-report">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2>Báo Cáo Sự Cố Thi Công</h2>
-      <div class="d-flex gap-2">
+      <h2 data-tour="title">Báo Cáo Sự Cố Thi Công</h2>
+      <div class="d-flex gap-2" data-tour="toolbar">
         <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
           Tạo báo cáo mới
         </ActionButton>
@@ -403,7 +484,7 @@ const isResubmitMode = computed(() => {
 
     <!-- Filter Section -->
     <transition name="slide-fade">
-      <div class="filter-section mb-4" v-show="showFilter">
+      <div class="filter-section mb-4" v-show="showFilter" data-tour="filter">
       <div class="row g-3">
         <div class="col-md-3">
           <div class="input-group">
@@ -491,7 +572,7 @@ const isResubmitMode = computed(() => {
       {{ error }}
     </div>
 
-    <DataTable :columns="columns" :data="paginatedReports" class="report-table" @row-click="handleRowClick">
+    <DataTable :columns="columns" :data="paginatedReports" class="report-table" @row-click="handleRowClick" data-tour="table">
       <template #problemType="{ item }">
         <span :class="'badge bg-' + (item.problemType === 'Chậm tiến độ' ? 'warning' :
           item.problemType === 'Thiếu vật liệu' ? 'info' :
@@ -529,7 +610,7 @@ const isResubmitMode = computed(() => {
         Hiển thị {{ paginatedReports.length }} trên {{ filteredReports.length }} báo cáo
       </div>
       <Pagination :total-items="filteredReports.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-        @update:currentPage="handlePageChange" />
+        @update:currentPage="handlePageChange" data-tour="pagination" />
     </div>
 
     <!-- Form tạo báo cáo mới -->
@@ -540,11 +621,13 @@ const isResubmitMode = computed(() => {
       :formData="reportFormData"
       @submit="handleSubmit"
     >
-      <ReportForm
-        mode="create"
-        reportType="incident"
-        v-model="reportFormData"
-      />
+      <div data-tour="create-form">
+        <ReportForm
+          mode="create"
+          reportType="incident"
+          v-model="reportFormData"
+        />
+      </div>
     </FormDialog>
 
     <!-- Form cập nhật báo cáo -->
@@ -566,7 +649,7 @@ const isResubmitMode = computed(() => {
     </FormDialog>
 
     <!-- Import Excel Modal -->
-    <ModalDialog v-model:show="showImportModal" title="Nhập báo cáo sự cố từ Excel" size="lg">
+    <ModalDialog v-model:show="showImportModal" title="Nhập báo cáo sự cố từ Excel" size="lg" data-tour="import-modal">
       <div class="p-4">
         <p>
           Vui lòng chọn tệp Excel (.xlsx) để nhập báo cáo sự cố thi công. Đảm bảo rằng tệp tuân theo định dạng mẫu.
@@ -608,6 +691,19 @@ const isResubmitMode = computed(() => {
       @approve="handleApprove"
       @resubmit="handleResubmitSubmit"
       @edit="handleEdit"
+    />
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
     />
   </div>
 </template>

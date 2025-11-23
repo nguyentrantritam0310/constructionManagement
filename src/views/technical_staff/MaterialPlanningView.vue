@@ -12,6 +12,8 @@ import { useMaterialPlan } from '../../composables/useMaterialPlan'
 import { useUser } from '../../composables/useUser'
 import { useAuth } from '../../composables/useAuth'
 import { useImportOrderEmployee } from '../../composables/useImportOrderEmployee'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const selectedConstruction = ref(null)
 const showConfirmDialog = ref(false)
@@ -315,14 +317,117 @@ const handlePageChange = (page) => {
 const handleMaterialPageChange = (page) => {
   currentMaterialPage.value = page
 }
+
+// Tour Guide Steps
+const showTourGuide = ref(false)
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang lập kế hoạch vật tư. Tại đây bạn có thể chọn công trình và lập kế hoạch vật tư cần nhập kho cho công trình đó.'
+  },
+  {
+    target: '[data-tour="filter-button"]',
+    message: 'Nút "Lọc" cho phép bạn ẩn/hiện phần lọc để tìm kiếm công trình theo mã, tên, địa điểm, trạng thái hoặc khoảng thời gian.'
+  },
+  {
+    target: '[data-tour="filter-section"]',
+    message: 'Đây là phần lọc. Bạn có thể tìm kiếm công trình theo mã, tên hoặc địa điểm, lọc theo trạng thái, hoặc chọn khoảng thời gian từ ngày bắt đầu đến ngày hoàn thành dự kiến. Bấm "Đặt lại" để xóa tất cả bộ lọc.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đảm bảo filter section được mở
+        if (!showFilter.value) {
+          showFilter.value = true
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="construction-table"]',
+    message: 'Đây là bảng danh sách công trình. Bạn có thể xem thông tin về mã công trình, tên công trình, địa điểm, ngày bắt đầu, ngày hoàn thành dự kiến và trạng thái. Click vào một hàng để xem và lập kế hoạch vật tư cho công trình đó.'
+  },
+  {
+    target: '[data-tour="construction-table"]',
+    message: 'Hãy để tôi mở modal định lượng vật tư cho bạn. Tôi sẽ click vào hàng đầu tiên trong bảng.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đợi một chút để đảm bảo bảng đã render
+        await new Promise(resolve => setTimeout(resolve, 300))
+        // Tìm bảng và click vào hàng đầu tiên
+        const table = document.querySelector('[data-tour="construction-table"]')
+        if (table) {
+          const firstRow = table.querySelector('tbody tr')
+          if (firstRow) {
+            firstRow.click()
+            // Đợi modal mở
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="material-norm-modal"]',
+    message: 'Đây là modal định lượng vật tư. Bạn có thể xem thông tin công trình đã chọn, tổng hợp vật tư, và chi tiết định mức vật tư theo từng hạng mục thi công.'
+  },
+  {
+    target: '[data-tour="material-summary"]',
+    message: 'Đây là bảng tổng hợp vật tư. Bảng này hiển thị tổng số lượng và thành tiền cho từng loại vật tư cần nhập kho. Bạn có thể xem tổng thành tiền ở phía dưới.'
+  },
+  {
+    target: '[data-tour="material-detail"]',
+    message: 'Đây là phần chi tiết định mức vật tư theo từng hạng mục thi công. Mỗi hạng mục có một bảng riêng hiển thị các vật tư cần thiết. Bạn có thể chỉnh sửa số lượng định mức trong cột "Định mức" để điều chỉnh kế hoạch vật tư.'
+  },
+  {
+    target: '[data-tour="save-button"]',
+    message: 'Nút "Lưu kế hoạch" cho phép bạn lưu kế hoạch vật tư đã chỉnh sửa. Sau khi lưu, kế hoạch sẽ được gửi lên giám đốc để duyệt.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal trước khi tiếp tục
+        await new Promise(resolve => setTimeout(resolve, 300))
+        const modal = document.querySelector('[data-tour="material-norm-modal"]')
+        if (modal) {
+          const closeButton = modal.querySelector('.btn-close')
+          if (closeButton) {
+            closeButton.click()
+          } else {
+            // Nếu không tìm thấy, thử tìm nút Hủy
+            const cancelButton = modal.querySelector('button')
+            if (cancelButton && (cancelButton.textContent.includes('Hủy') || cancelButton.textContent.includes('Cancel'))) {
+              cancelButton.click()
+            }
+          }
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều công trình hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
   <div class="container-fluid py-4 material-planning">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
-      <h2 class="mb-0">Kế Hoạch Vật Tư</h2>
+      <h2 class="mb-0" data-tour="title">Kế Hoạch Vật Tư</h2>
       <div class="d-flex align-items-center gap-2 flex-wrap">
-        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter" data-tour="filter-button">
           Lọc
         </ActionButton>
         <div class="alert alert-info d-flex align-items-center mb-0 guide-alert">
@@ -334,7 +439,7 @@ const handleMaterialPageChange = (page) => {
 
     <!-- Filter Section -->
     <transition name="slide-fade">
-      <div class="filter-section mb-4" v-show="showFilter">
+      <div class="filter-section mb-4" v-show="showFilter" data-tour="filter-section">
         <div class="row g-3">
           <div class="col-md-3">
             <div class="input-group">
@@ -400,7 +505,7 @@ const handleMaterialPageChange = (page) => {
       </div>
 
       <DataTable v-else :columns="constructionColumns" :data="paginatedConstructions"
-        @row-click="handleConstructionSelect" class="id">
+        @row-click="handleConstructionSelect" class="id" data-tour="construction-table">
         <template #id="{ item }">
           <span class="fw-medium text-primary">{{ item.id }}</span>
         </template>
@@ -443,13 +548,13 @@ const handleMaterialPageChange = (page) => {
           Hiển thị {{ paginatedConstructions.length }} trên {{ filteredConstructions.length }} công trình
         </div>
         <Pagination :total-items="filteredConstructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-          @update:currentPage="handlePageChange" />
+          @update:currentPage="handlePageChange" data-tour="pagination" />
       </div>
     </div>
 
     <!-- Material Norm Dialog -->
     <ModalDialog v-if="showMaterialNormDialog" :show="showMaterialNormDialog"
-      @update:show="showMaterialNormDialog = $event" title="Định lượng vật tư" size="xl">
+      @update:show="showMaterialNormDialog = $event" title="Định lượng vật tư" size="xl" data-tour="material-norm-modal">
       <div class="material-norm-dialog">
         <div class="alert alert-info mb-4">
           <div class="d-flex justify-content-between align-items-center">
@@ -472,7 +577,7 @@ const handleMaterialPageChange = (page) => {
 
         <div v-else>
           <!-- Hiển thị tổng số lượng cho từng vật tư -->
-          <div class="card mb-4">
+          <div class="card mb-4" data-tour="material-summary">
             <div class="card-header text-white">
               <h5 class="mb-0">Tổng hợp vật tư</h5>
             </div>
@@ -502,7 +607,7 @@ const handleMaterialPageChange = (page) => {
           </div>
 
           <!-- Hiển thị chi tiết theo hạng mục -->
-          <div v-for="(norms, itemName) in groupedMaterialNorms" :key="itemName" class="mb-4">
+          <div v-for="(norms, itemName) in groupedMaterialNorms" :key="itemName" class="mb-4" data-tour="material-detail">
             <div class="card">
               <div class="card-header bg-light">
                 <h5 class="mb-0">{{ itemName }}</h5>
@@ -529,7 +634,7 @@ const handleMaterialPageChange = (page) => {
         </div>
 
         <div class="d-flex justify-content-end gap-2 mt-4">
-          <ActionButton type="primary" icon="fas fa-save" @click="handleSavePlan">
+          <ActionButton type="primary" icon="fas fa-save" @click="handleSavePlan" data-tour="save-button">
             Lưu kế hoạch
           </ActionButton>
           <ActionButton type="secondary" icon="fas fa-times" @click="handleCancel">
@@ -565,6 +670,19 @@ const handleMaterialPageChange = (page) => {
         <button class="btn btn-primary" @click="showMessageDialog = false">Đóng</button>
       </div>
     </ModalDialog>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 

@@ -6,6 +6,8 @@ import StatusBadge from '../../components/common/StatusBadge.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
 import Pagination from '../../components/common/Pagination.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const router = useRouter()
 
@@ -21,6 +23,7 @@ onMounted(() => {
 })
 
 const showFilter = ref(false)
+const showTourGuide = ref(false)
 
 // Filter variables
 const searchQuery = ref('')
@@ -120,20 +123,65 @@ const handleConstructionClick = (construction) => {
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString('vi-VN')
 }
+
+// Tour Guide Steps
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý công trình. Tại đây bạn có thể xem danh sách tất cả công trình và xem chi tiết từng công trình.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Đây là thanh công cụ. Nút "Lọc" cho phép bạn ẩn/hiện phần bộ lọc để tìm kiếm công trình.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button'
+    }
+  },
+  {
+    target: '[data-tour="filter"]',
+    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm công trình theo mã, tên, địa điểm. Chọn trạng thái từ dropdown. Chọn khoảng thời gian từ ngày bắt đầu đến ngày hoàn thành. Bấm "Đặt lại" để xóa bộ lọc.'
+  },
+  {
+    target: '[data-tour="table"]',
+    message: 'Đây là bảng danh sách công trình. Bạn có thể xem thông tin cơ bản của từng công trình như mã, tên, địa điểm, ngày bắt đầu, ngày kết thúc và trạng thái. Bấm vào một hàng bất kỳ để xem chi tiết công trình đó.'
+  },
+  {
+    target: '[data-tour="pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều công trình hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Mở filter section nếu chưa mở
+  if (!showFilter.value) {
+    showFilter.value = true
+  }
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1 class="h3 mb-0">Quản lý Công Trình</h1>
-      <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
-        Lọc
-      </ActionButton>
+      <h1 class="h3 mb-0" data-tour="title">Quản lý Công Trình</h1>
+      <div class="d-flex gap-2" data-tour="toolbar">
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+          Lọc
+        </ActionButton>
+      </div>
     </div>
 
     <!-- Filter Section -->
     <transition name="slide-fade">
-      <div class="filter-section mb-4" v-show="showFilter">
+      <div class="filter-section mb-4" v-show="showFilter" data-tour="filter">
         <div class="row g-3">
           <div class="col-md-3">
             <div class="input-group">
@@ -197,7 +245,7 @@ const formatDate = (date) => {
     </div>
 
     <DataTable v-else :columns="columns" :data="paginatedConstructions" class="construction-table"
-      @row-click="handleConstructionClick">
+      @row-click="handleConstructionClick" data-tour="table">
       <template #id="{ item }">
         <span class="fw-medium text-primary">CT-{{ item.id }}</span>
       </template>
@@ -240,8 +288,21 @@ const formatDate = (date) => {
         Hiển thị {{ paginatedConstructions.length }} trên {{ filteredConstructions.length }} công trình
       </div>
       <Pagination :total-items="filteredConstructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
-        @update:currentPage="handlePageChange" />
+        @update:currentPage="handlePageChange" data-tour="pagination" />
     </div>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 

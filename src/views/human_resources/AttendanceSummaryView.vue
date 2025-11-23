@@ -4,6 +4,7 @@ import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import LeaveForm from '../../components/common/leave/LeaveForm.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import { useAuth } from '../../composables/useAuth.js'
 
 const showEmployeeModal = ref(false)
@@ -3000,10 +3001,6 @@ const tourSteps = computed(() => {
                 </div>
               </div>
               <div class="col-md-4 text-end">
-                <button class="btn btn-outline-light btn-sm" @click="startTour">
-                  <i class="fas fa-question-circle me-1"></i>
-                  Hướng dẫn
-                </button>
               </div>
             </div>
           </div>
@@ -3629,10 +3626,6 @@ const tourSteps = computed(() => {
                 </div>
               </div>
               <div class="col-md-4 text-end">
-                <button class="btn btn-outline-light btn-sm" @click="startTour">
-                  <i class="fas fa-question-circle me-1"></i>
-                  Hướng dẫn
-                </button>
               </div>
             </div>
           </div>
@@ -3875,10 +3868,6 @@ const tourSteps = computed(() => {
               </div>
               <div class="col-md-6">
                 <div class="header-actions d-flex gap-2 justify-content-end">
-                  <button class="btn btn-outline-light btn-sm" @click="startTour">
-                    <i class="fas fa-question-circle me-1"></i>
-                    Hướng dẫn
-                  </button>
                   <div class="d-flex gap-2" data-tour="export-buttons-detail">
                     <button class="btn btn-outline-light btn-sm" @click="exportDetailToExcel">
                       <i class="fas fa-download me-1"></i>
@@ -3993,10 +3982,6 @@ const tourSteps = computed(() => {
               </div>
               <div class="col-md-6">
                 <div class="header-actions d-flex gap-2 justify-content-end">
-                  <button class="btn btn-outline-light btn-sm" @click="startTour">
-                    <i class="fas fa-question-circle me-1"></i>
-                    Hướng dẫn
-                  </button>
                   <div class="d-flex gap-2" data-tour="export-buttons-attendance">
                     <button class="btn btn-outline-light btn-sm" @click="exportAttendanceToExcel">
                       <i class="fas fa-download me-1"></i>
@@ -4106,6 +4091,11 @@ const tourSteps = computed(() => {
     :steps="tourSteps"
     @update:show="showTourGuide = $event"
     @complete="handleTourComplete"
+  />
+  <AIChatbotButton 
+    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+    title="Trợ lý AI"
+    @guide-click="startTour"
   />
 </template>
 

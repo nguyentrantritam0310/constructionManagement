@@ -5,6 +5,8 @@ import PlanForm from '../../components/construction-plan/PlanForm.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import Pagination from '../../components/common/Pagination.vue'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import { useConstructionPlan } from '../../composables/useConstructionPlan'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ExcelJS from 'exceljs'
@@ -70,6 +72,7 @@ const filteredPlans = computed(() => {
 })
 
 const showFilter = ref(false)
+const showTourGuide = ref(false)
 const resetFilters = () => {
   searchQuery.value = ''
   statusFilter.value = ''
@@ -258,13 +261,149 @@ const statusOptions = [
   { value: 'Hoàn thành', label: 'Hoàn thành' },
   { value: 'Hủy bỏ', label: 'Hủy bỏ' }
 ]
+
+// Tour Guide Steps
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý kế hoạch thi công. Tại đây bạn có thể xem, tạo, và quản lý các kế hoạch thi công của công trình.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
+  },
+  {
+    target: '[data-tour="create-form"]',
+    message: 'Đây là form tạo kế hoạch thi công. Bạn có thể chọn công trình, hạng mục, chỉ huy phụ trách, ngày bắt đầu và ngày kết thúc dự kiến. Sau khi điền đầy đủ, bấm "Lưu" để tạo kế hoạch.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:first-child'
+    }
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc kế hoạch theo mã, tên công trình, hạng mục, trạng thái và khoảng thời gian.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:nth-child(2)'
+    }
+  },
+  {
+    target: '[data-tour="filter"]',
+    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã, tên công trình, hạng mục. Chọn trạng thái từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Bấm "Đặt lại" để xóa bộ lọc.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách kế hoạch ra file Excel để lưu trữ hoặc xử lý thêm.'
+  },
+  {
+    target: '[data-tour="import-modal"]',
+    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin kế hoạch vào file Excel, sau đó chọn file và bấm "Xử lý" để import vào hệ thống.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:nth-child(4)'
+    }
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng bất cứ lúc nào.'
+  },
+  {
+    target: '[data-tour="table"]',
+    message: 'Đây là bảng danh sách kế hoạch thi công. Bạn có thể xem thông tin chi tiết của từng kế hoạch. Click vào hàng để xem chi tiết kế hoạch. Cột "Thao tác" chứa các nút để cập nhật và đổi trạng thái kế hoạch.'
+  },
+  {
+    target: '[data-tour="plan-detail-modal"]',
+    message: 'Đây là modal chi tiết kế hoạch thi công. Tại đây bạn có thể xem và quản lý các nhiệm vụ thi công của kế hoạch, cũng như theo dõi khối lượng công việc. Hãy để tôi hướng dẫn từng phần!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Tìm và click vào hàng đầu tiên trong bảng để mở modal chi tiết
+        await new Promise(resolve => setTimeout(resolve, 100))
+        const tableRow = document.querySelector('[data-tour="table"] tbody tr')
+        if (tableRow) {
+          tableRow.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="plan-header"]',
+    message: 'Đây là phần header của modal chi tiết. Bạn có thể thấy tên kế hoạch và trạng thái hiện tại của kế hoạch. Nút "Thêm Nhiệm Vụ" cho phép bạn thêm nhiệm vụ thi công mới vào kế hoạch này.'
+  },
+  {
+    target: '[data-tour="add-task-button"]',
+    message: 'Nút "Thêm Nhiệm Vụ" cho phép bạn thêm nhiệm vụ thi công mới vào kế hoạch. Mỗi nhiệm vụ sẽ có khối lượng hoạch định riêng và được quản lý độc lập.'
+  },
+  {
+    target: '[data-tour="tasks-table"]',
+    message: 'Đây là bảng danh sách nhiệm vụ thi công của kế hoạch. Mỗi nhiệm vụ có mã nhiệm vụ, khối lượng hoạch định, khối lượng hiện tại, khối lượng thực tế và trạng thái. Hãy để tôi giải thích chi tiết về logic khối lượng!'
+  },
+  {
+    target: '[data-tour="workload-column"]',
+    message: 'Cột "Khối lượng hoạch định" hiển thị khối lượng công việc đã được lên kế hoạch ban đầu cho nhiệm vụ này. Đây là mục tiêu cần đạt được.'
+  },
+  {
+    target: '[data-tour="actual-workload-input"]',
+    message: 'Cột "Khối lượng thực tế" là khối lượng công việc đã hoàn thành thực tế. Bạn có thể nhập trực tiếp vào ô này để cập nhật tiến độ. Lưu ý: Khối lượng thực tế không được vượt quá khối lượng hoạch định.'
+  },
+  {
+    target: '[data-tour="current-volume-column"]',
+    message: 'Cột "Khối lượng hiện tại" được tính tự động bằng công thức: Khối lượng hoạch định - Khối lượng thực tế. Đây là phần công việc còn lại chưa hoàn thành. Khi bạn cập nhật khối lượng thực tế, khối lượng hiện tại sẽ tự động thay đổi.'
+  },
+  {
+    target: '[data-tour="plan-actions"]',
+    message: 'Sau khi bạn cập nhật khối lượng thực tế cho các nhiệm vụ, bấm nút "Xác nhận" để lưu các thay đổi. Nút này chỉ hoạt động khi có thay đổi chưa được lưu. Nút "Hủy" sẽ đóng modal mà không lưu thay đổi.'
+  },
+  {
+    target: '[data-tour="pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều kế hoạch hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal chi tiết nếu đang mở
+        const detailModal = document.querySelector('[data-tour="plan-detail-modal"]')
+        if (detailModal && detailModal.closest('.modal.show')) {
+          const closeBtn = detailModal.querySelector('[data-tour="plan-actions"] .btn-secondary')
+          if (closeBtn) {
+            closeBtn.click()
+            await new Promise(resolve => setTimeout(resolve, 200))
+          }
+        }
+        if (showImportModal.value) {
+          showImportModal.value = false
+        }
+        if (showCreateForm.value) {
+          showCreateForm.value = false
+        }
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Mở filter section nếu chưa mở
+  if (!showFilter.value) {
+    showFilter.value = true
+  }
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1>Quản Lý Kế Hoạch Thi Công</h1>
-      <div class="d-flex gap-2">
+      <h1 data-tour="title">Quản Lý Kế Hoạch Thi Công</h1>
+      <div class="d-flex gap-2" data-tour="toolbar">
         <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateForm = true">
          Thêm
       </ActionButton>
@@ -283,7 +422,7 @@ const statusOptions = [
 
     <!-- Filter Section -->
       <transition name="slide-fade">
-        <div class="filter-section mb-4" v-show="showFilter">
+        <div class="filter-section mb-4" v-show="showFilter" data-tour="filter">
           <div class="row g-3">
             <div class="col-md-4">
               <input
@@ -334,6 +473,7 @@ const statusOptions = [
       @update-plan="handleUpdatePlan"
       @update-status="handleUpdateStatus"
       @update-volume="handleUpdateVolume"
+      data-tour="table"
     />
 
     <!-- Phân trang -->
@@ -346,15 +486,18 @@ const statusOptions = [
         :items-per-page="itemsPerPage"
         :current-page="currentPage"
         @update:currentPage="handlePageChange"
+        data-tour="pagination"
       />
     </div>
 
     <ModalDialog v-model:show="showCreateForm" title="Tạo Kế Hoạch Thi Công" size="lg">
-      <PlanForm mode="create" @close="handleCreatePlan" />
+      <div data-tour="create-form">
+        <PlanForm mode="create" @close="handleCreatePlan" />
+      </div>
     </ModalDialog>
 
     <!-- Import Excel Modal -->
-    <ModalDialog v-model:show="showImportModal" title="Nhập kế hoạch từ Excel" size="lg">
+    <ModalDialog v-model:show="showImportModal" title="Nhập kế hoạch từ Excel" size="lg" data-tour="import-modal">
       <div class="p-4">
         <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
         <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
@@ -370,6 +513,19 @@ const statusOptions = [
         </div>
       </div>
     </ModalDialog>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 

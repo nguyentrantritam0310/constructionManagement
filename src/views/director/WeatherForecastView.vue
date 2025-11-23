@@ -1,8 +1,8 @@
 <template>
   <div class="weather-forecast-container">
-    <div class="location-select">
+    <div class="location-select" data-tour="location-select">
       <div class="location-header">
-        <h4><i class="fas fa-map-marker-alt me-2"></i> Chọn vị trí để dự báo thời tiết</h4>
+        <h4 data-tour="title"><i class="fas fa-map-marker-alt me-2"></i> Chọn vị trí để dự báo thời tiết</h4>
       </div>
       <div class="location-content">
         <div class="location-info">
@@ -14,7 +14,7 @@
             <label>Kinh độ:</label>
             <span>{{ selectedLongitude.toFixed(6) }}</span>
           </div>
-          <button class="btn btn-primary" @click="fetchForecast" :disabled="loading">
+          <button class="btn btn-primary" @click="fetchForecast" :disabled="loading" data-tour="fetch-button">
             <i class="fas fa-cloud-sun me-2"></i>Lấy dự báo cho vị trí này
           </button>
           <button class="btn btn-outline-secondary" @click="getCurrentLocation">
@@ -22,7 +22,45 @@
           </button>
         </div>
         <div class="map-container">
-          <div class="map-wrapper">
+          <!-- Search Box -->
+          <div class="search-box">
+            <div class="search-input-wrapper">
+              <i class="fas fa-search search-icon"></i>
+              <input 
+                type="text" 
+                v-model="searchQuery"
+                @input="handleSearchInput"
+                @keyup.enter="performSearch"
+                placeholder="Tìm kiếm địa điểm (ví dụ: Hà Nội, TP.HCM, Đà Nẵng...)"
+                class="search-input"
+              />
+              <button 
+                v-if="searchQuery" 
+                @click="clearSearch" 
+                class="clear-search-btn"
+                title="Xóa">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <!-- Search Results Dropdown -->
+            <div v-if="searchResults.length > 0" class="search-results">
+              <div 
+                v-for="(result, index) in searchResults" 
+                :key="index"
+                @click="selectSearchResult(result)"
+                class="search-result-item">
+                <i class="fas fa-map-marker-alt"></i>
+                <div class="result-info">
+                  <div class="result-name">{{ result.display_name }}</div>
+                  <div class="result-type">{{ result.type }}</div>
+                </div>
+              </div>
+            </div>
+            <div v-if="searching" class="search-loading">
+              <i class="fas fa-spinner fa-spin"></i> Đang tìm kiếm...
+            </div>
+          </div>
+          <div class="map-wrapper" data-tour="map">
             <l-map 
               ref="map" 
               :zoom="zoom" 
@@ -31,22 +69,15 @@
               <l-tile-layer 
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
                 layer-type="base"
-                name="CartoDB Voyager No Labels"
+                name="CartoDB Voyager (No Labels)"
                 attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors &copy; <a href='https://carto.com/attributions'>CARTO</a>"
                 subdomains="abcd"
                 max-zoom="19">
               </l-tile-layer>
-              <!-- Labels cho các tỉnh/thành phố Việt Nam -->
-              <l-marker 
-                v-for="province in vietnamProvinces" 
-                :key="province.name"
-                :lat-lng="[province.lat, province.lng]"
-                :icon="provinceLabelIcon(province.name)">
-              </l-marker>
               <l-marker v-if="markerLatLng" :lat-lng="markerLatLng"></l-marker>
             </l-map>
           </div>
-          <p class="map-hint"><i class="fas fa-info-circle me-2"></i>Click trên bản đồ để chọn vị trí</p>
+          <p class="map-hint"><i class="fas fa-info-circle me-2"></i>Click trên bản đồ hoặc tìm kiếm để chọn vị trí</p>
         </div>
       </div>
     </div>
@@ -66,7 +97,7 @@
         </div>
         <div v-else-if="error" class="error">{{ error }}</div>
         <div v-else>
-          <div class="forecast-grid">
+          <div class="forecast-grid" data-tour="forecast-grid">
             <div v-for="(day, idx) in roundedForecast" :key="day.date" class="forecast-card">
               <div class="card-header">
                 <i class="fas fa-calendar-day"></i> <b>{{ day.date }}</b>
@@ -118,7 +149,7 @@
             </div>
           </div> -->
 
-          <div class="weather-averages" v-if="weatherAverages">
+          <div class="weather-averages" v-if="weatherAverages" data-tour="averages">
             <h3 class="averages-title">
               <i class="fas fa-chart-line"></i>
               Thống kê trung bình 7 ngày
@@ -169,7 +200,7 @@
             </div>
           </div>
 
-          <div v-if="affectedConstructions.length > 0" class="construction-warning">
+          <div v-if="affectedConstructions.length > 0" class="construction-warning" data-tour="warning">
             <div class="warning-header">
               <i class="fas fa-exclamation-triangle"></i>
               Cảnh báo: Các công trình có thể bị ảnh hưởng do mưa lớn
@@ -196,6 +227,19 @@
         </div>
       </div>
     </div>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 
@@ -206,6 +250,8 @@ import { useConstructionManagement } from '@/composables/useConstructionManageme
 import { LMap, LTileLayer, LMarker } from "@vue-leaflet/vue-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from 'leaflet';
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 // Fix lỗi icon marker mặc định của Leaflet khi dùng với bundler như Vite/Webpack
 delete L.Icon.Default.prototype._getIconUrl;
@@ -244,6 +290,12 @@ const metricLabels = {
   mae: 'MAE',
   mape: 'MAPE (%)'
 }
+
+// State cho tìm kiếm địa điểm
+const searchQuery = ref('')
+const searchResults = ref([])
+const searching = ref(false)
+let searchTimeout = null
 
 const isNumber = (val) => typeof val === 'number' && !isNaN(val)
 const formatNumber = (val) => isNumber(val) ? val.toFixed(2) : val
@@ -309,6 +361,88 @@ const handleMapClick = (event) => {
     selectedLatitude.value = event.latlng.lat
     selectedLongitude.value = event.latlng.lng
     zoom.value = Math.max(zoom.value, 10) // Phóng to một chút khi chọn vị trí mới
+    // Đóng search results khi click trên map
+    searchResults.value = []
+  }
+}
+
+// Hàm xử lý input tìm kiếm với debounce
+const handleSearchInput = () => {
+  if (searchTimeout) {
+    clearTimeout(searchTimeout)
+  }
+  
+  if (searchQuery.value.trim().length < 2) {
+    searchResults.value = []
+    return
+  }
+  
+  searchTimeout = setTimeout(() => {
+    performSearch()
+  }, 500) // Debounce 500ms
+}
+
+// Hàm thực hiện tìm kiếm địa điểm
+const performSearch = async () => {
+  if (!searchQuery.value.trim() || searchQuery.value.trim().length < 2) {
+    searchResults.value = []
+    return
+  }
+  
+  searching.value = true
+  searchResults.value = []
+  
+  try {
+    // Sử dụng Nominatim API của OpenStreetMap để tìm kiếm
+    // Giới hạn kết quả trong khu vực Việt Nam
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?` +
+      `q=${encodeURIComponent(searchQuery.value)}` +
+      `&format=json` +
+      `&limit=5` +
+      `&bounded=1` +
+      `&viewbox=102.1,23.4,109.5,8.5` +
+      `&countrycodes=vn` +
+      `&addressdetails=1`
+    )
+    
+    if (!response.ok) {
+      throw new Error('Lỗi khi tìm kiếm địa điểm')
+    }
+    
+    const data = await response.json()
+    searchResults.value = data.map(item => ({
+      display_name: item.display_name,
+      lat: parseFloat(item.lat),
+      lon: parseFloat(item.lon),
+      type: item.type || item.class || 'Địa điểm',
+      importance: item.importance || 0
+    })).sort((a, b) => b.importance - a.importance)
+    
+  } catch (err) {
+    console.error('Error searching location:', err)
+    searchResults.value = []
+  } finally {
+    searching.value = false
+  }
+}
+
+// Hàm chọn kết quả tìm kiếm
+const selectSearchResult = (result) => {
+  selectedLatitude.value = result.lat
+  selectedLongitude.value = result.lon
+  mapCenter.value = [result.lat, result.lon]
+  zoom.value = 13 // Phóng to vị trí đã chọn
+  searchQuery.value = result.display_name
+  searchResults.value = []
+}
+
+// Hàm xóa tìm kiếm
+const clearSearch = () => {
+  searchQuery.value = ''
+  searchResults.value = []
+  if (searchTimeout) {
+    clearTimeout(searchTimeout)
   }
 }
 
@@ -402,6 +536,49 @@ const weatherAverages = computed(() => {
     avgPrecipHours: sum.precip_hours / count,
   }
 })
+
+// Tour Guide Steps
+const showTourGuide = ref(false)
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang dự báo thời tiết. Tại đây bạn có thể chọn vị trí trên bản đồ để xem dự báo thời tiết 7 ngày tới và các cảnh báo về công trình có thể bị ảnh hưởng.'
+  },
+  {
+    target: '[data-tour="location-select"]',
+    message: 'Đây là phần chọn vị trí. Bạn có thể thấy tọa độ vĩ độ và kinh độ của vị trí đã chọn. Bấm "Lấy vị trí hiện tại" để tự động lấy vị trí của bạn, hoặc click trên bản đồ để chọn vị trí khác.'
+  },
+  {
+    target: '[data-tour="map"]',
+    message: 'Đây là bản đồ tương tác. Bạn có thể click vào bất kỳ điểm nào trên bản đồ để chọn vị trí cần dự báo thời tiết. Các marker trên bản đồ đánh dấu các tỉnh/thành phố của Việt Nam.'
+  },
+  {
+    target: '[data-tour="fetch-button"]',
+    message: 'Sau khi chọn vị trí, bấm nút "Lấy dự báo cho vị trí này" để lấy dự báo thời tiết 7 ngày tới cho vị trí đã chọn. Hệ thống sẽ hiển thị nhiệt độ, lượng mưa, gió và các thông tin khác.'
+  },
+  {
+    target: '[data-tour="forecast-grid"]',
+    message: 'Đây là bảng dự báo thời tiết 7 ngày tới. Mỗi card hiển thị thông tin của một ngày, bao gồm nhiệt độ cao nhất/thấp nhất, lượng mưa, giờ nắng, tốc độ gió và tổng bức xạ. Bấm "Xem chi tiết" để xem thêm thông tin chi tiết.'
+  },
+  {
+    target: '[data-tour="averages"]',
+    message: 'Đây là phần thống kê trung bình 7 ngày. Bạn có thể xem các giá trị trung bình của nhiệt độ, lượng mưa, tốc độ gió và số giờ mưa trong 7 ngày tới.'
+  },
+  {
+    target: '[data-tour="warning"]',
+    message: 'Nếu lượng mưa trung bình vượt quá 7mm/ngày, hệ thống sẽ hiển thị cảnh báo về các công trình có thể bị ảnh hưởng. Phần này giúp bạn chuẩn bị và bảo vệ các công trình trước thời tiết xấu.'
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <style scoped>
@@ -471,6 +648,153 @@ const weatherAverages = computed(() => {
   gap: 0.5rem;
 }
 
+/* Search Box Styles */
+.search-box {
+  position: relative;
+  z-index: 1000;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-input-wrapper:focus-within {
+  border-color: #2980b9;
+  box-shadow: 0 4px 12px rgba(41, 128, 185, 0.2);
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: #6c757d;
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.search-input {
+  flex: 1;
+  padding: 12px 40px 12px 40px;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: #2c3e50;
+  background: transparent;
+}
+
+.search-input::placeholder {
+  color: #adb5bd;
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: #6c757d;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clear-search-btn:hover {
+  background: #f1f3f5;
+  color: #2c3e50;
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1001;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 1px solid #f1f3f5;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-item:hover {
+  background: #f8f9fa;
+}
+
+.search-result-item i {
+  color: #2980b9;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.result-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.result-name {
+  font-weight: 500;
+  color: #2c3e50;
+  font-size: 14px;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-type {
+  font-size: 12px;
+  color: #6c757d;
+  text-transform: capitalize;
+}
+
+.search-loading {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6c757d;
+  font-size: 14px;
+  z-index: 1001;
+}
+
+.search-loading i {
+  color: #2980b9;
+}
+
 .map-wrapper {
   height: 400px;
   width: 100%;
@@ -503,6 +827,15 @@ const weatherAverages = computed(() => {
   
   .map-container {
     order: 1;
+  }
+  
+  .search-input {
+    font-size: 13px;
+    padding: 10px 36px 10px 36px;
+  }
+  
+  .search-input::placeholder {
+    font-size: 13px;
   }
 }
 

@@ -247,9 +247,9 @@ const groupedTasks = computed(() => {
 </script>
 
 <template>
-  <ModalDialog :show="show" @update:show="handleClose" title="Chi Tiết Kế Hoạch Thi Công" size="xl">
+  <ModalDialog :show="show" @update:show="handleClose" title="Chi Tiết Kế Hoạch Thi Công" size="xl" data-tour="plan-detail-modal">
     <div class="plan-detail">
-      <div class="alert alert-info mb-4">
+      <div class="alert alert-info mb-4" data-tour="plan-header">
         <div class="d-flex justify-content-between align-items-center">
           <div>
             <h5 class="alert-heading">{{ plan.planName }}</h5>
@@ -257,7 +257,7 @@ const groupedTasks = computed(() => {
               <StatusBadge :status="plan.statusName" />
             </p>
           </div>
-          <button class="btn btn-primary" @click="showCreateTaskDialog = true" :disabled="!isEditable">
+          <button class="btn btn-primary" @click="showCreateTaskDialog = true" :disabled="!isEditable" data-tour="add-task-button">
             <i class="fas fa-plus me-2"></i>
             Thêm Nhiệm Vụ
           </button>
@@ -275,20 +275,21 @@ const groupedTasks = computed(() => {
       </div>
 
       <template v-else>
-        <DataTable :columns="columns" :data="paginatedTasks">
+        <DataTable :columns="columns" :data="paginatedTasks" data-tour="tasks-table">
 
           <template #workload="{ item }">
-            <span>{{ item.workload }} {{ item.unitOfMeasurementName }}</span>
+            <span data-tour="workload-column">{{ item.workload }} {{ item.unitOfMeasurementName }}</span>
           </template>
 
           <template #actualWorkload="{ item }">
             <input type="number" class="form-control form-control-sm" :value="item.actualWorkload"
               :disabled="['Chờ khởi công', 'Hủy bỏ', 'Tạm dừng', 'Hoàn thành'].includes(item.statusName)"
-              @input="(e) => handleVolumeChange(item, e.target.value)" min="0" :max="item.workload" step="0.01" />
+              @input="(e) => handleVolumeChange(item, e.target.value)" min="0" :max="item.workload" step="0.01" 
+              data-tour="actual-workload-input" />
           </template>
 
           <template #currentVolume="{ item }">
-            <span>{{ item.currentVolume ?? (item.workload - (item.actualWorkload || 0)) }} {{ item.unitOfMeasurementName
+            <span data-tour="current-volume-column">{{ item.currentVolume ?? (item.workload - (item.actualWorkload || 0)) }} {{ item.unitOfMeasurementName
             }}</span>
           </template>
 
@@ -314,12 +315,12 @@ const groupedTasks = computed(() => {
         </div>
       </template>
 
-      <div class="d-flex justify-content-end gap-2 mt-4">
+      <div class="d-flex justify-content-end gap-2 mt-4" data-tour="plan-actions">
         <button type="button" class="btn btn-secondary" @click="handleClose">
           Hủy
         </button>
         <button type="button" class="btn btn-primary" @click="handleSubmit"
-          :disabled="!isEditable || !hasUnsavedChanges">
+          :disabled="!isEditable || !hasUnsavedChanges" data-tour="confirm-button">
           Xác nhận
         </button>
       </div>

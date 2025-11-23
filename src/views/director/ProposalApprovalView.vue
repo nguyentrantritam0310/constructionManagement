@@ -13,6 +13,8 @@ import Pagination from '../../components/common/Pagination.vue'
 import MaterialPlanApprovalList from '@/components/proposal-approval/MaterialPlanApprovalList.vue'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import TourGuide from '../../components/common/TourGuide.vue'
+import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const { showMessage } = useGlobalMessage()
 
@@ -219,26 +221,198 @@ const handleNoteConfirm = async () => {
     noteText.value = ''
   }
 }
+
+// Tour Guide Steps
+const showTourGuide = ref(false)
+const tourSteps = computed(() => {
+  if (mainTab.value === 'report') {
+    return [
+      {
+        target: '[data-tour="title"]',
+        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang duyệt đề xuất. Tại đây bạn có thể duyệt hoặc từ chối các báo cáo sự cố kỹ thuật và sự cố thi công.'
+      },
+      {
+        target: '[data-tour="main-tabs"]',
+        message: 'Đây là các tab chính. Tab "Báo cáo" để duyệt các báo cáo sự cố, tab "Kế hoạch vật tư" để duyệt các kế hoạch vật tư.'
+      },
+      {
+        target: '[data-tour="report-tab"]',
+        message: 'Tab "Báo cáo" hiển thị danh sách các báo cáo cần duyệt. Bạn có thể chuyển đổi giữa "Sự cố kĩ thuật" và "Sự cố thi công" để xem từng loại báo cáo.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="main-tabs"] button:first-child'
+        }
+      },
+      {
+        target: '[data-tour="sub-tabs"]',
+        message: 'Đây là các tab con trong tab "Báo cáo". Tab "Sự cố kĩ thuật" hiển thị các báo cáo về vấn đề kỹ thuật, tab "Sự cố thi công" hiển thị các báo cáo về sự cố trong quá trình thi công.'
+      },
+      {
+        target: '[data-tour="technical-tab"]',
+        message: 'Tab "Sự cố kĩ thuật" hiển thị danh sách các báo cáo về vấn đề kỹ thuật cần duyệt. Bạn có thể xem chi tiết, duyệt hoặc từ chối từng báo cáo.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="sub-tabs"] button:first-child'
+        }
+      },
+      {
+        target: '[data-tour="table"]',
+        message: 'Đây là bảng danh sách báo cáo. Bạn có thể xem thông tin chi tiết của từng báo cáo. Click vào một hàng để xem chi tiết báo cáo. Cột "Thao tác" chứa các nút để duyệt (✓) hoặc từ chối (✗) báo cáo.'
+      },
+      {
+        target: '[data-tour="approve-button"]',
+        message: 'Nút duyệt (✓) cho phép bạn duyệt báo cáo. Khi bấm vào nút này, một modal sẽ mở ra để bạn nhập giải pháp đề xuất. Sau khi nhập xong, bấm "Xác nhận" để duyệt báo cáo.'
+      },
+      {
+        target: '[data-tour="reject-button"]',
+        message: 'Nút từ chối (✗) cho phép bạn từ chối báo cáo. Khi bấm vào nút này, một modal sẽ mở ra để bạn nhập lý do từ chối. Sau khi nhập xong, bấm "Xác nhận" để từ chối báo cáo.'
+      },
+      {
+        target: '[data-tour="progress-tab"]',
+        message: 'Tab "Sự cố thi công" hiển thị danh sách các báo cáo về sự cố trong quá trình thi công cần duyệt. Tương tự như tab "Sự cố kĩ thuật", bạn có thể xem chi tiết, duyệt hoặc từ chối từng báo cáo.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="sub-tabs"] button:last-child'
+        }
+      },
+      {
+        target: '[data-tour="material-tab"]',
+        message: 'Tab "Kế hoạch vật tư" hiển thị danh sách các kế hoạch vật tư cần duyệt. Bạn có thể xem chi tiết và duyệt các kế hoạch vật tư tại đây.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="main-tabs"] button:last-child'
+        }
+      },
+      {
+        target: '[data-tour="pagination"]',
+        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều báo cáo hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Quay lại tab report nếu đang ở material tab
+            if (mainTab.value === 'material') {
+              mainTab.value = 'report'
+              await new Promise(resolve => setTimeout(resolve, 200))
+            }
+            // Quay lại technical tab nếu đang ở progress tab
+            if (reportTab.value === 'progress') {
+              reportTab.value = 'technical'
+              await new Promise(resolve => setTimeout(resolve, 200))
+            }
+          }
+        }
+      }
+    ]
+  } else {
+    return [
+      {
+        target: '[data-tour="title"]',
+        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Kế hoạch vật tư". Tại đây bạn có thể xem và duyệt các kế hoạch vật tư.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="main-tabs"] button:last-child'
+        }
+      },
+      {
+        target: '[data-tour="material-table"]',
+        message: 'Đây là bảng danh sách các kế hoạch vật tư cần duyệt. Bảng hiển thị mã đơn hàng, người lập kế hoạch, người nhập kho, ngày đặt và trạng thái. Bạn có thể click vào một hàng để xem chi tiết kế hoạch vật tư.'
+      },
+      {
+        target: '[data-tour="material-table"]',
+        message: 'Hãy để tôi mở chi tiết một kế hoạch vật tư để bạn xem. Tôi sẽ click vào hàng đầu tiên trong bảng.',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Đợi một chút để đảm bảo tab đã chuyển
+            await new Promise(resolve => setTimeout(resolve, 300))
+            // Tìm bảng và click vào hàng đầu tiên
+            const table = document.querySelector('[data-tour="material-table"]')
+            if (table) {
+              const firstRow = table.querySelector('tbody tr')
+              if (firstRow) {
+                firstRow.click()
+                // Đợi modal mở
+                await new Promise(resolve => setTimeout(resolve, 500))
+              }
+            }
+          }
+        }
+      },
+      {
+        target: '[data-tour="material-detail-modal"]',
+        message: 'Đây là modal chi tiết đơn hàng và kế hoạch vật tư. Bạn có thể xem thông tin chi tiết về đơn hàng nhập kho, danh sách vật tư cần nhập, số lượng, đơn vị tính và các thông tin khác.'
+      },
+      {
+        target: '[data-tour="material-detail-content"]',
+        message: 'Trong modal này, bạn có thể xem toàn bộ thông tin về kế hoạch vật tư, bao gồm thông tin đơn hàng, danh sách vật tư, số lượng cần nhập, và các thông tin liên quan đến người lập kế hoạch và người nhập kho.'
+      },
+      {
+        target: '[data-tour="material-approve-button"]',
+        message: 'Nút duyệt (✓) màu xanh cho phép bạn duyệt kế hoạch vật tư. Khi bấm vào nút này, kế hoạch sẽ được duyệt và trạng thái sẽ thay đổi thành "Approved".'
+      },
+      {
+        target: '[data-tour="material-reject-button"]',
+        message: 'Nút từ chối (✗) màu đỏ cho phép bạn từ chối kế hoạch vật tư. Khi bấm vào nút này, kế hoạch sẽ bị từ chối và trạng thái sẽ thay đổi thành "Rejected".',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Đóng modal trước khi tiếp tục
+            await new Promise(resolve => setTimeout(resolve, 300))
+            const modal = document.querySelector('[data-tour="material-detail-modal"]')
+            if (modal) {
+              // Tìm nút đóng modal (btn-close)
+              const closeButton = modal.querySelector('.btn-close')
+              if (closeButton) {
+                closeButton.click()
+              } else {
+                // Nếu không tìm thấy, thử tìm nút Cancel trong WarehouseEntryForm
+                const cancelButton = modal.querySelector('button')
+                if (cancelButton && (cancelButton.textContent.includes('Hủy') || cancelButton.textContent.includes('Cancel'))) {
+                  cancelButton.click()
+                }
+              }
+              await new Promise(resolve => setTimeout(resolve, 300))
+            }
+          }
+        }
+      },
+      {
+        target: '[data-tour="material-table"]',
+        message: 'Bạn có thể quay lại bảng danh sách để xem các kế hoạch vật tư khác. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Kế hoạch vật tư"!'
+      }
+    ]
+  }
+})
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
   <div class="vertical-tabs-layout">
     <!-- Tabs dọc bên trái -->
-    <div class="vertical-tabs">
-      <button class="vertical-tab-btn" :class="{ active: mainTab === 'report' }" @click="mainTab = 'report'">
+    <div class="vertical-tabs" data-tour="main-tabs">
+      <button class="vertical-tab-btn" :class="{ active: mainTab === 'report' }" @click="mainTab = 'report'" data-tour="report-tab">
         <i class="fas fa-clipboard-list me-2"></i> Báo cáo
       </button>
-      <div v-if="mainTab === 'report'" class="vertical-sub-tabs">
+      <div v-if="mainTab === 'report'" class="vertical-sub-tabs" data-tour="sub-tabs">
         <button class="vertical-sub-tab-btn" :class="{ active: reportTab === 'technical' }"
-          @click="reportTab = 'technical'">
+          @click="reportTab = 'technical'" data-tour="technical-tab">
           <i class="fas fa-wrench me-1"></i> Sự cố kĩ thuật
         </button>
         <button class="vertical-sub-tab-btn" :class="{ active: reportTab === 'progress' }"
-          @click="reportTab = 'progress'">
+          @click="reportTab = 'progress'" data-tour="progress-tab">
           <i class="fas fa-exclamation-triangle me-1"></i> Sự cố thi công
         </button>
       </div>
-      <button class="vertical-tab-btn" :class="{ active: mainTab === 'material' }" @click="mainTab = 'material'">
+      <button class="vertical-tab-btn" :class="{ active: mainTab === 'material' }" @click="mainTab = 'material'" data-tour="material-tab">
         <i class="fas fa-boxes me-2"></i> Kế hoạch vật tư
       </button>
     </div>
@@ -246,7 +420,7 @@ const handleNoteConfirm = async () => {
     <!-- Nội dung bên phải -->
     <div class="vertical-tabs-content flex-grow-1">
       <transition name="fade" mode="out-in">
-        <div v-if="mainTab === 'report'" key="report">
+        <div v-if="mainTab === 'report'" key="report" data-tour="title">
           <div class="technical-report">
             <div v-if="loading" class="text-center py-4">
               <div class="spinner-border text-primary" role="status">
@@ -258,7 +432,7 @@ const handleNoteConfirm = async () => {
             </div>
             <div class="table-wrapper">
               <DataTable v-if="reportTab === 'technical'" :columns="columns" :data="paginatedTechnicalReports"
-                class="report-table" @row-click="handleRowClick">
+                class="report-table" @row-click="handleRowClick" data-tour="table">
                 <template #level="{ item }">
                   <span :class="'badge bg-' + (item.level === 'Nghiêm trọng' ? 'danger' :
                     item.level === 'Cao' ? 'warning' :
@@ -283,6 +457,7 @@ const handleNoteConfirm = async () => {
                       @click="(e) => openNoteModal('approve', item, e)"
                       :disabled="item.statusLogs[0].status !== 0"
                       :title="item.statusLogs[0].status === 0 ? 'Duyệt báo cáo' : 'Báo cáo đã được xử lý'"
+                      data-tour="approve-button"
                     >
                       <i class="fas fa-check"></i>
                     </button>
@@ -292,6 +467,7 @@ const handleNoteConfirm = async () => {
                       @click="(e) => openNoteModal('reject', item, e)"
                       :disabled="item.statusLogs[0].status !== 0"
                       :title="item.statusLogs[0].status === 0 ? 'Từ chối báo cáo' : 'Báo cáo đã được xử lý'"
+                      data-tour="reject-button"
                     >
                       <i class="fas fa-times"></i>
                     </button>
@@ -299,7 +475,7 @@ const handleNoteConfirm = async () => {
                 </template>
               </DataTable>
               <DataTable v-else :columns="columns" :data="paginatedProgressReports" class="report-table"
-                @row-click="handleRowClick">
+                @row-click="handleRowClick" data-tour="table">
                 <template #level="{ item }">
                   <span :class="'badge bg-' + (item.level === 'Nghiêm trọng' ? 'danger' :
                     item.level === 'Cao' ? 'warning' :
@@ -324,6 +500,7 @@ const handleNoteConfirm = async () => {
                       @click="(e) => openNoteModal('approve', item, e)"
                       :disabled="item.statusLogs[0].status !== 0"
                       :title="item.statusLogs[0].status === 0 ? 'Duyệt báo cáo' : 'Báo cáo đã được xử lý'"
+                      data-tour="approve-button"
                     >
                       <i class="fas fa-check"></i>
                     </button>
@@ -333,6 +510,7 @@ const handleNoteConfirm = async () => {
                       @click="(e) => openNoteModal('reject', item, e)"
                       :disabled="item.statusLogs[0].status !== 0"
                       :title="item.statusLogs[0].status === 0 ? 'Từ chối báo cáo' : 'Báo cáo đã được xử lý'"
+                      data-tour="reject-button"
                     >
                       <i class="fas fa-times"></i>
                     </button>
@@ -354,12 +532,14 @@ const handleNoteConfirm = async () => {
                 }} báo cáo
               </div>
               <Pagination :total-items="reportTab === 'technical' ? technicalReports.length : progressReports.length"
-                :items-per-page="itemsPerPage" :current-page="currentPage" @update:currentPage="handlePageChange" />
+                :items-per-page="itemsPerPage" :current-page="currentPage" @update:currentPage="handlePageChange" data-tour="pagination" />
             </div>
           </div>
         </div>
-        <div v-else-if="mainTab === 'material'" key="material">
-          <MaterialPlanApprovalList />
+        <div v-else-if="mainTab === 'material'" key="material" data-tour="title">
+          <div data-tour="material-content">
+            <MaterialPlanApprovalList />
+          </div>
         </div>
       </transition>
       <!-- Modal chi tiết báo cáo giữ nguyên -->
@@ -391,6 +571,19 @@ const handleNoteConfirm = async () => {
         </div>
       </ModalDialog>
     </div>
+    
+    <!-- Tour Guide -->
+    <TourGuide 
+      :show="showTourGuide" 
+      :steps="tourSteps" 
+      @update:show="showTourGuide = $event" 
+      @complete="handleTourComplete" 
+    />
+    <AIChatbotButton 
+      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      title="Trợ lý AI"
+      @guide-click="startTour"
+    />
   </div>
 </template>
 

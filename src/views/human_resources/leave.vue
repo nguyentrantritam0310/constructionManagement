@@ -13,6 +13,7 @@ import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
 import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import TourGuide from '@/components/common/TourGuide.vue'
+import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -600,14 +601,6 @@ defineExpose({
         >
           Nhập Excel
         </ActionButton>
-        <ActionButton 
-          type="secondary" 
-          icon="fas fa-question-circle me-2" 
-          @click="startTour"
-          title="Hướng dẫn sử dụng"
-        >
-          Hướng dẫn
-        </ActionButton>
       </div>
     </div>
     
@@ -846,6 +839,11 @@ defineExpose({
     @complete="handleTourComplete"
     v-if="showTourGuide"
   />
+
+  <!-- AI Chatbot Assistant Button -->
+  <AIChatbotButton 
+    @guide-click="startTour"
+  />
 </template>
 
 <style scoped>
@@ -956,6 +954,7 @@ defineExpose({
   opacity: 1;
   transform: translateY(0);
 }
+
 
 </style>
 
