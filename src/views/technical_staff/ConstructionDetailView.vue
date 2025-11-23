@@ -71,10 +71,6 @@ const constructionItemColumns = [
   { key: 'constructionItemStatusName', label: 'Trạng thái' }
 ]
 
-const handleItemClick = (item) => {
-  router.push(`/construction-plan-management?itemId=${item.id}`)
-}
-
 const handleAddItem = () => {
   formMode.value = 'create'
   selectedItem.value = null
@@ -655,7 +651,7 @@ onUnmounted(() => {
                 Thêm Hạng Mục
               </button>
             </div>
-            <DataTable :columns="constructionItemColumns" :data="paginatedItems" @row-click="handleItemClick"
+            <DataTable :columns="constructionItemColumns" :data="paginatedItems"
               class="custom-table">
               <template #id="{ item }">
                 <div class="fw-medium text-primary">HM-{{ item.id }}</div>

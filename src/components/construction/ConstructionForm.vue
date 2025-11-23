@@ -57,6 +57,30 @@ const formData = ref({
   designBlueprint: null
 })
 
+// Regex patterns cho validation
+const regexPatterns = {
+  // Tên dự án: chữ cái, số, khoảng trắng, dấu tiếng Việt, dấu gạch ngang và gạch dưới, độ dài 1-200
+  constructionName: /^[a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s_-]{1,200}$/,
+  // Địa điểm: chữ cái, số, khoảng trắng, dấu tiếng Việt, dấu phẩy, dấu gạch ngang, dấu gạch dưới, dấu chấm, độ dài 1-300
+  location: /^[a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s_,.-]{1,300}$/,
+  // Ngày: định dạng YYYY-MM-DD
+  date: /^\d{4}-\d{2}-\d{2}$/,
+  // Loại dự án: 1, 2, 3, 4
+  constructionTypeID: /^[1-4]$/,
+  // Diện tích: số dương, có thể có số thập phân (2 chữ số)
+  totalArea: /^[1-9]\d{0,9}(\.\d{1,2})?$|^0\.\d{1,2}$/
+}
+
+// Validation errors
+const errors = ref({
+  constructionName: '',
+  constructionTypeID: '',
+  location: '',
+  totalArea: '',
+  startDate: '',
+  expectedCompletionDate: ''
+})
+
 // Khởi tạo formData với dữ liệu của construction nếu là chế độ update
 const initFormData = () => {
   if (props.mode === 'update' && props.construction) {
@@ -128,32 +152,222 @@ const resetNewItem = () => {
   }
 }
 
-const validateForm = () => {
-  if (!formData.value.constructionName.trim()) {
-    showMessage('Vui lòng nhập tên công trình', 'error')
+// Validation functions
+const validateConstructionName = () => {
+  const value = formData.value.constructionName?.trim()
+  if (!value) {
+    errors.value.constructionName = 'Tên dự án không được để trống'
     return false
   }
-  if (!formData.value.location.trim()) {
-    showMessage('Vui lòng nhập địa điểm', 'error')
+  if (!regexPatterns.constructionName.test(value)) {
+    errors.value.constructionName = 'Tên dự án chỉ được chứa chữ cái, số, khoảng trắng, dấu tiếng Việt và các ký tự đặc biệt (gạch ngang, gạch dưới) (tối đa 200 ký tự)'
     return false
   }
-  if (!formData.value.totalArea) {
-    showMessage('Vui lòng nhập tổng diện tích', 'error')
-    return false
-  }
-  if (!formData.value.startDate) {
-    showMessage('Vui lòng chọn ngày bắt đầu', 'error')
-    return false
-  }
-  if (!formData.value.expectedCompletionDate) {
-    showMessage('Vui lòng chọn ngày dự kiến hoàn thành', 'error')
-    return false
-  }
-  if (new Date(formData.value.expectedCompletionDate) <= new Date(formData.value.startDate)) {
-    showMessage('Ngày hoàn thành phải sau ngày bắt đầu', 'error')
-    return false
-  }
+  errors.value.constructionName = ''
   return true
+}
+
+const validateConstructionTypeID = () => {
+  const value = formData.value.constructionTypeID
+  if (!value) {
+    errors.value.constructionTypeID = 'Vui lòng chọn loại dự án'
+    return false
+  }
+  errors.value.constructionTypeID = ''
+  return true
+}
+
+const validateLocation = () => {
+  const value = formData.value.location?.trim()
+  if (!value) {
+    errors.value.location = 'Địa điểm không được để trống'
+    return false
+  }
+  if (!regexPatterns.location.test(value)) {
+    errors.value.location = 'Địa điểm chỉ được chứa chữ cái, số, khoảng trắng, dấu tiếng Việt và các ký tự đặc biệt (phẩy, gạch ngang, gạch dưới, chấm) (tối đa 300 ký tự)'
+    return false
+  }
+  errors.value.location = ''
+  return true
+}
+
+const validateTotalArea = () => {
+  const value = formData.value.totalArea
+  if (!value && value !== 0) {
+    errors.value.totalArea = 'Tổng diện tích không được để trống'
+    return false
+  }
+  
+  const areaNum = parseFloat(value)
+  if (isNaN(areaNum)) {
+    errors.value.totalArea = 'Tổng diện tích phải là số'
+    return false
+  }
+  
+  if (areaNum <= 0) {
+    errors.value.totalArea = 'Tổng diện tích phải lớn hơn 0'
+    return false
+  }
+  
+  // Validate format: tối đa 10 chữ số, 2 chữ số thập phân
+  const valueStr = String(value)
+  if (!regexPatterns.totalArea.test(valueStr)) {
+    errors.value.totalArea = 'Tổng diện tích không đúng định dạng'
+    return false
+  }
+  
+  // Giới hạn: 0.01 đến 999,999,999,999.99
+  if (areaNum > 999999999999.99) {
+    errors.value.totalArea = 'Tổng diện tích không được vượt quá 999,999,999,999.99 m²'
+    return false
+  }
+  
+  errors.value.totalArea = ''
+  return true
+}
+
+const validateStartDate = () => {
+  const value = formData.value.startDate
+  if (!value) {
+    errors.value.startDate = 'Ngày bắt đầu không được để trống'
+    return false
+  }
+  if (!regexPatterns.date.test(value)) {
+    errors.value.startDate = 'Định dạng ngày bắt đầu không hợp lệ'
+    return false
+  }
+  
+  const startDate = new Date(value)
+  if (isNaN(startDate.getTime()) || startDate.toISOString().split('T')[0] !== value) {
+    errors.value.startDate = 'Ngày bắt đầu không hợp lệ'
+    return false
+  }
+  
+  // Ngày bắt đầu không được quá tương lai (cho phép tối đa 5 năm)
+  const maxDate = new Date()
+  maxDate.setFullYear(maxDate.getFullYear() + 5)
+  if (startDate > maxDate) {
+    errors.value.startDate = 'Ngày bắt đầu không được vượt quá 5 năm trong tương lai'
+    return false
+  }
+  
+  // Validate end date when start date changes
+  if (formData.value.expectedCompletionDate) {
+    const endDate = new Date(formData.value.expectedCompletionDate)
+    if (!isNaN(endDate.getTime()) && startDate >= endDate) {
+      errors.value.startDate = 'Ngày bắt đầu phải trước ngày hoàn thành dự kiến'
+      // Also update end date error
+      validateExpectedCompletionDate()
+    }
+  }
+  
+  errors.value.startDate = ''
+  return true
+}
+
+const validateExpectedCompletionDate = () => {
+  const value = formData.value.expectedCompletionDate
+  if (!value) {
+    errors.value.expectedCompletionDate = 'Ngày hoàn thành dự kiến không được để trống'
+    return false
+  }
+  if (!regexPatterns.date.test(value)) {
+    errors.value.expectedCompletionDate = 'Định dạng ngày hoàn thành dự kiến không hợp lệ'
+    return false
+  }
+  
+  const endDate = new Date(value)
+  if (isNaN(endDate.getTime()) || endDate.toISOString().split('T')[0] !== value) {
+    errors.value.expectedCompletionDate = 'Ngày hoàn thành dự kiến không hợp lệ'
+    return false
+  }
+  
+  // Validate end date is after start date
+  if (formData.value.startDate) {
+    const startDate = new Date(formData.value.startDate)
+    if (!isNaN(startDate.getTime())) {
+      if (startDate >= endDate) {
+        errors.value.expectedCompletionDate = 'Ngày hoàn thành dự kiến phải sau ngày bắt đầu'
+        return false
+      }
+      
+      // Ngày hoàn thành không được quá xa trong tương lai (tối đa 50 năm sau ngày bắt đầu)
+      const maxDate = new Date(startDate)
+      maxDate.setFullYear(maxDate.getFullYear() + 50)
+      if (endDate > maxDate) {
+        errors.value.expectedCompletionDate = 'Ngày hoàn thành dự kiến không được vượt quá 50 năm sau ngày bắt đầu'
+        return false
+      }
+      
+      // Ngày hoàn thành không được quá tương lai (cho phép tối đa 55 năm)
+      const absoluteMaxDate = new Date()
+      absoluteMaxDate.setFullYear(absoluteMaxDate.getFullYear() + 55)
+      if (endDate > absoluteMaxDate) {
+        errors.value.expectedCompletionDate = 'Ngày hoàn thành dự kiến không được vượt quá 55 năm trong tương lai'
+        return false
+      }
+    }
+  }
+  
+  errors.value.expectedCompletionDate = ''
+  return true
+}
+
+// Real-time validation cho các trường input
+const validateField = (fieldName) => {
+  switch (fieldName) {
+    case 'constructionName':
+      validateConstructionName()
+      break
+    case 'constructionTypeID':
+      validateConstructionTypeID()
+      break
+    case 'location':
+      validateLocation()
+      break
+    case 'totalArea':
+      validateTotalArea()
+      break
+    case 'startDate':
+      validateStartDate()
+      // Re-validate end date when start date changes
+      if (formData.value.expectedCompletionDate) {
+        validateExpectedCompletionDate()
+      }
+      break
+    case 'expectedCompletionDate':
+      validateExpectedCompletionDate()
+      // Re-validate start date when end date changes
+      if (formData.value.startDate) {
+        validateStartDate()
+      }
+      break
+  }
+}
+
+// Validate toàn bộ form
+const validateForm = () => {
+  const validations = [
+    validateConstructionName(),
+    validateConstructionTypeID(),
+    validateLocation(),
+    validateTotalArea(),
+    validateStartDate(),
+    validateExpectedCompletionDate()
+  ]
+  
+  const isValid = validations.every(v => v === true)
+  
+  if (!isValid) {
+    // Scroll đến trường đầu tiên có lỗi
+    const firstErrorField = document.querySelector('.is-invalid')
+    if (firstErrorField) {
+      firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      firstErrorField.focus()
+    }
+  }
+  
+  return isValid
 }
 
 const handleSubmit = async () => {
@@ -319,31 +533,101 @@ const handleCancelItem = () => {
   <div class="p-3">
     <div class="row g-3">
       <div class="col-md-6">
-        <FormField label="Tên Dự Án" v-model="formData.constructionName" required />
+        <label class="form-label">Tên Dự Án <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.constructionName }"
+          v-model="formData.constructionName"
+          @blur="validateField('constructionName')"
+          @input="validateField('constructionName')"
+          maxlength="200"
+          placeholder="VD: Tòa nhà Landmark 81"
+        />
+        <div class="invalid-feedback">{{ errors.constructionName }}</div>
       </div>
       <div class="col-md-6">
-        <FormField label="Loại Dự Án" type="select" v-model="formData.constructionTypeID" :options="[
-          { value: 1, label: 'Cầu đường' },
-          { value: 2, label: 'Nhà ở' },
-          { value: 3, label: 'Công nghiệp' },
-          { value: 4, label: 'Thủy lợi' }
-        ]" required @change="handleConstructionTypeChange" />
+        <label class="form-label">Loại Dự Án <span class="text-danger">*</span></label>
+        <select 
+          class="form-select" 
+          :class="{ 'is-invalid': errors.constructionTypeID }"
+          v-model="formData.constructionTypeID"
+          @change="validateField('constructionTypeID'); handleConstructionTypeChange()"
+        >
+          <option value="">Chọn loại dự án</option>
+          <option value="1">Cầu đường</option>
+          <option value="2">Nhà ở</option>
+          <option value="3">Công nghiệp</option>
+          <option value="4">Thủy lợi</option>
+        </select>
+        <div class="invalid-feedback">{{ errors.constructionTypeID }}</div>
       </div>
       <div class="col-12">
-        <FormField label="Địa Điểm Thi Công" v-model="formData.location" required />
+        <label class="form-label">Địa Điểm Thi Công <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.location }"
+          v-model="formData.location"
+          @blur="validateField('location')"
+          @input="validateField('location')"
+          maxlength="300"
+          placeholder="VD: 208 Nguyễn Hữu Cảnh, P.22, Q.Bình Thạnh, TP.HCM"
+        />
+        <div class="invalid-feedback">{{ errors.location }}</div>
       </div>
       <div class="col-md-4">
-        <FormField label="Tổng Diện Tích (m²)" type="number" v-model="formData.totalArea" required />
+        <label class="form-label">Tổng Diện Tích (m²) <span class="text-danger">*</span></label>
+        <input 
+          type="number" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.totalArea }"
+          v-model.number="formData.totalArea"
+          @blur="validateField('totalArea')"
+          @input="validateField('totalArea')"
+          step="0.01"
+          min="0.01"
+          max="999999999999.99"
+          placeholder="VD: 241000"
+        />
+        <div class="invalid-feedback">{{ errors.totalArea }}</div>
       </div>
       <div class="col-md-4">
-        <FormField label="Ngày Bắt Đầu" type="date" v-model="formData.startDate" required />
+        <label class="form-label">Ngày Bắt Đầu <span class="text-danger">*</span></label>
+        <input 
+          type="date" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.startDate }"
+          v-model="formData.startDate"
+          @blur="validateField('startDate')"
+          @change="validateField('startDate')"
+          :max="new Date(new Date().setFullYear(new Date().getFullYear() + 5)).toISOString().split('T')[0]"
+        />
+        <div class="invalid-feedback">{{ errors.startDate }}</div>
       </div>
       <div class="col-md-4">
-        <FormField label="Ngày Hoàn Thành Dự Kiến" type="date" v-model="formData.expectedCompletionDate" required />
+        <label class="form-label">Ngày Hoàn Thành Dự Kiến <span class="text-danger">*</span></label>
+        <input 
+          type="date" 
+          class="form-control" 
+          :class="{ 'is-invalid': errors.expectedCompletionDate }"
+          v-model="formData.expectedCompletionDate"
+          @blur="validateField('expectedCompletionDate')"
+          @change="validateField('expectedCompletionDate')"
+          :min="formData.startDate || undefined"
+          :max="new Date(new Date().setFullYear(new Date().getFullYear() + 55)).toISOString().split('T')[0]"
+        />
+        <div class="invalid-feedback">{{ errors.expectedCompletionDate }}</div>
       </div>
       <div class="col-12">
-        <FormField label="Tài Liệu Thiết Kế" type="file" accept="image/*" @change="handleFileUpload" />
-        <small class="text-muted">Chỉ chấp nhận file ảnh (jpg, png, gif)</small>
+        <label class="form-label">Tài Liệu Thiết Kế</label>
+        <input 
+          type="file" 
+          class="form-control" 
+          accept="image/*" 
+          @change="handleFileUpload"
+        />
+        <small class="text-muted">Chỉ chấp nhận file ảnh (jpg, png, gif, jpeg, webp)</small>
       </div>
     </div>
 
@@ -593,5 +877,53 @@ const handleCancelItem = () => {
 
 .alert i {
   color: #17a2b8;
+}
+
+/* Form validation styles */
+.form-label {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.form-control,
+.form-select {
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+  height: 45px;
+  width: 100%;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+  outline: none;
+}
+
+.invalid-feedback {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  font-size: 0.875em;
+  color: #dc3545;
+}
+
+.is-invalid {
+  border-color: #dc3545;
+  padding-right: calc(1.5em + 0.75rem);
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' fill='none' stroke='%23dc3545'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath d='m5.8 3.6 .4.4.4-.4m0 4.8-.4-.4-.4.4'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right calc(0.375em + 0.1875rem) center;
+  background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+}
+
+.form-control.is-invalid {
+  background-position: right calc(0.375em + 0.1875rem) center;
+  padding-right: calc(1.5em + 0.75rem);
 }
 </style>

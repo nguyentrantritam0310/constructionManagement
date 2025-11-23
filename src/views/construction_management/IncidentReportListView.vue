@@ -76,6 +76,8 @@ const filteredReports = computed(() => {
   return result
 })
 
+const showFilter = ref(false)
+
 const resetFilters = () => {
   searchQuery.value = ''
   statusFilter.value = ''
@@ -84,6 +86,7 @@ const resetFilters = () => {
     start: null,
     end: null
   }
+  currentPage.value = 1
 }
 
 const currentPage = ref(1)
@@ -387,6 +390,9 @@ const isResubmitMode = computed(() => {
         <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
           Tạo báo cáo mới
         </ActionButton>
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+          Lọc
+        </ActionButton>
         <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
           Xuất Excel
         </ActionButton>
@@ -397,7 +403,8 @@ const isResubmitMode = computed(() => {
     </div>
 
     <!-- Filter Section -->
-    <div class="filter-section mb-4">
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
       <div class="row g-3">
         <div class="col-md-3">
           <div class="input-group">
@@ -472,7 +479,8 @@ const isResubmitMode = computed(() => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </transition>
 
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">
@@ -689,5 +697,22 @@ const isResubmitMode = computed(() => {
   to {
     opacity: 1;
   }
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 </style>

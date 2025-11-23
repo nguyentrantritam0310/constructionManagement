@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, inject, onUnmounted } from 'vue'
 import FormField from './FormField.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
@@ -67,9 +67,128 @@ const formData = ref({
   attachments: []
 })
 
+// Validation functions
+const validateConstructionID = () => {
+  const value = formData.value.constructionID
+  if (!value) {
+    errors.value.constructionID = 'Vui lòng chọn công trình'
+    return false
+  }
+  errors.value.constructionID = ''
+  return true
+}
+
+const validateLevel = () => {
+  const value = formData.value.level
+  if (!value) {
+    errors.value.level = 'Vui lòng chọn mức độ ảnh hưởng'
+    return false
+  }
+  const validLevels = ['Thấp', 'Trung bình', 'Cao', 'Nghiêm trọng']
+  if (!validLevels.includes(value)) {
+    errors.value.level = 'Mức độ ảnh hưởng không hợp lệ'
+    return false
+  }
+  errors.value.level = ''
+  return true
+}
+
+const validateContent = () => {
+  const value = formData.value.content?.trim()
+  if (!value) {
+    errors.value.content = 'Mô tả chi tiết không được để trống'
+    return false
+  }
+  if (value.length < 10) {
+    errors.value.content = 'Mô tả chi tiết phải có ít nhất 10 ký tự'
+    return false
+  }
+  if (value.length > 5000) {
+    errors.value.content = 'Mô tả chi tiết không được vượt quá 5000 ký tự'
+    return false
+  }
+  if (!regexPatterns.content.test(value)) {
+    errors.value.content = 'Mô tả chi tiết chứa ký tự không hợp lệ'
+    return false
+  }
+  errors.value.content = ''
+  return true
+}
+
+const validateImages = () => {
+  const images = formData.value.images
+  const newImages = formData.value.newImages
+  
+  const filesToCheck = images instanceof FileList ? images : (newImages instanceof FileList ? newImages : null)
+  
+  if (filesToCheck && filesToCheck.length > 0) {
+    // Validate file types
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+    const invalidFiles = Array.from(filesToCheck).filter(file => !validTypes.includes(file.type))
+    if (invalidFiles.length > 0) {
+      errors.value.images = 'Chỉ chấp nhận file ảnh (jpg, png, gif, webp)'
+      return false
+    }
+    // Validate file size (max 5MB per file)
+    const oversizedFiles = Array.from(filesToCheck).filter(file => file.size > 5 * 1024 * 1024)
+    if (oversizedFiles.length > 0) {
+      errors.value.images = 'Mỗi file ảnh không được vượt quá 5MB'
+      return false
+    }
+    // Validate total number of files (max 20)
+    if (filesToCheck.length > 20) {
+      errors.value.images = 'Tối đa 20 file ảnh'
+      return false
+    }
+  }
+  errors.value.images = ''
+  return true
+}
+
+// Real-time validation cho các trường input
+const validateField = (fieldName) => {
+  switch (fieldName) {
+    case 'constructionID':
+      validateConstructionID()
+      break
+    case 'level':
+      validateLevel()
+      break
+    case 'content':
+      validateContent()
+      break
+    case 'images':
+      validateImages()
+      break
+  }
+}
+
+// Validate toàn bộ form
+const validateForm = () => {
+  const validations = [
+    validateConstructionID(),
+    validateLevel(),
+    validateContent(),
+    validateImages()
+  ]
+  
+  const isValid = validations.every(v => v === true)
+  
+  if (!isValid) {
+    // Scroll đến trường đầu tiên có lỗi
+    const firstErrorField = document.querySelector('.is-invalid')
+    if (firstErrorField) {
+      firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      firstErrorField.focus()
+    }
+  }
+  
+  return isValid
+}
+
 // Function to prepare and emit form data
 const emitFormData = () => {
-  // Validate required fields first
+  // Validate required fields first (chỉ để log warning, không chặn emit)
   const requiredFields = {
     constructionID: 'Construction ID',
     reportType: 'Report Type',
@@ -83,7 +202,7 @@ const emitFormData = () => {
 
   if (missingFields.length > 0) {
     console.warn('❌ Missing required fields:', missingFields.join(', '))
-    return
+    // Không return ở đây để vẫn emit data khi user đang nhập
   }
 
   // Create a FormData object for file uploads
@@ -227,6 +346,20 @@ const statusOptions = [
 
 const previewImages = ref([])
 
+// Regex patterns cho validation
+const regexPatterns = {
+  // Mô tả: chữ cái, số, khoảng trắng, dấu tiếng Việt, dấu câu, dấu gạch ngang và gạch dưới, độ dài 10-5000
+  content: /^[a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s_,.\-!?;:()\[\]{}\"']{10,5000}$/
+}
+
+// Validation errors
+const errors = ref({
+  constructionID: '',
+  level: '',
+  content: '',
+  images: ''
+})
+
 const handleImageUpload = (event) => {
   const files = event.target.files
   if (files) {
@@ -246,6 +379,9 @@ const handleImageUpload = (event) => {
     } else {
       formData.value.newImages = files
     }
+
+    // Validate images
+    validateField('images')
 
     // Update preview images for new uploads
     previewImages.value = []
@@ -302,7 +438,7 @@ const handleImageError = (e) => {
 
 // Add back the utility functions
 const getReportTypeLabel = () => {
-  return props.reportType === 'incident' ? 'Báo cáo sự cố thi công' : 'Báo cáo vấn đề kỹ thuật'
+  return props.reportType === 'incident' ? 'Báo cáo sự cố thi công' : ''
 }
 
 const getStatusInfo = (status) => {
@@ -323,6 +459,28 @@ const getStatusInfo = (status) => {
 const getSeverityInfo = (severity) => {
   return severityLevels.find(s => s.value === severity) || severityLevels[0]
 }
+
+// Expose validateForm để parent component có thể gọi
+defineExpose({
+  validateForm
+})
+
+// Register validate function với FormDialog nếu có
+const registerValidate = inject('registerValidate', null)
+
+onMounted(() => {
+  // Đăng ký validate function sau khi component mounted
+  if (registerValidate) {
+    registerValidate(validateForm)
+  }
+})
+
+onUnmounted(() => {
+  // Unregister khi component unmount
+  if (registerValidate) {
+    registerValidate(null)
+  }
+})
 </script>
 
 <template>
@@ -341,76 +499,75 @@ const getSeverityInfo = (severity) => {
           </div>
         </div>
       </div>
-      <p class="text-muted mb-0">Vui lòng điền đầy đủ thông tin báo cáo</p>
+      <p v-if="props.reportType === 'incident'" class="text-muted mb-0">Vui lòng điền đầy đủ thông tin báo cáo</p>
     </div>
 
     <div class="form-body">
       <div class="row g-3">
         <div class="col-md-6">
-          <FormField
-            label="Công trình"
-            type="select"
+          <label class="form-label">Công trình <span class="text-danger">*</span></label>
+          <select 
+            class="form-select" 
+            :class="{ 'is-invalid': errors.constructionID }"
             v-model="formData.constructionID"
-            :options="constructions.map(construction => ({
-              value: construction.id,
-              label: construction.constructionName
-            }))"
-            required
+            @change="validateField('constructionID')"
           >
-            <template #option="{ option }">
-              <div class="d-flex align-items-center">
-                <i class="fas fa-building me-2"></i>
-                <span>{{ option.label }}</span>
-              </div>
-            </template>
-          </FormField>
+            <option value="">Chọn công trình</option>
+            <option v-for="construction in constructions" :key="construction.id" :value="construction.id">
+              {{ construction.constructionName }}
+            </option>
+          </select>
+          <div class="invalid-feedback">{{ errors.constructionID }}</div>
         </div>
 
         <div class="col-md-6">
-          <FormField
-            label="Mức độ ảnh hưởng"
-            type="select"
+          <label class="form-label">Mức độ ảnh hưởng <span class="text-danger">*</span></label>
+          <select 
+            class="form-select" 
+            :class="{ 'is-invalid': errors.level }"
             v-model="formData.level"
-            :options="severityLevels"
-            required
+            @change="validateField('level')"
           >
-            <template #option="{ option }">
-              <div class="d-flex align-items-center">
-                <i :class="'fas fa-' + option.icon + ' me-2 text-' + option.color"></i>
-                <span>{{ option.label }}</span>
-              </div>
-            </template>
-          </FormField>
+            <option value="">Chọn mức độ ảnh hưởng</option>
+            <option v-for="level in severityLevels" :key="level.value" :value="level.value">
+              {{ level.label }}
+            </option>
+          </select>
+          <div class="invalid-feedback">{{ errors.level }}</div>
         </div>
       </div>
 
       <div class="row mt-3">
         <div class="col-12">
-          <FormField
-            label="Mô tả chi tiết"
-            type="textarea"
+          <label class="form-label">Mô tả chi tiết <span class="text-danger">*</span></label>
+          <textarea 
+            class="form-control" 
+            :class="{ 'is-invalid': errors.content }"
             v-model="formData.content"
+            @blur="validateField('content')"
+            @input="validateField('content')"
             rows="4"
-            required
-            placeholder="Nhập mô tả chi tiết về vấn đề..."
-          />
+            maxlength="5000"
+            placeholder="Nhập mô tả chi tiết về vấn đề (tối thiểu 10 ký tự)"
+          ></textarea>
+          <div class="invalid-feedback">{{ errors.content }}</div>
+          <small class="text-muted">{{ formData.content?.length || 0 }}/5000 ký tự</small>
         </div>
       </div>
 
       <div class="row mt-3">
         <div class="col-12">
-          <FormField
-            label="Hình ảnh đính kèm"
-            type="file"
-            v-model="formData.images"
+          <label class="form-label">Hình ảnh đính kèm</label>
+          <input 
+            type="file" 
+            class="form-control" 
+            :class="{ 'is-invalid': errors.images }"
+            @change="handleImageUpload"
             multiple
             accept="image/*"
-            @change="handleImageUpload"
-          >
-            <template #help>
-              <small class="text-muted">Có thể tải lên nhiều hình ảnh (tối đa 5MB mỗi file)</small>
-            </template>
-          </FormField>
+          />
+          <div class="invalid-feedback">{{ errors.images }}</div>
+          <small class="text-muted">Tối đa 20 file, mỗi file không quá 5MB. Chỉ chấp nhận file ảnh (jpg, png, gif, webp)</small>
 
           <!-- Existing Images Preview -->
           <div v-if="mode === 'update' && formData.attachments?.length > 0" class="image-preview-container mt-2">
@@ -570,5 +727,64 @@ const getSeverityInfo = (severity) => {
   color: #6c757d;
   font-size: 0.875rem;
   margin-bottom: 0.75rem;
+}
+
+.form-label {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.form-control,
+.form-select {
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+  width: 100%;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-select {
+  height: 45px;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+  outline: none;
+}
+
+textarea.form-control {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.invalid-feedback {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  font-size: 0.875em;
+  color: #dc3545;
+}
+
+.is-invalid {
+  border-color: #dc3545;
+  padding-right: calc(1.5em + 0.75rem);
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' fill='none' stroke='%23dc3545'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath d='m5.8 3.6 .4.4.4-.4m0 4.8-.4-.4-.4.4'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right calc(0.375em + 0.1875rem) center;
+  background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+}
+
+.text-danger {
+  color: #dc3545;
+}
+
+.text-muted {
+  color: #6c757d;
+  font-size: 0.875rem;
 }
 </style>

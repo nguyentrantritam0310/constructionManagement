@@ -83,10 +83,72 @@ const historyRequestId = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(8)
 
+// Filter variables
+const searchQuery = ref('')
+const statusFilter = ref('')
+const leaveTypeFilter = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  leaveTypeFilter.value = ''
+  dateRange.value = { start: null, end: null }
+  currentPage.value = 1
+}
+
 // Computed
 const filteredLeaveRequests = computed(() => {
   if (!leaveRequests.value?.length) return []
-  return filterDataByPermission('leave', leaveRequests.value)
+  let result = filterDataByPermission('leave', leaveRequests.value)
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(request =>
+      request.voucherCode?.toLowerCase().includes(query) ||
+      request.employeeID?.toString().includes(query) ||
+      request.userName?.toLowerCase().includes(query) ||
+      request.leaveTypeName?.toLowerCase().includes(query) ||
+      request.reason?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter
+  if (statusFilter.value) {
+    const statusMap = {
+      'Tạo mới': 0,
+      'Chờ duyệt': 1,
+      'Đã duyệt': 2,
+      'Từ chối': 3
+    }
+    const statusValue = statusMap[statusFilter.value]
+    if (statusValue !== undefined) {
+      result = result.filter(request => request.approveStatus === statusValue)
+    }
+  }
+
+  // Apply leave type filter
+  if (leaveTypeFilter.value) {
+    result = result.filter(request => request.leaveTypeID?.toString() === leaveTypeFilter.value)
+  }
+
+  // Apply date range filter
+  if (dateRange.value.start && dateRange.value.end) {
+    const start = new Date(dateRange.value.start)
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+
+    result = result.filter(request => {
+      const requestDate = new Date(request.startDateTime)
+      return requestDate >= start && requestDate <= end
+    })
+  }
+
+  return result
 })
 
 const paginatedLeaveData = computed(() => {
@@ -476,6 +538,52 @@ defineExpose({
       </div>
     </div>
     
+    <!-- Filter Section -->
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <input
+              type="text"
+              class="form-control"
+              v-model="searchQuery"
+              placeholder="Tìm kiếm theo số phiếu, mã nhân viên, tên..."
+            >
+          </div>
+          <div class="col-md-2">
+            <select class="form-control" v-model="statusFilter">
+              <option value="">Tất cả trạng thái</option>
+              <option value="Tạo mới">Tạo mới</option>
+              <option value="Chờ duyệt">Chờ duyệt</option>
+              <option value="Đã duyệt">Đã duyệt</option>
+              <option value="Từ chối">Từ chối</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.start"
+              placeholder="Từ ngày"
+            >
+          </div>
+          <div class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.end"
+              placeholder="Đến ngày"
+            >
+          </div>
+          <div class="col-md-3">
+            <button class="btn btn-secondary w-100" @click="resetFilters">
+              <i class="fas fa-undo me-2"></i>Đặt lại
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+    
     <!-- Loading indicator -->
     <div v-if="loading" class="text-center py-4">
       <div class="spinner-border text-primary" role="status">
@@ -569,12 +677,17 @@ defineExpose({
     </div>
     
     <!-- Pagination -->
-    <Pagination 
-      :totalItems="filteredLeaveRequests.length" 
-      :itemsPerPage="itemsPerPage" 
-      :currentPage="currentPage"
-      @update:currentPage="currentPage = $event" 
-    />
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <div class="text-muted">
+        Hiển thị {{ paginatedLeaveData.length }} trên {{ filteredLeaveRequests.length }} đơn nghỉ phép
+      </div>
+      <Pagination 
+        :totalItems="filteredLeaveRequests.length" 
+        :itemsPerPage="itemsPerPage" 
+        :currentPage="currentPage"
+        @update:currentPage="currentPage = $event" 
+      />
+    </div>
   </div>
   
   <!-- Create Form Modal -->
@@ -710,6 +823,56 @@ defineExpose({
 
 .table-action-btn:hover {
   background: #e9ecef;
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.filter-section .form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.filter-section .form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.filter-section .btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.filter-section .btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 </style>

@@ -85,6 +85,76 @@ const adjustmentData = computed(() => {
   }))
 })
 
+// Filter variables
+const searchQuery = ref('')
+const statusFilter = ref('')
+const monthYearFilter = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
+
+const filteredAdjustmentData = computed(() => {
+  let result = [...adjustmentData.value]
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(adjustment =>
+      adjustment.voucherNo?.toLowerCase().includes(query) ||
+      adjustment.adjustmentTypeName?.toLowerCase().includes(query) ||
+      adjustment.adjustmentItemName?.toLowerCase().includes(query) ||
+      adjustment.reason?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter
+  if (statusFilter.value) {
+    const statusMap = {
+      'Pending': 1,
+      'Approved': 2,
+      'Rejected': 3,
+      'Returned': 4
+    }
+    const statusValue = statusMap[statusFilter.value]
+    if (statusValue) {
+      result = result.filter(adjustment => adjustment.approveStatus === statusValue)
+    }
+  }
+
+  // Apply month/year filter (format: YYYY-MM from input type="month")
+  if (monthYearFilter.value) {
+    const [year, month] = monthYearFilter.value.split('-')
+    result = result.filter(adjustment => {
+      const adjMonth = String(adjustment.month || adjustment.Month).padStart(2, '0')
+      const adjYear = String(adjustment.year || adjustment.Year)
+      return adjMonth === month && adjYear === year
+    })
+  }
+
+  // Apply date range filter (decision date)
+  if (dateRange.value.start && dateRange.value.end) {
+    const start = new Date(dateRange.value.start)
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+
+    result = result.filter(adjustment => {
+      const decisionDate = new Date(adjustment.decisionDate || adjustment.DecisionDate)
+      return decisionDate >= start && decisionDate <= end
+    })
+  }
+
+  return result
+})
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  monthYearFilter.value = ''
+  dateRange.value = { start: null, end: null }
+  currentPage.value = 1
+}
+
 const handleCreate = async (formData) => {
   try {
     await createPayrollAdjustment(formData)
@@ -194,7 +264,7 @@ const currentPage = ref(1)
 const itemsPerPage = ref(8)
 const paginatedAdjustmentData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
-  return adjustmentData.value.slice(start, start + itemsPerPage.value)
+  return filteredAdjustmentData.value.slice(start, start + itemsPerPage.value)
 })
 
 // Excel import functions
@@ -484,13 +554,69 @@ const exportToExcel = async () => {
           Nhập Excel
         </ActionButton>
       </div>
+    </div>
+    
+    <!-- Filter Section -->
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <input
+              type="text"
+              class="form-control"
+              v-model="searchQuery"
+              placeholder="Tìm kiếm theo số phiếu, khoản cộng trừ, hạng mục..."
+            >
+          </div>
+          <div class="col-md-2">
+            <select class="form-control" v-model="statusFilter">
+              <option value="">Tất cả trạng thái</option>
+              <option value="Pending">Chờ duyệt</option>
+              <option value="Approved">Đã duyệt</option>
+              <option value="Rejected">Từ chối</option>
+              <option value="Returned">Trả lại</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <input
+              type="month"
+              class="form-control"
+              v-model="monthYearFilter"
+              placeholder="Tháng/Năm"
+            >
+          </div>
+          <div class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.start"
+              placeholder="Từ ngày"
+            >
+          </div>
+          <div class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.end"
+              placeholder="Đến ngày"
+            >
+          </div>
+          <div class="col-md-1">
+            <button class="btn btn-secondary w-100" @click="resetFilters">
+              <i class="fas fa-undo me-2"></i>Đặt lại
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+    
     <ModalDialog v-model:show="showCreateForm" title="Thêm khoản cộng trừ" size="lg">
       <AdjustmentForm mode="create" @submit="handleCreate" @close="showCreateForm = false" />
     </ModalDialog>
     <ModalDialog v-model:show="showUpdateForm" title="Sửa khoản cộng trừ" size="lg">
       <AdjustmentForm mode="update" :adjustment="selectedItem" @submit="handleUpdate" @close="showUpdateForm = false" />
     </ModalDialog>
-    </div>
+    
     <div class="table-responsive adjustment-table">
       <DataTable :columns="adjustmentColumns" :data="paginatedAdjustmentData">
         <template #actions="{ item }">
@@ -556,12 +682,17 @@ const exportToExcel = async () => {
         </template>
       </DataTable>
     </div>
-    <Pagination
-      :totalItems="adjustmentData.length"
-      :itemsPerPage="itemsPerPage"
-      :currentPage="currentPage"
-      @update:currentPage="currentPage = $event"
-    />
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <div class="text-muted">
+        Hiển thị {{ paginatedAdjustmentData.length }} trên {{ filteredAdjustmentData.length }} khoản cộng trừ
+      </div>
+      <Pagination
+        :totalItems="filteredAdjustmentData.length"
+        :itemsPerPage="itemsPerPage"
+        :currentPage="currentPage"
+        @update:currentPage="currentPage = $event"
+      />
+    </div>
 
   <!-- Approval Note Modal -->
   <ApprovalNoteModal
@@ -649,6 +780,56 @@ const exportToExcel = async () => {
 }
 .table tr:hover {
   background: #f0f6ff;
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.filter-section .form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.filter-section .form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.filter-section .btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.filter-section .btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 </style>
 

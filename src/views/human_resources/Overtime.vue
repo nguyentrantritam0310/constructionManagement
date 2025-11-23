@@ -189,9 +189,65 @@ const getStatusText = (status) => {
 const currentPage = ref(1)
 const itemsPerPage = ref(8)
 
+// Filter variables
+const searchQuery = ref('')
+const statusFilter = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  dateRange.value = { start: null, end: null }
+  currentPage.value = 1
+}
+
 const filteredOvertimeRequests = computed(() => {
   if (!overtimeRequests.value?.length) return []
-  return filterDataByPermission('overtime', overtimeRequests.value)
+  let result = filterDataByPermission('overtime', overtimeRequests.value)
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(request =>
+      request.voucherCode?.toLowerCase().includes(query) ||
+      request.employeeID?.toString().includes(query) ||
+      request.userName?.toLowerCase().includes(query) ||
+      request.overtimeTypeName?.toLowerCase().includes(query) ||
+      request.overtimeFormName?.toLowerCase().includes(query) ||
+      request.reason?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter
+  if (statusFilter.value) {
+    const statusMap = {
+      'Tạo mới': 0,
+      'Chờ duyệt': 1,
+      'Đã duyệt': 2,
+      'Từ chối': 3
+    }
+    const statusValue = statusMap[statusFilter.value]
+    if (statusValue !== undefined) {
+      result = result.filter(request => request.approveStatus === statusValue || request.approveStatus?.toString() === statusValue.toString())
+    }
+  }
+
+  // Apply date range filter
+  if (dateRange.value.start && dateRange.value.end) {
+    const start = new Date(dateRange.value.start)
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+
+    result = result.filter(request => {
+      const requestDate = new Date(request.startDateTime)
+      return requestDate >= start && requestDate <= end
+    })
+  }
+
+  return result
 })
 
 const paginatedOvertimeData = computed(() => {
@@ -437,6 +493,53 @@ const exportToExcel = async () => {
         </ActionButton>
       </div>
     </div>
+    
+    <!-- Filter Section -->
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <input
+              type="text"
+              class="form-control"
+              v-model="searchQuery"
+              placeholder="Tìm kiếm theo số phiếu, mã nhân viên, tên..."
+            >
+          </div>
+          <div class="col-md-2">
+            <select class="form-control" v-model="statusFilter">
+              <option value="">Tất cả trạng thái</option>
+              <option value="Tạo mới">Tạo mới</option>
+              <option value="Chờ duyệt">Chờ duyệt</option>
+              <option value="Đã duyệt">Đã duyệt</option>
+              <option value="Từ chối">Từ chối</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.start"
+              placeholder="Từ ngày"
+            >
+          </div>
+          <div class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.end"
+              placeholder="Đến ngày"
+            >
+          </div>
+          <div class="col-md-3">
+            <button class="btn btn-secondary w-100" @click="resetFilters">
+              <i class="fas fa-undo me-2"></i>Đặt lại
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+    
     <div class="table-responsive adjustment-table">
       <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData">
         <template #actions="{ item }">
@@ -517,12 +620,17 @@ const exportToExcel = async () => {
         </template>
       </DataTable>
     </div>
-    <Pagination
-    :totalItems="filteredOvertimeRequests.length"
-    :itemsPerPage="itemsPerPage"
-    :currentPage="currentPage"
-    @update:currentPage="currentPage = $event"
-    />
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <div class="text-muted">
+        Hiển thị {{ paginatedOvertimeData.length }} trên {{ filteredOvertimeRequests.length }} đơn tăng ca
+      </div>
+      <Pagination
+        :totalItems="filteredOvertimeRequests.length"
+        :itemsPerPage="itemsPerPage"
+        :currentPage="currentPage"
+        @update:currentPage="currentPage = $event"
+      />
+    </div>
   </div>
   <ModalDialog v-model:show="showCreateForm" title="Thêm đơn tăng ca" size="lg">
     <OvertimeForm mode="create" @submit="handleCreate" @close="showCreateForm = false" />
@@ -611,6 +719,56 @@ const exportToExcel = async () => {
 }
 .table tr:hover {
   background: #f0f6ff;
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.filter-section .form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.filter-section .form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.filter-section .btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.filter-section .btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 </style>
 

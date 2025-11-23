@@ -117,7 +117,9 @@ const shiftData = computed(() => {
         code: shift.id,
         name: shift.shiftName,
         in: '--:--',
-        out: '--:--'
+        out: '--:--',
+        shiftName: shift.shiftName,
+        id: shift.id
       }
     }
     
@@ -132,14 +134,39 @@ const shiftData = computed(() => {
       code: shift.id,
       name: shift.shiftName,
       in: findEarliestTime(validStartTimes),
-      out: findLatestTime(validEndTimes)
+      out: findLatestTime(validEndTimes),
+      shiftName: shift.shiftName,
+      id: shift.id
     }
   })
 })
 
+// Filter variables for shifts
+const shiftSearchQuery = ref('')
+
+const filteredShiftData = computed(() => {
+  let result = [...shiftData.value]
+
+  if (shiftSearchQuery.value) {
+    const query = shiftSearchQuery.value.toLowerCase()
+    result = result.filter(shift =>
+      shift.code?.toString().includes(query) ||
+      shift.name?.toLowerCase().includes(query) ||
+      shift.shiftName?.toLowerCase().includes(query)
+    )
+  }
+
+  return result
+})
+
+const resetShiftFilters = () => {
+  shiftSearchQuery.value = ''
+  shiftCurrentPage.value = 1
+}
+
 const paginatedShiftData = computed(() => {
   const start = (shiftCurrentPage.value - 1) * shiftItemsPerPage.value
-  return shiftData.value.slice(start, start + shiftItemsPerPage.value)
+  return filteredShiftData.value.slice(start, start + shiftItemsPerPage.value)
 })
 
 // Phân trang máy chấm công
@@ -159,9 +186,34 @@ const machineData = computed(() => {
     stt: index + 1,
   }))
 })
+
+// Filter variables for machines
+const machineSearchQuery = ref('')
+
+const filteredMachineData = computed(() => {
+  let result = [...machineData.value]
+
+  if (machineSearchQuery.value) {
+    const query = machineSearchQuery.value.toLowerCase()
+    result = result.filter(machine =>
+      machine.id?.toString().includes(query) ||
+      machine.attendanceMachineName?.toLowerCase().includes(query) ||
+      machine.longitude?.toString().includes(query) ||
+      machine.latitude?.toString().includes(query)
+    )
+  }
+
+  return result
+})
+
+const resetMachineFilters = () => {
+  machineSearchQuery.value = ''
+  machineCurrentPage.value = 1
+}
+
 const paginatedMachineData = computed(() => {
   const start = (machineCurrentPage.value - 1) * machineItemsPerPage.value
-  return machineData.value.slice(start, start + machineItemsPerPage.value)
+  return filteredMachineData.value.slice(start, start + machineItemsPerPage.value)
 })
 
 const applyHeaderStyle = (row) => {
@@ -429,6 +481,49 @@ const handleDeleteClick = async (item) => {
         </ActionButton>
       </div>
     </div>
+    
+    <!-- Filter Section for Shifts -->
+    <transition name="slide-fade" v-if="activeTab === 'shift'">
+      <div class="filter-section mb-4" v-show="showFilter">
+        <div class="row g-3">
+          <div class="col-md-10">
+            <input
+              type="text"
+              class="form-control"
+              v-model="shiftSearchQuery"
+              placeholder="Tìm kiếm theo mã ca, tên ca..."
+            >
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-secondary w-100" @click="resetShiftFilters">
+              <i class="fas fa-undo me-2"></i>Đặt lại
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+    
+    <!-- Filter Section for Machines -->
+    <transition name="slide-fade" v-if="activeTab === 'machine'">
+      <div class="filter-section mb-4" v-show="showFilter">
+        <div class="row g-3">
+          <div class="col-md-10">
+            <input
+              type="text"
+              class="form-control"
+              v-model="machineSearchQuery"
+              placeholder="Tìm kiếm theo mã máy, tên máy, tọa độ..."
+            >
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-secondary w-100" @click="resetMachineFilters">
+              <i class="fas fa-undo me-2"></i>Đặt lại
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+    
     <div v-if="activeTab === 'shift'">
       <DataTable :columns="shiftColumns" :data="paginatedShiftData">
         <template #code="{ item }">
@@ -442,8 +537,13 @@ const handleDeleteClick = async (item) => {
           </div>
         </template>
       </DataTable>
-      <Pagination :totalItems="shiftData.length" :itemsPerPage="shiftItemsPerPage" :currentPage="shiftCurrentPage"
-        @update:currentPage="shiftCurrentPage = $event" />
+      <div class="d-flex justify-content-between align-items-center mt-3">
+        <div class="text-muted">
+          Hiển thị {{ paginatedShiftData.length }} trên {{ filteredShiftData.length }} ca làm việc
+        </div>
+        <Pagination :totalItems="filteredShiftData.length" :itemsPerPage="shiftItemsPerPage" :currentPage="shiftCurrentPage"
+          @update:currentPage="shiftCurrentPage = $event" />
+      </div>
     </div>
     <div v-else-if="activeTab === 'machine'">
       <DataTable :columns="machineColumns" :data="paginatedMachineData">
@@ -458,8 +558,13 @@ const handleDeleteClick = async (item) => {
           </div>
         </template>
       </DataTable>
-      <Pagination :totalItems="machineData.length" :itemsPerPage="machineItemsPerPage" :currentPage="machineCurrentPage"
-        @update:currentPage="machineCurrentPage = $event" />
+      <div class="d-flex justify-content-between align-items-center mt-3">
+        <div class="text-muted">
+          Hiển thị {{ paginatedMachineData.length }} trên {{ filteredMachineData.length }} máy chấm công
+        </div>
+        <Pagination :totalItems="filteredMachineData.length" :itemsPerPage="machineItemsPerPage" :currentPage="machineCurrentPage"
+          @update:currentPage="machineCurrentPage = $event" />
+      </div>
     </div>
     <ModalDialog v-model:show="showCreateForm" title="Tạo ca làm" size="xl">
   <WorkShiftForm mode="create" @close="showCreateForm = false" @submit="handleCreateWorkShift" />
@@ -603,5 +708,55 @@ const handleDeleteClick = async (item) => {
 .emp-count {
   font-weight: 600;
   color: #0d6efd;
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.filter-section .form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.filter-section .form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.filter-section .btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.filter-section .btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 </style>

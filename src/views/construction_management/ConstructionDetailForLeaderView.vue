@@ -126,10 +126,6 @@ const taskColumns = [
   { key: 'statusName', label: 'Trạng thái' }
 ]
 
-const handleItemClick = (item) => {
-  router.push(`/construction-plan-management?itemId=${item.id}`)
-}
-
 const handleUpdateItem = (item, event) => {
   event.stopPropagation()
   console.log('Update construction item:', item)
@@ -1094,7 +1090,7 @@ const downloadDesign = async () => {
                     Danh sách hạng mục
                   </h2>
                 </div>
-                <DataTable :columns="constructionItemColumns" :data="paginatedItems" @row-click="handleItemClick"
+                <DataTable :columns="constructionItemColumns" :data="paginatedItems"
                   class="custom-table">
                   <template #id="{ item }">
                     <div class="fw-medium text-primary">HM-{{ item.id }}</div>

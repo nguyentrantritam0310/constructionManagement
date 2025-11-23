@@ -143,6 +143,70 @@ const familyFormMode = ref('create')
 const showFilter = ref(false)
 const showImportModal = ref(false)
 
+// Filter variables
+const searchQuery = ref('')
+const statusFilter = ref('')
+const roleFilter = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
+
+const filteredEmployeesData = computed(() => {
+  let result = [...employeesData.value]
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(employee =>
+      employee.id?.toString().includes(query) ||
+      `${employee.firstName} ${employee.lastName}`.toLowerCase().includes(query) ||
+      employee.email?.toLowerCase().includes(query) ||
+      employee.phone?.toLowerCase().includes(query) ||
+      employee.roleName?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter
+  if (statusFilter.value) {
+    const status = statusFilter.value
+    result = result.filter(employee => {
+      const empStatus = employee.status || 'Active'
+      if (status === 'Active') return empStatus === 'Active' || empStatus === 0
+      if (status === 'Resigned') return empStatus === 'Resigned' || empStatus === 1
+      if (status === 'MaternityLeave') return empStatus === 'MaternityLeave' || empStatus === 2
+      return true
+    })
+  }
+
+  // Apply role filter
+  if (roleFilter.value) {
+    result = result.filter(employee => employee.roleID?.toString() === roleFilter.value)
+  }
+
+  // Apply date range filter (join date)
+  if (dateRange.value.start && dateRange.value.end) {
+    const start = new Date(dateRange.value.start)
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+
+    result = result.filter(employee => {
+      const joinDate = new Date(employee.joinDate)
+      return joinDate >= start && joinDate <= end
+    })
+  }
+
+  return result
+})
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  roleFilter.value = ''
+  dateRange.value = { start: null, end: null }
+  currentPage.value = 1
+}
+
 const openFamilyModal = async (employee) => {
     selectedEmployee.value = employee
     showFamilyModal.value = true
@@ -212,7 +276,7 @@ const handleDeleteFamilyRelation = async (relationId) => {
 const paginatedEmployees = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage
     const end = start + itemsPerPage
-    return employeesData.value.slice(start, end)
+    return filteredEmployeesData.value.slice(start, end)
 })
 
 const handlePageChange = (page) => {
@@ -346,6 +410,59 @@ const getEmployeeNameWithStatus = (employee) => {
             </div>
         </div>
         
+        <!-- Filter Section -->
+        <transition name="slide-fade">
+            <div class="filter-section mb-4" v-show="showFilter">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <input
+                            type="text"
+                            class="form-control"
+                            v-model="searchQuery"
+                            placeholder="Tìm kiếm theo mã, tên, email, số điện thoại..."
+                        >
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-control" v-model="statusFilter">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="Active">Đang làm việc</option>
+                            <option value="Resigned">Nghỉ việc</option>
+                            <option value="MaternityLeave">Nghỉ thai sản</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-control" v-model="roleFilter">
+                            <option value="">Tất cả chức danh</option>
+                            <option v-for="role in roles" :key="role.id" :value="role.id.toString()">
+                                {{ role.roleName }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <input
+                            type="date"
+                            class="form-control"
+                            v-model="dateRange.start"
+                            placeholder="Từ ngày"
+                        >
+                    </div>
+                    <div class="col-md-2">
+                        <input
+                            type="date"
+                            class="form-control"
+                            v-model="dateRange.end"
+                            placeholder="Đến ngày"
+                        >
+                    </div>
+                    <div class="col-md-1">
+                        <button class="btn btn-secondary w-100" @click="resetFilters">
+                            <i class="fas fa-undo me-2"></i>Đặt lại
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+        
         <!-- Loading State -->
         <div v-if="loading" class="text-center py-4">
             <div class="spinner-border text-primary" role="status">
@@ -399,8 +516,11 @@ const getEmployeeNameWithStatus = (employee) => {
             </template>
         </DataTable>
         <!-- Pagination -->
-        <div v-if="!loading && !error && employeesData.length > 0" class="d-flex justify-content-end mt-3">
-            <Pagination :total-items="employeesData.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        <div v-if="!loading && !error && filteredEmployeesData.length > 0" class="d-flex justify-content-between align-items-center mt-3">
+            <div class="text-muted">
+                Hiển thị {{ paginatedEmployees.length }} trên {{ filteredEmployeesData.length }} nhân viên
+            </div>
+            <Pagination :total-items="filteredEmployeesData.length" :items-per-page="itemsPerPage" :current-page="currentPage"
                 @update:currentPage="handlePageChange" />
         </div>
         <ModalDialog :title="employeeFormMode === 'create' ? 'Thêm hồ sơ nhân viên' : 'Cập nhật hồ sơ nhân viên'" :show="showEmployeeModal" size="lg" @update:show="closeEmployeeModal">
@@ -507,5 +627,55 @@ const getEmployeeNameWithStatus = (employee) => {
     border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
+}
+
+.filter-section {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.form-control {
+    height: 42px;
+    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.btn-secondary {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #6c757d;
+}
+
+.btn-secondary:hover {
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+    color: #495057;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+    transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+    opacity: 1;
+    transform: translateY(0);
 }
 </style>

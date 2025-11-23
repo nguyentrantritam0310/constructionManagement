@@ -23,6 +23,62 @@
       </div>
     </div>
     <TabBar :tabs="tabs" :activeTab="activeTab" @update:activeTab="activeTab = $event" />
+    
+    <!-- Filter Section -->
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <input
+              type="text"
+              class="form-control"
+              v-model="searchQuery"
+              :placeholder="activeTab === 'allContracts' ? 'Tìm kiếm theo số hợp đồng, tên nhân viên...' : 
+                           activeTab === 'notCreated' ? 'Tìm kiếm theo mã, tên nhân viên, email...' : 
+                           'Tìm kiếm theo mã nhân viên, tên nhân viên...'"
+            >
+          </div>
+          <div v-if="activeTab === 'allContracts'" class="col-md-2">
+            <select class="form-control" v-model="statusFilter">
+              <option value="">Tất cả trạng thái duyệt</option>
+              <option value="Pending">Chờ duyệt</option>
+              <option value="Approved">Đã duyệt</option>
+              <option value="Rejected">Từ chối</option>
+              <option value="Returned">Trả lại</option>
+            </select>
+          </div>
+          <div v-if="activeTab === 'allContracts'" class="col-md-2">
+            <select class="form-control" v-model="validityFilter">
+              <option value="">Tất cả hiệu lực</option>
+              <option value="Còn hiệu lực">Còn hiệu lực</option>
+              <option value="Hết hiệu lực">Hết hiệu lực</option>
+            </select>
+          </div>
+          <div v-if="activeTab === 'allContracts'" class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.start"
+              placeholder="Từ ngày"
+            >
+          </div>
+          <div v-if="activeTab === 'allContracts'" class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.end"
+              placeholder="Đến ngày"
+            >
+          </div>
+          <div :class="activeTab === 'allContracts' ? 'col-md-1' : 'col-md-9'">
+            <button class="btn btn-secondary w-100" @click="resetFilters">
+              <i class="fas fa-undo me-2"></i>Đặt lại
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+    
     <div class="card shadow-sm">
       <div class="card-body p-0">
         <DataTable :columns="columnsByTab" :data="paginatedContracts" @cell-click="handleCellClick">
@@ -130,8 +186,11 @@
         </DataTable>
       </div>
     </div>
-    <div class="d-flex justify-content-end mt-3">
-      <Pagination :total-items="paginatedContracts.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <div class="text-muted">
+        Hiển thị {{ paginatedContracts.length }} trên {{ totalFilteredContracts }} hợp đồng
+      </div>
+      <Pagination :total-items="totalFilteredContracts" :items-per-page="itemsPerPage" :current-page="currentPage"
         @update:currentPage="handlePageChange" />
     </div>
     <ModalDialog :show="showContractModal" title="Thêm/Cập nhật hợp đồng" size="xl" @update:show="closeContractModal">
@@ -593,10 +652,17 @@ const itemsPerPage = 20
 const paginatedContracts = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
   const end = start + itemsPerPage
-  if (activeTab.value === 'allContracts') return contractsData.value.slice(start, end)
-  if (activeTab.value === 'notCreated') return notCreatedContracts.value.slice(start, end)
-  if (activeTab.value === 'expired') return expiredContracts.value.slice(start, end)
+  if (activeTab.value === 'allContracts') return filteredContractsData.value.slice(start, end)
+  if (activeTab.value === 'notCreated') return filteredNotCreatedContracts.value.slice(start, end)
+  if (activeTab.value === 'expired') return filteredExpiredContracts.value.slice(start, end)
   return []
+})
+
+const totalFilteredContracts = computed(() => {
+  if (activeTab.value === 'allContracts') return filteredContractsData.value.length
+  if (activeTab.value === 'notCreated') return filteredNotCreatedContracts.value.length
+  if (activeTab.value === 'expired') return filteredExpiredContracts.value.length
+  return 0
 })
 
 const columnsByTab = computed(() => {
@@ -708,6 +774,103 @@ const selectedContractForm = ref(null)
 const contractFormMode = ref('create')
 const showFilter = ref(false)
 const showImportModal = ref(false)
+
+// Filter variables
+const searchQuery = ref('')
+const statusFilter = ref('')
+const validityFilter = ref('')
+const dateRange = ref({
+  start: null,
+  end: null
+})
+
+const filteredContractsData = computed(() => {
+  let result = [...contractsData.value]
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(contract =>
+      contract.id?.toString().includes(query) ||
+      contract.contractNumber?.toLowerCase().includes(query) ||
+      contract.employeeName?.toLowerCase().includes(query) ||
+      contract.contractTypeName?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter (approve status)
+  if (statusFilter.value) {
+    const statusMap = {
+      'Pending': 1,
+      'Approved': 2,
+      'Rejected': 3,
+      'Returned': 4
+    }
+    const statusValue = statusMap[statusFilter.value]
+    if (statusValue) {
+      result = result.filter(contract => contract.approveStatus === statusValue)
+    }
+  }
+
+  // Apply validity filter
+  if (validityFilter.value) {
+    result = result.filter(contract => contract.validityStatus === validityFilter.value)
+  }
+
+  // Apply date range filter (start date)
+  if (dateRange.value.start && dateRange.value.end) {
+    const start = new Date(dateRange.value.start)
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+
+    result = result.filter(contract => {
+      const contractDate = new Date(contract.startDate)
+      return contractDate >= start && contractDate <= end
+    })
+  }
+
+  return result
+})
+
+const filteredNotCreatedContracts = computed(() => {
+  let result = [...notCreatedContracts.value]
+
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(emp =>
+      emp.id?.toString().includes(query) ||
+      emp.employeeName?.toLowerCase().includes(query) ||
+      emp.email?.toLowerCase().includes(query) ||
+      emp.phone?.toLowerCase().includes(query)
+    )
+  }
+
+  return result
+})
+
+const filteredExpiredContracts = computed(() => {
+  let result = [...expiredContracts.value]
+
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(contract =>
+      contract.employeeID?.toString().includes(query) ||
+      contract.employeeName?.toLowerCase().includes(query) ||
+      contract.contractNumber?.toLowerCase().includes(query) ||
+      contract.contractTypeName?.toLowerCase().includes(query)
+    )
+  }
+
+  return result
+})
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  validityFilter.value = ''
+  dateRange.value = { start: null, end: null }
+  currentPage.value = 1
+}
 
 // Excel import functions
 const file = ref(null)
@@ -1135,6 +1298,56 @@ const closeTerminateModal = () => {
     font-size: 0.8rem;
     padding: 3px 8px;
   }
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.filter-section .form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.filter-section .form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.filter-section .btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.filter-section .btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 </style>
 

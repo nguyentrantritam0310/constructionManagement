@@ -1,4 +1,5 @@
 <script setup>
+import { ref, provide } from 'vue'
 import ModalDialog from './ModalDialog.vue'
 
 const props = defineProps({
@@ -30,12 +31,29 @@ const props = defineProps({
 
 const emit = defineEmits(['update:show', 'submit', 'resubmit', 'cancel'])
 
+const formRef = ref(null)
+const validateFuncRef = ref(null)
+
+// Provide function để child component đăng ký validate function
+provide('registerValidate', (validateFunc) => {
+  validateFuncRef.value = validateFunc
+})
+
 const handleClose = () => {
+  validateFuncRef.value = null
   emit('update:show', false)
   emit('cancel')
 }
 
 const handleSubmit = () => {
+  // Gọi validate function nếu có
+  if (validateFuncRef.value && typeof validateFuncRef.value === 'function') {
+    const isValid = validateFuncRef.value()
+    if (!isValid) {
+      return // Không submit nếu validation fail
+    }
+  }
+  
   if (props.resubmitMode) {
     emit('resubmit', props.formData)
   } else {
@@ -53,7 +71,9 @@ const handleSubmit = () => {
   >
     <form @submit.prevent="handleSubmit">
     <div class="modal-body">
-      <slot></slot>
+      <div ref="formRef">
+        <slot></slot>
+      </div>
     </div>
     <div class="modal-footer">
       <div class="d-flex justify-content-end gap-2">
