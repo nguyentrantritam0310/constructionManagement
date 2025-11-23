@@ -7,7 +7,6 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { useMaterialManagement } from '../../composables/useMaterialManagement'
-import UpdateButton from '../../components/common/UpdateButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -26,6 +25,7 @@ const selectedMaterial = ref(null)
 const formMode = ref('create') // 'create' or 'update'
 const showImportModal = ref(false)
 const file = ref(null)
+const showFilter = ref(false)
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -275,6 +275,9 @@ const unitPriceBounds = computed(() => {
         <ActionButton icon="fas fa-plus" type="primary" tooltip="Thêm Vật Tư Mới" @click="openForm('create')">
           <span class="ms-2">Thêm</span>
         </ActionButton>
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+          Lọc
+        </ActionButton>
         <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
           Xuất Excel
         </ActionButton>
@@ -285,7 +288,8 @@ const unitPriceBounds = computed(() => {
     </div>
 
     <!-- Filter Section -->
-    <div class="filter-section mb-4">
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
       <div class="row g-3">
         <!-- Tìm kiếm -->
         <div class="col-lg-4 col-md-6">
@@ -424,7 +428,8 @@ const unitPriceBounds = computed(() => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </transition>
 
     <!-- Danh sách vật tư -->
     <DataTable :columns="[
@@ -437,7 +442,7 @@ const unitPriceBounds = computed(() => {
     ]" :data="paginatedMaterials">
       <template #actions="{ item }">
         <div class="d-flex justify-content-center gap-2">
-          <UpdateButton @click.stop="openForm('update', item)" />
+          <ActionButton type="success" icon="fas fa-edit" tooltip="Cập nhật" @click.stop="openForm('update', item)" />
         </div>
       </template>
     </DataTable>
@@ -565,6 +570,23 @@ const unitPriceBounds = computed(() => {
   to {
     opacity: 1;
   }
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @media (max-width: 768px) {

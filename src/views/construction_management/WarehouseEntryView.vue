@@ -30,6 +30,7 @@ const columns = [
 const showDetails = ref(false)
 const selectedOrder = ref(null)
 const materialPlans = ref([])
+const showFilter = ref(false)
 
 const {
   importOrders,
@@ -162,10 +163,14 @@ const resetFilters = () => {
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h1 class="h3 mb-0">Nhập Kho</h1>
+      <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+        Lọc
+      </ActionButton>
     </div>
 
     <!-- Filter Section -->
-    <div class="filter-section mb-4">
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
       <div class="row g-3 align-items-center">
         <div class="col-lg-3 col-md-6">
           <div class="input-group">
@@ -221,7 +226,8 @@ const resetFilters = () => {
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </transition>
 
     <!-- Danh sách đơn hàng -->
     <DataTable :columns="columns" :data="paginatedOrders" @row-click="openDetails">

@@ -5,8 +5,6 @@ import { useConstructionManagement } from '../../composables/useConstructionMana
 import DataTable from '../../components/common/DataTable.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import Pagination from '../../components/common/Pagination.vue'
-import UpdateButton from '../../components/common/UpdateButton.vue'
-import ChangeStatusButton from '../../components/common/ChangeStatusButton.vue'
 import StatusChangeDialog from '../../components/common/StatusChangeDialog.vue'
 import ConstructionForm from '../../components/construction/ConstructionForm.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
@@ -35,6 +33,7 @@ const showUpdateDialog = ref(false)
 const showStatusDialog = ref(false)
 const showImportModal = ref(false)
 const file = ref(null)
+const showFilter = ref(false)
 
 const currentPage = ref(1)
 const itemsPerPage = 5
@@ -314,7 +313,13 @@ const resetFilters = () => {
   searchQuery.value = ''
   statusFilter.value = ''
   dateRangeFilter.value = { start: null, end: null }
+  currentPage.value = 1
 }
+
+// Watch filters to reset page
+watch([searchQuery, statusFilter, dateRangeFilter], () => {
+  currentPage.value = 1
+}, { deep: true })
 </script>
 
 <template>
@@ -322,6 +327,9 @@ const resetFilters = () => {
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h1>Quản Lý Công Trình</h1>
       <div class="d-flex gap-2">
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+          Lọc
+        </ActionButton>
         <ActionButton type="primary" icon="fas fa-plus me-2" @click="openCreateForm">
           Thêm</ActionButton>
         <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
@@ -333,8 +341,9 @@ const resetFilters = () => {
       </div>
     </div>
 
-    <div class="card mb-4">
-      <div class="card-body">
+    <!-- Filter Section -->
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
         <div class="row g-3">
           <div class="col-md-4">
             <div class="input-group">
@@ -345,29 +354,41 @@ const resetFilters = () => {
             </div>
           </div>
           <div class="col-md-3">
-            <select class="form-select" v-model="statusFilter">
-              <option value="">Tất cả trạng thái</option>
-              <option value="Chờ khởi công">Chờ khởi công</option>
-              <option value="Đang thi công">Đang thi công</option>
-              <option value="Hoàn thành">Hoàn thành</option>
-              <option value="Tạm dừng">Tạm dừng</option>
-              <option value="Hủy bỏ">Hủy bỏ</option>
-            </select>
-          </div>
-          <div class="col-md-4">
             <div class="input-group">
+              <span class="input-group-text">
+                <i class="fas fa-tasks"></i>
+              </span>
+              <select class="form-control" v-model="statusFilter">
+                <option value="">Tất cả trạng thái</option>
+                <option value="Chờ khởi công">Chờ khởi công</option>
+                <option value="Đang thi công">Đang thi công</option>
+                <option value="Hoàn thành">Hoàn thành</option>
+                <option value="Tạm dừng">Tạm dừng</option>
+                <option value="Hủy bỏ">Hủy bỏ</option>
+              </select>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="fas fa-calendar"></i>
+              </span>
               <input type="date" class="form-control" v-model="dateRangeFilter.start" placeholder="Từ ngày">
+            </div>
+          </div>
+          <div class="col-md-2">
+            <div class="input-group">
               <input type="date" class="form-control" v-model="dateRangeFilter.end" placeholder="Đến ngày">
             </div>
           </div>
           <div class="col-md-1">
-            <button class="btn btn-outline-secondary w-100" @click="resetFilters">
-              <i class="fas fa-times"></i>
+            <button class="btn btn-secondary w-100" @click="resetFilters">
+              <i class="fas fa-undo me-2"></i>Đặt lại
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </transition>
 
     <!-- Constructions Table -->
     <DataTable :columns="columns" :data="paginatedConstructions" @row-click="handleRowClick"
@@ -395,8 +416,8 @@ const resetFilters = () => {
       </template>
       <template #actions="{ item }">
         <div class="d-flex justify-content-center gap-2">
-          <UpdateButton @click.stop="openUpdateForm(item.id)" />
-          <ChangeStatusButton @click.stop="openStatusDialog(item)" />
+          <ActionButton type="success" icon="fas fa-edit" tooltip="Cập nhật" @click.stop="openUpdateForm(item.id)" />
+          <ActionButton type="warning" icon="fas fa-exchange-alt" tooltip="Đổi trạng thái" @click.stop="openStatusDialog(item)" />
         </div>
       </template>
     </DataTable>
@@ -445,5 +466,94 @@ const resetFilters = () => {
     </ModalDialog>
   </div>
 </template>
+
+<style scoped>
+.container-fluid {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.filter-section .form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.filter-section .form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.filter-section .input-group-text {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem 0 0 0.5rem;
+  padding: 0.5rem 1rem;
+  color: #6c757d;
+}
+
+.filter-section .input-group .form-control {
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.filter-section .btn {
+  height: 42px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+}
+
+.filter-section .btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.filter-section .btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+</style>
 
 

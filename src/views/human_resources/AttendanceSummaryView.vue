@@ -3,6 +3,7 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import LeaveForm from '../../components/common/leave/LeaveForm.vue'
+import TourGuide from '../../components/common/TourGuide.vue'
 import { useAuth } from '../../composables/useAuth.js'
 
 const showEmployeeModal = ref(false)
@@ -15,6 +16,7 @@ const selectedDateIdx = ref(null)
 const selectedLeaveRequest = ref(null)
 const dayModalLoading = ref(false)
 const dayModalError = ref(null)
+const showTourGuide = ref(false)
 
 
 function openEmployeeModal(emp) {
@@ -2627,12 +2629,300 @@ const getEmployeeFullName = (employee) => {
   }
   return null
 }
+
+// Tour Guide Functions
+const startTour = () => {
+  console.log('Starting tour, activeTab:', activeTab.value)
+  console.log('Tour steps:', tourSteps.value)
+  showTourGuide.value = true
+}
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+// Tour Steps - Dynamic based on active tab
+const tourSteps = computed(() => {
+  if (activeTab.value === 'summary') {
+    return [
+      {
+        target: '[data-tour="title"]',
+        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng tổng hợp công" - nơi bạn có thể xem tổng hợp công của tất cả nhân viên trong tháng.'
+      },
+      {
+        target: '[data-tour="tabs"]',
+        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng tổng hợp công".'
+      },
+      {
+        target: '[data-tour="month-filter"]',
+        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu công của các tháng khác nhau.'
+      },
+      {
+        target: '[data-tour="legend"]',
+        message: 'Đây là chú thích màu sắc. Mỗi màu đại diện cho một trạng thái công: xanh lá (đi làm), xanh dương (nghỉ phép), vàng (chưa đủ giờ công), đỏ (quên checkin/checkout).'
+      },
+      {
+        target: '[data-tour="summary-table"]',
+        message: 'Đây là bảng tổng hợp công. Bạn có thể xem thông tin công của từng nhân viên theo từng ngày trong tháng.'
+      },
+      {
+        target: '[data-tour="employee-modal"]',
+        message: 'Đây là modal chi tiết tổng hợp công nhân viên. Bạn có thể xem thống kê tổng hợp về ngày công, đi làm, công tác, nghỉ có lương, tăng ca nghỉ bù và tăng ca tính lương.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="detail-btn"]:first-of-type'
+        }
+      },
+      {
+        target: '[data-tour="day-modal"]',
+        message: 'Đây là modal chi tiết chấm công từng ngày. Bạn có thể xem dữ liệu chấm công và lịch làm việc chi tiết của nhân viên cho một ngày cụ thể. Hãy để tôi hướng dẫn từng phần!',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Đóng modal employee nếu đang mở
+            if (showEmployeeModal.value) {
+              showEmployeeModal.value = false
+              await new Promise(resolve => setTimeout(resolve, 200))
+            }
+            // Tìm và click vào một ô ngày có dữ liệu
+            const firstCell = document.querySelector('[data-tour="day-cell"]')
+            if (firstCell) {
+              firstCell.click()
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+          }
+        }
+      },
+      {
+        target: '[data-tour="attendance-history"]',
+        message: 'Đây là bảng dữ liệu chấm công. Bạn có thể xem thông tin về các lần quét thẻ, giờ quét, loại công và vị trí chấm công. Bạn có thể click vào mã phiếu tham chiếu để xem chi tiết phiếu nghỉ phép.'
+      },
+      {
+        target: '[data-tour="work-history"]',
+        message: 'Đây là bảng lịch làm việc. Bạn có thể xem thông tin về ca làm việc, công chuẩn, giờ quét vào/ra, đi trễ/về sớm và giờ/ngày công.'
+      },
+      {
+        target: '[data-tour="leave-form-modal"]',
+        message: 'Đây là modal chi tiết phiếu nghỉ phép. Bạn có thể xem và chỉnh sửa thông tin về đơn nghỉ phép của nhân viên.',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Đóng modal day nếu đang mở
+            if (showDayModal.value) {
+              showDayModal.value = false
+              await new Promise(resolve => setTimeout(resolve, 200))
+            }
+            // Tìm và click vào một mã phiếu nghỉ phép
+            const voucherLink = document.querySelector('[data-tour="voucher-code-link"]')
+            if (voucherLink) {
+              voucherLink.click()
+              await new Promise(resolve => setTimeout(resolve, 300))
+            }
+          }
+        }
+      },
+      {
+        target: '[data-tour="pagination-summary"]',
+        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Bảng tổng hợp công"!',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Đóng modal nếu đang mở
+            if (showLeaveFormModal.value) {
+              showLeaveFormModal.value = false
+              await new Promise(resolve => setTimeout(resolve, 300))
+            }
+          }
+        }
+      }
+    ]
+  } else if (activeTab.value === 'personal') {
+    return [
+      {
+        target: '[data-tour="title"]',
+        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng công cá nhân" - nơi bạn có thể xem bảng công của chính mình trong tháng.'
+      },
+      {
+        target: '[data-tour="tabs"]',
+        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng công cá nhân".'
+      },
+      {
+        target: '[data-tour="month-filter-personal"]',
+        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu công của các tháng khác nhau.'
+      },
+      {
+        target: '[data-tour="legend-personal"]',
+        message: 'Đây là chú thích màu sắc. Mỗi màu đại diện cho một trạng thái công: xanh lá (đi làm), xanh dương (nghỉ phép), vàng (chưa đủ giờ công), đỏ (quên checkin/checkout).'
+      },
+      {
+        target: '[data-tour="personal-calendar"]',
+        message: 'Đây là lịch công cá nhân. Bạn có thể xem trạng thái công của mình theo từng ngày trong tháng. Click vào một ngày để xem chi tiết.'
+      },
+      {
+        target: '[data-tour="personal-stats"]',
+        message: 'Đây là thống kê tháng. Bạn có thể xem tổng hợp về số ngày đi làm, nghỉ phép, chưa đủ giờ, quên checkin/checkout, đi trễ và tổng ngày trong tháng.'
+      }
+    ]
+  } else if (activeTab.value === 'overtime') {
+    return [
+      {
+        target: '[data-tour="title"]',
+        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng công tăng ca" - nơi bạn có thể xem tổng hợp tăng ca của tất cả nhân viên trong tháng.'
+      },
+      {
+        target: '[data-tour="tabs"]',
+        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng công tăng ca".'
+      },
+      {
+        target: '[data-tour="month-filter-overtime"]',
+        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu tăng ca của các tháng khác nhau.'
+      },
+      {
+        target: '[data-tour="legend-overtime"]',
+        message: 'Đây là chú thích màu sắc. Mỗi màu đại diện cho một loại tăng ca: xanh lá (tăng ca nghỉ bù), xanh dương (tăng ca tính lương).'
+      },
+      {
+        target: '[data-tour="overtime-table"]',
+        message: 'Đây là bảng tổng hợp tăng ca. Bạn có thể xem thông tin tăng ca của từng nhân viên theo từng ngày trong tháng.'
+      },
+      {
+        target: '[data-tour="overtime-modal"]',
+        message: 'Đây là modal chi tiết tăng ca. Bạn có thể xem thông tin chi tiết về số giờ tăng ca, số ngày tăng ca, giờ có hệ số và ngày có hệ số của nhân viên.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="overtime-detail-btn"]:first-of-type'
+        }
+      },
+      {
+        target: '[data-tour="pagination-overtime"]',
+        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Bảng công tăng ca"!',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Đóng modal nếu đang mở
+            if (showOvertimeModal.value) {
+              showOvertimeModal.value = false
+              await new Promise(resolve => setTimeout(resolve, 300))
+            }
+          }
+        }
+      }
+    ]
+  } else if (activeTab.value === 'personalOvertime') {
+    return [
+      {
+        target: '[data-tour="title"]',
+        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng công tăng ca cá nhân" - nơi bạn có thể xem bảng tăng ca của chính mình trong tháng.'
+      },
+      {
+        target: '[data-tour="tabs"]',
+        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng công tăng ca cá nhân".'
+      },
+      {
+        target: '[data-tour="month-filter-personal-ot"]',
+        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu tăng ca của các tháng khác nhau.'
+      },
+      {
+        target: '[data-tour="legend-personal-ot"]',
+        message: 'Đây là chú thích màu sắc. Mỗi màu đại diện cho một loại tăng ca: xanh lá (tăng ca nghỉ bù), tím (tăng ca tính lương), xám (tăng ca thường).'
+      },
+      {
+        target: '[data-tour="personal-ot-calendar"]',
+        message: 'Đây là lịch tăng ca cá nhân. Bạn có thể xem trạng thái tăng ca của mình theo từng ngày trong tháng.'
+      },
+      {
+        target: '[data-tour="personal-ot-stats"]',
+        message: 'Đây là thống kê tăng ca tháng. Bạn có thể xem tổng hợp về số ngày tăng ca nghỉ bù, tăng ca tính lương, tăng ca thường, tổng ngày tăng ca và tổng giờ tăng ca trong tháng.'
+      }
+    ]
+  } else if (activeTab.value === 'detail') {
+    return [
+      {
+        target: '[data-tour="title"]',
+        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng công chi tiết" - nơi bạn có thể xem chi tiết công của từng ngày làm việc.'
+      },
+      {
+        target: '[data-tour="tabs"]',
+        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng công chi tiết".'
+      },
+      {
+        target: '[data-tour="month-filter-detail"]',
+        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu công chi tiết của các tháng khác nhau.'
+      },
+      {
+        target: '[data-tour="export-buttons-detail"]',
+        message: 'Đây là các nút xuất dữ liệu. Bạn có thể xuất Excel hoặc in báo cáo công chi tiết.'
+      },
+      {
+        target: '[data-tour="detail-table"]',
+        message: 'Đây là bảng công chi tiết. Bạn có thể xem thông tin về STT, mã nhân viên, tên nhân viên, ca làm việc, ngày làm, giờ vào, giờ ra, loại công, số giờ, số ngày, đi trễ và về sớm.'
+      },
+      {
+        target: '[data-tour="pagination-detail"]',
+        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều bản ghi hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Bảng công chi tiết"!'
+      }
+    ]
+  } else if (activeTab.value === 'attendance') {
+    return [
+      {
+        target: '[data-tour="title"]',
+        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Dữ liệu chấm công" - nơi bạn có thể xem tất cả dữ liệu chấm công của nhân viên.'
+      },
+      {
+        target: '[data-tour="tabs"]',
+        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Dữ liệu chấm công".'
+      },
+      {
+        target: '[data-tour="month-filter-attendance"]',
+        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu chấm công của các tháng khác nhau.'
+      },
+      {
+        target: '[data-tour="export-buttons-attendance"]',
+        message: 'Đây là các nút xuất dữ liệu. Bạn có thể xuất Excel hoặc in báo cáo dữ liệu chấm công.'
+      },
+      {
+        target: '[data-tour="attendance-table"]',
+        message: 'Đây là bảng dữ liệu chấm công. Bạn có thể xem thông tin về STT, ảnh chấm công, mã nhân viên, tên nhân viên, ca làm việc, ngày làm, giờ quét, máy chấm công, vị trí và loại công. Bạn có thể click vào ảnh để xem chi tiết.'
+      },
+      {
+        target: '[data-tour="image-modal"]',
+        message: 'Đây là modal xem chi tiết ảnh chấm công. Bạn có thể xem ảnh chấm công vào hoặc ra với kích thước lớn hơn.',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Tìm và click vào một ảnh chấm công
+            const firstImage = document.querySelector('[data-tour="attendance-image"]')
+            if (firstImage) {
+              firstImage.click()
+              await new Promise(resolve => setTimeout(resolve, 300))
+            }
+          }
+        }
+      },
+      {
+        target: '[data-tour="pagination-attendance"]',
+        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều bản ghi hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Dữ liệu chấm công"!',
+        action: {
+          type: 'function',
+          func: async () => {
+            // Đóng modal nếu đang mở
+            if (showImageModal.value) {
+              showImageModal.value = false
+              await new Promise(resolve => setTimeout(resolve, 300))
+            }
+          }
+        }
+      }
+    ]
+  }
+  return []
+})
 </script>
 
 <template>
-  <div class="container-fluid py-4">
+  <div class="container-fluid py-4" data-tour="title">
     <!-- Thay thế TabBar hiện tại bằng đoạn sau -->
-    <div class="attendance-tabs-bar">
+    <div class="attendance-tabs-bar" data-tour="tabs">
       <div v-for="tab in visibleTabs" :key="tab.key" class="tab-bar-item" :class="{ active: activeTab === tab.key }"
         @click="selectTab(tab.key)">
         <i :class="tab.icon + ' tab-bar-icon'"></i>
@@ -2659,7 +2949,7 @@ const getEmployeeFullName = (employee) => {
               <div class="col-md-8">
                 <div class="d-flex align-items-center gap-4">
                   <!-- Bộ lọc tháng -->
-                  <div class="time-filter-compact">
+                  <div class="time-filter-compact" data-tour="month-filter">
                     <div class="d-flex align-items-center gap-2">
                       <button 
                         class="btn btn-outline-light btn-sm" 
@@ -2709,13 +2999,18 @@ const getEmployeeFullName = (employee) => {
                   </div>
                 </div>
               </div>
-              
+              <div class="col-md-4 text-end">
+                <button class="btn btn-outline-light btn-sm" @click="startTour">
+                  <i class="fas fa-question-circle me-1"></i>
+                  Hướng dẫn
+                </button>
+              </div>
             </div>
           </div>
-          <div class="attendance-summary-table">
+          <div class="attendance-summary-table" data-tour="summary-table">
             <DataTable :columns="mainSummaryColumns" :data="paginatedMainSummaryData">
               <template #detail="{ item }">
-                <button class="btn btn-sm btn-outline-primary" @click.stop="openEmployeeModal(item)"><i
+                <button class="btn btn-sm btn-outline-primary" @click.stop="openEmployeeModal(item)" data-tour="detail-btn"><i
                     class="fa-solid fa-eye"></i></button>
               </template>
               <template #id="{ item }">
@@ -2726,14 +3021,14 @@ const getEmployeeFullName = (employee) => {
               </template>
               <template v-for="(day, idx) in dayHeaders" v-slot:[`day_${idx}`]="{ item }">
                 <div class="schedule-cell-modern" :class="getCellClass(item._idx, idx)"
-                  :title="getCellTitle(item._idx, idx)" @click.stop="openDayModal(item, idx)" style="cursor:pointer;">
+                  :title="getCellTitle(item._idx, idx)" @click.stop="openDayModal(item, idx)" style="cursor:pointer;" data-tour="day-cell">
                   <span class="cell-time">{{ item[`day_${idx}`]?.time }}</span>
                 </div>
               </template>
             </DataTable>
 
             <!-- Pagination for main summary table -->
-            <div class="d-flex justify-content-between align-items-center mt-3" v-if="totalPages > 1">
+            <div class="d-flex justify-content-between align-items-center mt-3" v-if="totalPages > 1" data-tour="pagination-summary">
               <div class="pagination-info">
                 Hiển thị {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize,
                 mainSummaryData.length) }}
@@ -2773,7 +3068,7 @@ const getEmployeeFullName = (employee) => {
             </div>
 
             <ModalDialog :show="showEmployeeModal" title="Chi tiết tổng hợp công nhân viên" size="xl" scrollable
-              @update:show="showEmployeeModal = $event">
+              @update:show="showEmployeeModal = $event" data-tour="employee-modal">
               <div class="modal-emp-header">
                 <div class="modal-emp-avatar">
                   <img v-if="selectedEmployee?.avatar" :src="selectedEmployee.avatar" alt="avatar" />
@@ -2853,7 +3148,7 @@ const getEmployeeFullName = (employee) => {
             </ModalDialog>
 
             <ModalDialog :show="showDayModal" title="Chi tiết chấm công từng ngày" size="xl" scrollable
-              @update:show="showDayModal = $event">
+              @update:show="showDayModal = $event" data-tour="day-modal">
               <div class="modal-emp-header">
                 <div class="modal-emp-avatar">
                   <img v-if="selectedEmployee?.avatar" :src="selectedEmployee.avatar" alt="avatar" />
@@ -2896,7 +3191,7 @@ const getEmployeeFullName = (employee) => {
               <div v-else>
                 <div class="modal-section">
                   <div class="section-title"><i class="fas fa-fingerprint"></i> Dữ liệu chấm công</div>
-                  <div v-if="filteredAttendanceHistory.length > 0">
+                  <div v-if="filteredAttendanceHistory.length > 0" data-tour="attendance-history">
                     <DataTable :columns="attendanceColumnsNoActions" :data="filteredAttendanceHistory">
                       <template #avatar="{ item }">
                         <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar clickable-image" 
@@ -2911,6 +3206,7 @@ const getEmployeeFullName = (employee) => {
                           class="voucher-code-link text-primary cursor-pointer"
                           @click="openLeaveFormModal(item.refCode)"
                           :title="'Click để xem chi tiết phiếu nghỉ phép'"
+                          data-tour="voucher-code-link"
                         >
                           <i class="fas fa-file-alt me-1"></i>
                           {{ item.refCode }}
@@ -2929,7 +3225,7 @@ const getEmployeeFullName = (employee) => {
                 </div>
                 <div class="modal-section">
                   <div class="section-title"><i class="fas fa-calendar-alt"></i> Lịch làm việc</div>
-                  <div v-if="filteredWorkHistory.length > 0">
+                  <div v-if="filteredWorkHistory.length > 0" data-tour="work-history">
                     <DataTable :columns="workColumnsNoActions" :data="filteredWorkHistory">
                       <template #scanInOut="{ item }">
                         <div>
@@ -2954,7 +3250,7 @@ const getEmployeeFullName = (employee) => {
             
             <!-- ModalDialog cho LeaveForm -->
             <ModalDialog :show="showLeaveFormModal" title="Chi tiết phiếu nghỉ phép" size="lg" scrollable
-              @update:show="showLeaveFormModal = $event">
+              @update:show="showLeaveFormModal = $event" data-tour="leave-form-modal">
               <LeaveForm 
                 v-if="selectedLeaveRequest"
                 mode="update"
@@ -2977,7 +3273,7 @@ const getEmployeeFullName = (employee) => {
           <div class="personal-header mb-4">
             <div class="row g-3 align-items-center">
               <div class="col-md-6">
-                <div class="time-filter-compact">
+                <div class="time-filter-compact" data-tour="month-filter-personal">
                   <div class="d-flex align-items-center gap-3">
                     <button 
                       class="btn btn-outline-light btn-sm" 
@@ -3030,7 +3326,7 @@ const getEmployeeFullName = (employee) => {
           </div>
 
           <!-- Personal Attendance Calendar -->
-          <div class="personal-attendance-calendar">
+          <div class="personal-attendance-calendar" data-tour="personal-calendar">
             <div class="calendar-header">
               <div class="calendar-day-header">CN</div>
               <div class="calendar-day-header">T2</div>
@@ -3055,7 +3351,7 @@ const getEmployeeFullName = (employee) => {
           </div>
 
           <!-- Summary Statistics -->
-          <div v-if="personalAttendanceData.length > 0" class="row mt-4">
+          <div v-if="personalAttendanceData.length > 0" class="row mt-4" data-tour="personal-stats">
             <div class="col-md-12">
               <div class="card border-0 shadow-sm">
                 <div class="card-header bg-gradient-primary text-white d-flex justify-content-between align-items-center">
@@ -3133,7 +3429,7 @@ const getEmployeeFullName = (employee) => {
           <div class="personal-overtime-header mb-4">
             <div class="row g-3 align-items-center">
               <div class="col-md-6">
-                <div class="time-filter-compact">
+                <div class="time-filter-compact" data-tour="month-filter-personal-ot">
                   <div class="d-flex align-items-center gap-3">
                     <button 
                       class="btn btn-outline-light btn-sm" 
@@ -3182,7 +3478,7 @@ const getEmployeeFullName = (employee) => {
           </div>
 
           <!-- Personal Overtime Calendar -->
-          <div class="personal-attendance-calendar">
+          <div class="personal-attendance-calendar" data-tour="personal-ot-calendar">
             <div class="calendar-header">
               <div class="calendar-day-header">CN</div>
               <div class="calendar-day-header">T2</div>
@@ -3207,7 +3503,7 @@ const getEmployeeFullName = (employee) => {
           </div>
 
           <!-- Statistics -->
-          <div v-if="personalOvertimeData.length > 0" class="row mt-4">
+          <div v-if="personalOvertimeData.length > 0" class="row mt-4" data-tour="personal-ot-stats">
             <div class="col-md-12">
               <div class="card border-0 shadow-sm">
                 <div class="card-header bg-gradient-purple text-white d-flex justify-content-between align-items-center">
@@ -3290,7 +3586,7 @@ const getEmployeeFullName = (employee) => {
               <div class="col-md-8">
                 <div class="d-flex align-items-center gap-4">
                   <!-- Bộ lọc tháng -->
-                  <div class="time-filter-compact">
+                  <div class="time-filter-compact" data-tour="month-filter-overtime">
                     <div class="d-flex align-items-center gap-2">
                       <button 
                         class="btn btn-outline-light btn-sm" 
@@ -3332,7 +3628,12 @@ const getEmployeeFullName = (employee) => {
                   </div>
                 </div>
               </div>
-
+              <div class="col-md-4 text-end">
+                <button class="btn btn-outline-light btn-sm" @click="startTour">
+                  <i class="fas fa-question-circle me-1"></i>
+                  Hướng dẫn
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3362,10 +3663,10 @@ const getEmployeeFullName = (employee) => {
           <div v-else>
             <!-- Show table if there are employees with overtime -->
             <div v-if="overtimeData.length > 0">
-              <div class="attendance-summary-table">
+              <div class="attendance-summary-table" data-tour="overtime-table">
                 <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData">
                   <template #detail="{ item }">
-                    <button class="btn btn-sm btn-outline-primary" @click.stop="openOvertimeModal(item)"><i
+                    <button class="btn btn-sm btn-outline-primary" @click.stop="openOvertimeModal(item)" data-tour="overtime-detail-btn"><i
                         class="fa-solid fa-eye"></i></button>
                   </template>
                   <template #id="{ item }">
@@ -3384,7 +3685,7 @@ const getEmployeeFullName = (employee) => {
               </div>
 
               <!-- Pagination for overtime table -->
-              <div class="d-flex justify-content-between align-items-center mt-3" v-if="overtimeTotalPages > 1">
+              <div class="d-flex justify-content-between align-items-center mt-3" v-if="overtimeTotalPages > 1" data-tour="pagination-overtime">
                 <div class="pagination-info">
                   Hiển thị {{ (overtimeCurrentPage - 1) * overtimePageSize + 1 }} - {{ Math.min(overtimeCurrentPage * overtimePageSize,
                   overtimeData.length) }}
@@ -3434,7 +3735,7 @@ const getEmployeeFullName = (employee) => {
             </div>
           </div>
           <ModalDialog :show="showOvertimeModal" title="Chi tiết tăng ca" size="md" scrollable
-            @update:show="showOvertimeModal = $event">
+            @update:show="showOvertimeModal = $event" data-tour="overtime-modal">
             <div class="modal-emp-header">
               <div class="modal-emp-avatar">
                 <img v-if="selectedOvertimeEmployee?.avatar" :src="selectedOvertimeEmployee.avatar" alt="avatar" />
@@ -3543,7 +3844,7 @@ const getEmployeeFullName = (employee) => {
           <div class="detail-header mb-4">
             <div class="row g-3 align-items-center">
               <div class="col-md-6">
-                <div class="time-filter-compact">
+                <div class="time-filter-compact" data-tour="month-filter-detail">
                   <div class="d-flex align-items-center gap-3">
                     <button 
                       class="btn btn-outline-light btn-sm" 
@@ -3574,14 +3875,20 @@ const getEmployeeFullName = (employee) => {
               </div>
               <div class="col-md-6">
                 <div class="header-actions d-flex gap-2 justify-content-end">
-                  <button class="btn btn-outline-light btn-sm" @click="exportDetailToExcel">
-                    <i class="fas fa-download me-1"></i>
-                    Xuất Excel
+                  <button class="btn btn-outline-light btn-sm" @click="startTour">
+                    <i class="fas fa-question-circle me-1"></i>
+                    Hướng dẫn
                   </button>
-                  <button class="btn btn-outline-light btn-sm" @click="printDetailReport">
-                    <i class="fas fa-print me-1"></i>
-                    In báo cáo
-                  </button>
+                  <div class="d-flex gap-2" data-tour="export-buttons-detail">
+                    <button class="btn btn-outline-light btn-sm" @click="exportDetailToExcel">
+                      <i class="fas fa-download me-1"></i>
+                      Xuất Excel
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" @click="printDetailReport">
+                      <i class="fas fa-print me-1"></i>
+                      In báo cáo
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3610,7 +3917,7 @@ const getEmployeeFullName = (employee) => {
           </div>
 
           <!-- Data Table -->
-          <div v-else class="attendance-summary-table">
+          <div v-else class="attendance-summary-table" data-tour="detail-table">
             <DataTable :columns="detailColumns" :data="paginatedDetailData">
               <template #type="{ item }">
                 <span :class="{
@@ -3640,8 +3947,14 @@ const getEmployeeFullName = (employee) => {
                 <span class="fw-bold">{{ item.days }}</span>
               </template>
             </DataTable>
-            <Pagination :totalItems="processedDetailData.length" :itemsPerPage="detailItemsPerPage"
-              :currentPage="detailCurrentPage" @update:currentPage="detailCurrentPage = $event" />
+            <!-- Phân trang -->
+            <div class="d-flex justify-content-between align-items-center mt-4" data-tour="pagination-detail">
+              <div class="text-muted">
+                Hiển thị {{ paginatedDetailData.length }} trên {{ processedDetailData.length }} bảng công chi tiết
+              </div>
+              <Pagination :totalItems="processedDetailData.length" :itemsPerPage="detailItemsPerPage"
+                :currentPage="detailCurrentPage" @update:currentPage="detailCurrentPage = $event" />
+            </div>
           </div>
         </div>
         <div v-else-if="activeTab === 'attendance'">
@@ -3649,7 +3962,7 @@ const getEmployeeFullName = (employee) => {
           <div class="attendance-header mb-4">
             <div class="row g-3 align-items-center">
               <div class="col-md-6">
-                <div class="time-filter-compact">
+                <div class="time-filter-compact" data-tour="month-filter-attendance">
                   <div class="d-flex align-items-center gap-3">
                     <button 
                       class="btn btn-outline-light btn-sm" 
@@ -3680,14 +3993,20 @@ const getEmployeeFullName = (employee) => {
               </div>
               <div class="col-md-6">
                 <div class="header-actions d-flex gap-2 justify-content-end">
-                  <button class="btn btn-outline-light btn-sm" @click="exportAttendanceToExcel">
-                    <i class="fas fa-download me-1"></i>
-                    Xuất Excel
+                  <button class="btn btn-outline-light btn-sm" @click="startTour">
+                    <i class="fas fa-question-circle me-1"></i>
+                    Hướng dẫn
                   </button>
-                  <button class="btn btn-outline-light btn-sm" @click="printAttendanceReport">
-                    <i class="fas fa-print me-1"></i>
-                    In báo cáo
-                  </button>
+                  <div class="d-flex gap-2" data-tour="export-buttons-attendance">
+                    <button class="btn btn-outline-light btn-sm" @click="exportAttendanceToExcel">
+                      <i class="fas fa-download me-1"></i>
+                      Xuất Excel
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" @click="printAttendanceReport">
+                      <i class="fas fa-print me-1"></i>
+                      In báo cáo
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3716,7 +4035,7 @@ const getEmployeeFullName = (employee) => {
           </div>
 
           <!-- Data Table -->
-          <div v-else class="attendance-summary-table">
+          <div v-else class="attendance-summary-table" data-tour="attendance-table">
             <!-- Closing Details -->
             <div v-if="isAnySheetClosed" class="closing-details mb-3">
               <div class="alert alert-info">
@@ -3737,7 +4056,7 @@ const getEmployeeFullName = (employee) => {
             <DataTable :columns="attendanceDataColumns" :data="paginatedAttendanceData">
               <template #avatar="{ item }">
                 <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar clickable-image" 
-                     @click="handleImageClick(item.avatar, 'checkin')" />
+                     @click="handleImageClick(item.avatar, 'checkin')" data-tour="attendance-image" />
               </template>
               <template #type="{ item }">
                 <span :class="{
@@ -3748,8 +4067,14 @@ const getEmployeeFullName = (employee) => {
                 </span>
               </template>
             </DataTable>
-            <Pagination :totalItems="attendanceData.length" :itemsPerPage="attendanceItemsPerPage"
-              :currentPage="attendanceCurrentPage" @update:currentPage="attendanceCurrentPage = $event" />
+            <!-- Phân trang -->
+            <div class="d-flex justify-content-between align-items-center mt-4" data-tour="pagination-attendance">
+              <div class="text-muted">
+                Hiển thị {{ paginatedAttendanceData.length }} trên {{ attendanceData.length }} dữ liệu chấm công
+              </div>
+              <Pagination :totalItems="attendanceData.length" :itemsPerPage="attendanceItemsPerPage"
+                :currentPage="attendanceCurrentPage" @update:currentPage="attendanceCurrentPage = $event" />
+            </div>
           </div>
         </div>
         <div v-else>
@@ -3763,7 +4088,7 @@ const getEmployeeFullName = (employee) => {
 
   <!-- Modal Zoom Ảnh -->
   <ModalDialog v-if="selectedImage" :show="showImageModal" @update:show="showImageModal = $event"
-    title="Xem Chi Tiết Ảnh Chấm Công" size="xl">
+    title="Xem Chi Tiết Ảnh Chấm Công" size="xl" data-tour="image-modal">
     <div class="image-zoom-container">
       <img :src="selectedImage.url" :alt="'Ảnh chấm công ' + selectedImage.type" class="img-zoom" />
       <div class="image-info mt-3">
@@ -3774,6 +4099,14 @@ const getEmployeeFullName = (employee) => {
       </div>
     </div>
   </ModalDialog>
+
+  <!-- Tour Guide -->
+  <TourGuide
+    :show="showTourGuide"
+    :steps="tourSteps"
+    @update:show="showTourGuide = $event"
+    @complete="handleTourComplete"
+  />
 </template>
 
 

@@ -11,6 +11,7 @@ import UpdateButton from '@/components/common/UpdateButton.vue'
 import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
+import TourGuide from '@/components/common/TourGuide.vue'
 
 const {
   workshifts,
@@ -118,6 +119,7 @@ const newStartDate = ref('')
 const newEndDate = ref('')
 const newShiftId = ref('')
 const changeShiftLoading = ref(false)
+const showTourGuide = ref(false)
 const initCurrentWeekStart = () => {
   const today = new Date()
   const monday = new Date(today)
@@ -854,12 +856,253 @@ const paginatedScheduleData = computed(() => {
   const start = (scheduleCurrentPage.value - 1) * scheduleItemsPerPage.value
   return (scheduleData.value || []).slice(start, start + scheduleItemsPerPage.value)
 })
+
+// Tour Guide Steps
+const shiftTourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý phân ca làm việc. Tab "Ca làm việc" hiển thị danh sách các ca làm việc và số lượng nhân viên đã được phân cho mỗi ca.'
+  },
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Đây là các tab để chuyển đổi giữa các chức năng: "Ca làm việc", "Xếp lịch", "Lịch sử phân ca" và "Nhân viên chưa phân ca". Hiện tại bạn đang ở tab "Ca làm việc".'
+  },
+  {
+    target: '[data-tour="table-shift"]',
+    message: 'Đây là bảng danh sách ca làm việc. Bạn có thể xem thông tin về các ca làm việc như STT, mã ca, tên ca, giờ vào, giờ ra và số lượng nhân viên đã được phân cho mỗi ca.'
+  },
+  {
+    target: '[data-tour="actions-shift"]',
+    message: 'Cột "Thao tác" chứa nút "Phân ca hàng loạt" để bạn phân ca cho nhiều nhân viên cùng lúc với một ca làm việc đã chọn.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="actions-shift"] button:first-of-type'
+    }
+  },
+  {
+    target: '[data-tour="bulk-assign-modal"]',
+    message: 'Đây là modal phân ca hàng loạt. Bạn có thể phân ca cho nhiều nhân viên cùng lúc với một ca làm việc đã chọn. Hãy để tôi hướng dẫn từng phần!'
+  },
+  {
+    target: '[data-tour="bulk-shift-info"]',
+    message: 'Đây là thông tin ca làm việc đã chọn. Bạn có thể thấy tên ca, mã ca, giờ làm việc và số lượng nhân viên hiện tại đã được phân cho ca này.'
+  },
+  {
+    target: '[data-tour="bulk-date-range"]',
+    message: 'Đây là phần chọn khoảng thời gian. Bạn có thể chọn áp dụng cùng khoảng thời gian cho tất cả nhân viên, hoặc tắt để chọn khoảng thời gian riêng cho từng nhân viên.'
+  },
+  {
+    target: '[data-tour="bulk-employee-selection"]',
+    message: 'Đây là phần chọn nhân viên. Bạn có thể tìm kiếm, lọc theo chức vụ và giới tính, sau đó chọn các nhân viên cần phân ca. Có thể chọn tất cả hoặc bỏ chọn tất cả.'
+  },
+  {
+    target: '[data-tour="bulk-actions"]',
+    message: 'Sau khi chọn nhân viên và khoảng thời gian, bấm "Xác nhận phân ca" để thực hiện phân ca hàng loạt. Nút "Hủy" để đóng modal.'
+  },
+  {
+    target: '[data-tour="pagination-shift"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều ca làm việc hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Ca làm việc"!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal nếu đang mở
+        const modal = document.querySelector('.modal.show')
+        if (modal) {
+          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
+          if (closeBtn) closeBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  }
+]
+
+const scheduleTourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Xếp lịch" - nơi bạn có thể xem và quản lý lịch phân ca theo tuần cho tất cả nhân viên.'
+  },
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Xếp lịch".'
+  },
+  {
+    target: '[data-tour="week-filter"]',
+    message: 'Đây là bộ lọc tuần. Bạn có thể chuyển sang tuần trước, tuần sau, chuyển đến hôm nay, hoặc chọn một ngày cụ thể để xem lịch phân ca của tuần đó. Nút "Làm mới" để tải lại dữ liệu.'
+  },
+  {
+    target: '[data-tour="table-schedule"]',
+    message: 'Đây là bảng lịch phân ca theo tuần. Mỗi hàng là một nhân viên, mỗi cột là một ngày trong tuần. Bạn có thể thấy các ca làm việc đã được phân cho từng nhân viên trong từng ngày.'
+  },
+  {
+    target: '[data-tour="schedule-cell"]',
+    message: 'Mỗi ô trong bảng hiển thị ca làm việc của nhân viên trong ngày đó. Bạn có thể bấm vào ô để xem chi tiết hoặc đổi ca. Nếu ô trống, bạn có thể bấm nút "+" để thêm ca làm việc nhanh cho nhân viên đó.'
+  },
+  {
+    target: '[data-tour="view-details-modal"]',
+    message: 'Đây là modal chi tiết phân ca. Bạn có thể xem thông tin nhân viên, ca làm việc, ngày làm việc và thời gian. Bạn cũng có thể đổi ca hoặc xóa phân ca từ đây.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="schedule-cell"] .shift-block:first-of-type'
+    }
+  },
+  {
+    target: '[data-tour="change-shift-section"]',
+    message: 'Đây là phần đổi ca làm việc. Bạn có thể chọn ca mới từ dropdown và bấm "Đổi ca" để thay đổi ca làm việc cho nhân viên.'
+  },
+  {
+    target: '[data-tour="view-details-actions"]',
+    message: 'Các nút hành động: "Đóng" để đóng modal, "Đổi ca" để thay đổi ca làm việc, "Xóa phân ca" để xóa phân ca này.'
+  },
+  {
+    target: '[data-tour="quick-add-modal"]',
+    message: 'Đây là modal thêm ca làm việc nhanh. Bạn có thể chọn ca làm việc cho nhân viên vào ngày đã chọn. Modal hiển thị thông tin nhân viên và ngày đã chọn.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal chi tiết nếu đang mở
+        const modal = document.querySelector('.modal.show')
+        if (modal) {
+          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
+          if (closeBtn) closeBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+        // Tìm nút + đầu tiên và click
+        const addBtn = document.querySelector('[data-tour="quick-add-btn"]')
+        if (addBtn) {
+          addBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="quick-add-shift-select"]',
+    message: 'Đây là dropdown chọn ca làm việc. Bạn chọn ca làm việc từ danh sách các ca có sẵn.'
+  },
+  {
+    target: '[data-tour="quick-add-actions"]',
+    message: 'Sau khi chọn ca làm việc, bấm "Xác nhận phân ca" để thêm ca cho nhân viên. Nút "Hủy" để đóng modal.'
+  },
+  {
+    target: '[data-tour="pagination-schedule"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Xếp lịch"!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal nếu đang mở
+        const modal = document.querySelector('.modal.show')
+        if (modal) {
+          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
+          if (closeBtn) closeBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  }
+]
+
+const historyTourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Lịch sử phân ca" - nơi bạn có thể xem tất cả các phân ca đã được thực hiện và đổi phân ca nếu cần.'
+  },
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Lịch sử phân ca".'
+  },
+  {
+    target: '[data-tour="table-history"]',
+    message: 'Đây là bảng lịch sử phân ca. Bạn có thể xem thông tin về các phân ca như STT, mã nhân viên, tên nhân viên, phòng ban, mã ca, tên ca, ngày bắt đầu và ngày kết thúc.'
+  },
+  {
+    target: '[data-tour="change-shift-modal"]',
+    message: 'Đây là modal đổi phân ca. Bạn có thể xem thông tin phân ca hiện tại và thay đổi ca làm việc, khoảng thời gian cho nhân viên. Hãy để tôi hướng dẫn từng phần!',
+    action: {
+      type: 'click',
+      selector: '[data-tour="actions-history"] button:first-of-type'
+    }
+  },
+  {
+    target: '[data-tour="current-assignment-info"]',
+    message: 'Đây là thông tin phân ca hiện tại. Bạn có thể thấy nhân viên, mã nhân viên, phòng ban, ca hiện tại, mã ca và khoảng thời gian hiện tại.'
+  },
+  {
+    target: '[data-tour="new-assignment-form"]',
+    message: 'Đây là form nhập thông tin phân ca mới. Bạn cần chọn ca làm việc mới, ngày bắt đầu và ngày kết thúc. Hệ thống sẽ tự động tính số ngày sẽ được phân.'
+  },
+  {
+    target: '[data-tour="change-shift-actions"]',
+    message: 'Sau khi nhập đầy đủ thông tin, bấm "Xác nhận đổi phân ca" để thực hiện đổi phân ca. Nút "Hủy" để đóng modal.'
+  },
+  {
+    target: '[data-tour="pagination-history"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều lịch sử phân ca hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Lịch sử phân ca"!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal nếu đang mở
+        const modal = document.querySelector('.modal.show')
+        if (modal) {
+          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
+          if (closeBtn) closeBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  }
+]
+
+const unassignedTourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Nhân viên chưa phân ca" - nơi bạn có thể xem danh sách các nhân viên chưa được phân ca làm việc nào.'
+  },
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Nhân viên chưa phân ca".'
+  },
+  {
+    target: '[data-tour="table-unassigned"]',
+    message: 'Đây là bảng danh sách nhân viên chưa phân ca. Bạn có thể xem thông tin về các nhân viên như STT, mã nhân viên, tên nhân viên, phòng ban, chức danh và ngày vào làm.'
+  },
+  {
+    target: '[data-tour="pagination-unassigned"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên chưa phân ca hơn. Bạn có thể quay lại tab "Ca làm việc" để phân ca cho những nhân viên này. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Nhân viên chưa phân ca"!'
+  }
+]
+
+const tourSteps = computed(() => {
+  switch (activeTab.value) {
+    case 'shift':
+      return shiftTourSteps
+    case 'schedule':
+      return scheduleTourSteps
+    case 'history':
+      return historyTourSteps
+    case 'unassigned':
+      return unassignedTourSteps
+    default:
+      return shiftTourSteps
+  }
+})
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
-  <div class="container-fluid py-4">
+  <div class="container-fluid py-4" data-tour="title">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <div class="shift-tabs-bar">
+      <div class="shift-tabs-bar" data-tour="tabs">
         <button
           v-for="tab in tabs"
           :key="tab.key"
@@ -871,12 +1114,19 @@ const paginatedScheduleData = computed(() => {
         </button>
       </div>
       <div class="d-flex gap-2">
-        <!-- Refresh button moved to schedule filter -->
+        <ActionButton 
+          type="secondary" 
+          icon="fas fa-question-circle me-2" 
+          @click="startTour"
+          title="Hướng dẫn sử dụng"
+        >
+          Hướng dẫn
+        </ActionButton>
       </div>
     </div>
     
     <!-- Week Filter for Schedule Tab -->
-    <div v-if="activeTab === 'schedule'" class="mb-3">
+    <div v-if="activeTab === 'schedule'" class="mb-3" data-tour="week-filter">
       <!-- Custom week filter for schedule tab -->
       <div class="d-flex flex-wrap align-items-center gap-3 py-3 border-bottom">
         <!-- Week Navigation -->
@@ -940,9 +1190,9 @@ const paginatedScheduleData = computed(() => {
       </div>
     </div>
     <div v-if="activeTab === 'shift'">
-      <DataTable :columns="shiftColumns" :data="paginatedShiftData">
+      <DataTable :columns="shiftColumns" :data="paginatedShiftData" data-tour="table-shift">
         <template #actions="{ item }">
-          <div class="d-flex justify-content-start align-items-start gap-2">
+          <div class="d-flex justify-content-start align-items-start gap-2" data-tour="actions-shift">
           <ActionButton 
             type="outline-primary" 
             icon="fas fa-calendar-alt" 
@@ -953,12 +1203,19 @@ const paginatedScheduleData = computed(() => {
       </template>
         
       </DataTable>
-      <Pagination
-        :totalItems="shiftData.length"
-        :itemsPerPage="shiftItemsPerPage"
-        :currentPage="shiftCurrentPage"
-        @update:currentPage="shiftCurrentPage = $event"
-      />
+      <!-- Phân trang -->
+      <div class="d-flex justify-content-between align-items-center mt-4">
+        <div class="text-muted">
+          Hiển thị {{ paginatedShiftData.length }} trên {{ shiftData.length }} ca làm việc
+        </div>
+        <Pagination
+          :totalItems="shiftData.length"
+          :itemsPerPage="shiftItemsPerPage"
+          :currentPage="shiftCurrentPage"
+          @update:currentPage="shiftCurrentPage = $event"
+          data-tour="pagination-shift"
+        />
+      </div>
     </div>
     <div v-else-if="activeTab === 'schedule'">
       <div v-if="shiftLoading" class="text-center py-3">
@@ -969,7 +1226,7 @@ const paginatedScheduleData = computed(() => {
       <div v-else-if="shiftError" class="alert alert-danger">
         {{ shiftError }}
       </div>
-      <DataTable v-else :columns="scheduleColumns" :data="paginatedScheduleData">
+      <DataTable v-else :columns="scheduleColumns" :data="paginatedScheduleData" data-tour="table-schedule">
         <template #empId="{ item }">
           <span class="emp-id">{{ item.empId }}</span>
         </template>
@@ -980,7 +1237,7 @@ const paginatedScheduleData = computed(() => {
           <span class="emp-title">{{ item.title }}</span>
         </template>
         <template v-for="i in 7" #[`day${i}`]="{ item }">
-          <div class="schedule-cell-blocks">
+          <div class="schedule-cell-blocks" data-tour="schedule-cell">
             <template v-if="item[`day${i}`] && item[`day${i}`].length">
               <div
                 v-for="(shift, idx) in item[`day${i}`]"
@@ -988,6 +1245,7 @@ const paginatedScheduleData = computed(() => {
                 class="shift-block position-relative"
                 @click="openViewDetailsModal(shift)"
                 style="cursor: pointer;"
+                data-tour="shift-block"
               >
                 <button 
                   class="btn btn-link btn-sm position-absolute top-0 end-0 delete-btn"
@@ -1008,6 +1266,7 @@ const paginatedScheduleData = computed(() => {
               class="btn btn-success btn-sm rounded-pill"
               @click="openQuickAddModal(item, getDateFromDayIndex(i))"
               title="Thêm ca làm việc"
+              data-tour="quick-add-btn"
             >
               <i class="fas fa-plus"></i>
             </button>
@@ -1020,12 +1279,13 @@ const paginatedScheduleData = computed(() => {
         :itemsPerPage="scheduleItemsPerPage"
         :currentPage="scheduleCurrentPage"
         @update:currentPage="scheduleCurrentPage = $event"
+        data-tour="pagination-schedule"
       />
     </div>
     <div v-else-if="activeTab === 'history'">
-      <DataTable :columns="historyColumns" :data="paginatedHistoryData">
+      <DataTable :columns="historyColumns" :data="paginatedHistoryData" data-tour="table-history">
         <template #actions="{ item }">
-          <div class="d-flex justify-content-start gap-2">
+          <div class="d-flex justify-content-start gap-2" data-tour="actions-history">
             <button 
               type="button" 
               class="btn btn-outline-primary btn-sm"
@@ -1038,22 +1298,44 @@ const paginatedScheduleData = computed(() => {
           </div>
         </template>
       </DataTable>
-      <Pagination
-        :totalItems="historyData.length"
-        :itemsPerPage="historyItemsPerPage"
-        :currentPage="historyCurrentPage"
-        @update:currentPage="historyCurrentPage = $event"
-      />
+      <!-- Phân trang -->
+      <div class="d-flex justify-content-between align-items-center mt-4">
+        <div class="text-muted">
+          Hiển thị {{ paginatedHistoryData.length }} trên {{ historyData.length }} lịch sử phân ca
+        </div>
+        <Pagination
+          :totalItems="historyData.length"
+          :itemsPerPage="historyItemsPerPage"
+          :currentPage="historyCurrentPage"
+          @update:currentPage="historyCurrentPage = $event"
+          data-tour="pagination-history"
+        />
+      </div>
     </div>
     <div v-else-if="activeTab === 'unassigned'">
-      <DataTable :columns="unassignedColumns" :data="paginatedUnassignedData" />
-      <Pagination
-        :totalItems="unassignedData.length"
-        :itemsPerPage="unassignedItemsPerPage"
-        :currentPage="unassignedCurrentPage"
-        @update:currentPage="unassignedCurrentPage = $event"
-      />
+      <DataTable :columns="unassignedColumns" :data="paginatedUnassignedData" data-tour="table-unassigned" />
+      <!-- Phân trang -->
+      <div class="d-flex justify-content-between align-items-center mt-4">
+        <div class="text-muted">
+          Hiển thị {{ paginatedUnassignedData.length }} trên {{ unassignedData.length }} nhân viên chưa phân ca
+        </div>
+        <Pagination
+          :totalItems="unassignedData.length"
+          :itemsPerPage="unassignedItemsPerPage"
+          :currentPage="unassignedCurrentPage"
+          @update:currentPage="unassignedCurrentPage = $event"
+          data-tour="pagination-unassigned"
+        />
+      </div>
     </div>
+  
+  <!-- Tour Guide -->
+  <TourGuide
+    :show="showTourGuide"
+    :steps="tourSteps"
+    @update:show="showTourGuide = $event"
+    @complete="handleTourComplete"
+  />
   </div>
 
   <!-- Quick Add Shift Modal -->
@@ -1062,6 +1344,7 @@ const paginatedScheduleData = computed(() => {
     title="Thêm ca làm việc nhanh"
     size="lg"
     @update:show="showQuickAddModal = $event"
+    data-tour="quick-add-modal"
   >
     <div class="p-4">
       <div class="mb-4">
@@ -1087,7 +1370,7 @@ const paginatedScheduleData = computed(() => {
         </div>
       </div>
 
-      <div class="mb-4">
+      <div class="mb-4" data-tour="quick-add-shift-select">
         <label class="form-label fw-semibold">
           <i class="fas fa-clock me-1"></i>
           Chọn ca làm việc
@@ -1125,7 +1408,7 @@ const paginatedScheduleData = computed(() => {
         </div>
       </div>
 
-      <div class="d-flex justify-content-end gap-2 mt-4">
+      <div class="d-flex justify-content-end gap-2 mt-4" data-tour="quick-add-actions">
         <button 
           type="button" 
           class="btn btn-outline-secondary rounded-pill px-4" 
@@ -1155,6 +1438,7 @@ const paginatedScheduleData = computed(() => {
     title="Chi tiết phân ca"
     size="md"
     @update:show="showViewDetailsModal = $event"
+    data-tour="view-details-modal"
   >
     <div class="p-4" v-if="selectedShiftDetails">
       <div class="row mb-4">
@@ -1200,7 +1484,7 @@ const paginatedScheduleData = computed(() => {
       </div>
 
       <!-- Đổi ca làm việc -->
-      <div class="card border-warning">
+      <div class="card border-warning" data-tour="change-shift-section">
         <div class="card-header bg-warning text-dark">
           <h6 class="mb-0 fw-bold">
             <i class="fas fa-exchange-alt me-2"></i>
@@ -1262,7 +1546,7 @@ const paginatedScheduleData = computed(() => {
         </div>
       </div>
 
-      <div class="d-flex justify-content-end gap-2 mt-4">
+      <div class="d-flex justify-content-end gap-2 mt-4" data-tour="view-details-actions">
         <button 
           type="button" 
           class="btn btn-outline-secondary rounded-pill px-4" 
@@ -1338,10 +1622,11 @@ const paginatedScheduleData = computed(() => {
     title="Phân ca hàng loạt"
     size="xl"
     @update:show="showBulkAssignModal = $event"
+    data-tour="bulk-assign-modal"
   >
     <div class="p-4" v-if="selectedShiftForBulk">
       <!-- Selected Shift Info -->
-      <div class="card border-0 shadow-sm mb-4">
+      <div class="card border-0 shadow-sm mb-4" data-tour="bulk-shift-info">
         <div class="card-header bg-white border-bottom">
           <h6 class="mb-0 fw-semibold text-dark">
             <i class="fas fa-clock me-2 text-primary"></i>
@@ -1375,7 +1660,7 @@ const paginatedScheduleData = computed(() => {
       </div>
 
       <!-- Date Range Selection -->
-      <div class="card border-0 shadow-sm mb-4">
+      <div class="card border-0 shadow-sm mb-4" data-tour="bulk-date-range">
         <div class="card-header bg-white border-bottom">
           <h6 class="mb-0 fw-semibold text-dark">
             <i class="fas fa-calendar-range me-2 text-primary"></i>
@@ -1460,7 +1745,7 @@ const paginatedScheduleData = computed(() => {
       </div>
 
       <!-- Employee Selection -->
-      <div class="card border-0 shadow-sm mb-4">
+      <div class="card border-0 shadow-sm mb-4" data-tour="bulk-employee-selection">
         <div class="card-header bg-white border-bottom">
           <h6 class="mb-0 fw-semibold text-dark">
             <i class="fas fa-users me-2 text-primary"></i>
@@ -1625,7 +1910,7 @@ const paginatedScheduleData = computed(() => {
       </div>
 
       <!-- Action Buttons -->
-      <div class="d-flex justify-content-end gap-2">
+      <div class="d-flex justify-content-end gap-2" data-tour="bulk-actions">
         <button 
           type="button" 
           class="btn btn-outline-secondary px-4" 
@@ -1655,10 +1940,11 @@ const paginatedScheduleData = computed(() => {
     title="Đổi phân ca"
     size="lg"
     @update:show="showChangeShiftModal = $event"
+    data-tour="change-shift-modal"
   >
     <div class="p-4" v-if="selectedHistoryItem">
       <!-- Current Assignment Info -->
-      <div class="card border-0 shadow-sm mb-4">
+      <div class="card border-0 shadow-sm mb-4" data-tour="current-assignment-info">
         <div class="card-header bg-white border-bottom">
           <h6 class="mb-0 fw-semibold text-dark">
             <i class="fas fa-info-circle me-2 text-primary"></i>
@@ -1710,7 +1996,7 @@ const paginatedScheduleData = computed(() => {
       </div>
 
       <!-- New Assignment Form -->
-      <div class="card border-light">
+      <div class="card border-light" data-tour="new-assignment-form">
         <div class="card-header bg-light">
           <h6 class="mb-0 fw-semibold text-dark">
             <i class="fas fa-edit me-2 text-muted"></i>
@@ -1766,7 +2052,7 @@ const paginatedScheduleData = computed(() => {
       </div>
 
       <!-- Action Buttons -->
-      <div class="d-flex justify-content-end gap-2 mt-4">
+      <div class="d-flex justify-content-end gap-2 mt-4" data-tour="change-shift-actions">
         <button 
           type="button" 
           class="btn btn-outline-secondary px-4" 

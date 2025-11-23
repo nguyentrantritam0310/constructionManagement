@@ -13,7 +13,6 @@ import Pagination from '../../components/common/Pagination.vue'
 import UpdateReportForm from '../../components/incident-report/UpdateReportForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
-import UpdateButton from '../../components/common/UpdateButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -519,7 +518,7 @@ const isResubmitMode = computed(() => {
 
       <template #actions="{ item }">
         <div class="d-flex justify-content-center gap-2">
-          <UpdateButton @click.stop="handleUpdateStatus(item)" />
+          <ActionButton type="success" icon="fas fa-edit" tooltip="Cập nhật" @click.stop="handleUpdateStatus(item)" />
         </div>
       </template>
     </DataTable>

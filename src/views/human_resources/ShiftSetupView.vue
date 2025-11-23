@@ -5,8 +5,6 @@ import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import { useWorkShift } from '../../composables/useWorkShift'
 import { useAttendanceMachine } from '../../composables/useAttendanceMachine'
-import UpdateButton from '@/components/common/UpdateButton.vue'
-import DeleteButton from '@/components/common/DeleteButton.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import WorkShiftForm from '@/components/common/workshift/WorkShiftForm.vue'
@@ -15,6 +13,7 @@ import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import AttendanceMachineForm from '@/components/common/workshift/AttendanceMachineForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import TourGuide from '@/components/common/TourGuide.vue'
 const {
   workshifts,
   fetchWorkShifts,
@@ -38,6 +37,7 @@ const showUpdateFormAttendanceMachine = ref(false)
 const selectedItem = ref(null)
 const showImportModal = ref(false)
 const showFilter = ref(false)
+const showTourGuide = ref(false)
 const { showMessage } = useGlobalMessage()
 onMounted(async () => {
   await fetchWorkShifts()
@@ -438,18 +438,156 @@ const handleDeleteClick = async (item) => {
     await deleteAttendanceMachine(item.id)
   }
 }
+
+// Tour Guide Steps
+const shiftTourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý ca làm việc. Tại đây bạn có thể xem, tạo, và quản lý các ca làm việc của nhân viên.'
+  },
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Đây là các tab để chuyển đổi giữa "Ca làm việc" và "Máy chấm công". Hiện tại bạn đang ở tab "Ca làm việc".'
+  },
+  {
+    target: '[data-tour="toolbar-shift"]',
+    message: 'Đây là thanh công cụ với các chức năng chính cho ca làm việc. Hãy để tôi giới thiệu từng nút cho bạn!'
+  },
+  {
+    target: '[data-tour="create-form-shift"]',
+    message: 'Đây là form tạo ca làm việc mới. Bạn có thể nhập tên ca, mã ca, và các chi tiết ca làm việc như giờ vào, giờ ra cho từng ngày trong tuần. Sau khi điền đầy đủ thông tin, bấm "Lưu" để tạo ca làm việc.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar-shift"] button:first-child'
+    }
+  },
+  {
+    target: '[data-tour="toolbar-shift"]',
+    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc ca làm việc theo mã ca hoặc tên ca.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar-shift"] button:nth-child(2)'
+    }
+  },
+  {
+    target: '[data-tour="filter-shift"]',
+    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã ca, tên ca. Sau đó bấm "Đặt lại" để xóa bộ lọc.'
+  },
+  {
+    target: '[data-tour="toolbar-shift"]',
+    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách ca làm việc ra file Excel để lưu trữ hoặc xử lý thêm. Khi bấm vào đây, file Excel sẽ được tải xuống tự động.'
+  },
+  {
+    target: '[data-tour="toolbar-shift"]',
+    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng của trang này bất cứ lúc nào.'
+  },
+  {
+    target: '[data-tour="table-shift"]',
+    message: 'Đây là bảng danh sách ca làm việc. Bạn có thể xem thông tin chi tiết về các ca làm việc như STT, mã ca, tên ca, giờ vào, giờ ra. Bạn có thể bấm vào các nút thao tác để sửa hoặc xóa ca làm việc.'
+  },
+  {
+    target: '[data-tour="actions-shift"]',
+    message: 'Cột "Thao tác" chứa các nút để bạn thực hiện các hành động như: Sửa ca làm việc hoặc Xóa ca làm việc.'
+  },
+  {
+    target: '[data-tour="pagination-shift"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều ca làm việc hơn. Bạn có thể thấy số lượng ca làm việc hiện tại và tổng số ca làm việc. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Ca làm việc"!'
+  }
+]
+
+const machineTourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý máy chấm công. Tại đây bạn có thể xem, tạo, và quản lý các máy chấm công của hệ thống.'
+  },
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Đây là các tab để chuyển đổi giữa "Ca làm việc" và "Máy chấm công". Hiện tại bạn đang ở tab "Máy chấm công".'
+  },
+  {
+    target: '[data-tour="toolbar-machine"]',
+    message: 'Đây là thanh công cụ với các chức năng chính cho máy chấm công. Hãy để tôi giới thiệu từng nút cho bạn!'
+  },
+  {
+    target: '[data-tour="create-form-machine"]',
+    message: 'Đây là form tạo máy chấm công mới. Bạn có thể nhập tên máy chấm công, tọa độ (kinh độ, vĩ độ), và bán kính cho phép (tính bằng mét). Sau khi điền đầy đủ thông tin, bấm "Lưu" để tạo máy chấm công.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar-machine"] button:first-child'
+    }
+  },
+  {
+    target: '[data-tour="toolbar-machine"]',
+    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc máy chấm công theo mã máy, tên máy hoặc tọa độ.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar-machine"] button:nth-child(2)'
+    }
+  },
+  {
+    target: '[data-tour="filter-machine"]',
+    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã máy, tên máy, tọa độ. Sau đó bấm "Đặt lại" để xóa bộ lọc.'
+  },
+  {
+    target: '[data-tour="toolbar-machine"]',
+    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách máy chấm công ra file Excel để lưu trữ hoặc xử lý thêm. Khi bấm vào đây, file Excel sẽ được tải xuống tự động.'
+  },
+  {
+    target: '[data-tour="import-modal-machine"]',
+    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin máy chấm công vào file Excel, sau đó bấm "Xử lý" để import các máy chấm công vào hệ thống.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar-machine"] button:nth-child(4)'
+    }
+  },
+  {
+    target: '[data-tour="toolbar-machine"]',
+    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng của trang này bất cứ lúc nào.'
+  },
+  {
+    target: '[data-tour="table-machine"]',
+    message: 'Đây là bảng danh sách máy chấm công. Bạn có thể xem thông tin chi tiết về các máy chấm công như STT, mã máy, tên máy, tọa độ X, tọa độ Y, và bán kính cho phép. Bạn có thể bấm vào các nút thao tác để sửa hoặc xóa máy chấm công.'
+  },
+  {
+    target: '[data-tour="actions-machine"]',
+    message: 'Cột "Thao tác" chứa các nút để bạn thực hiện các hành động như: Sửa máy chấm công hoặc Xóa máy chấm công.'
+  },
+  {
+    target: '[data-tour="pagination-machine"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều máy chấm công hơn. Bạn có thể thấy số lượng máy chấm công hiện tại và tổng số máy chấm công. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Máy chấm công"!'
+  }
+]
+
+const tourSteps = computed(() => {
+  return activeTab.value === 'shift' ? shiftTourSteps : machineTourSteps
+})
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Mở filter section nếu chưa mở để có thể highlight
+  if (!showFilter.value) {
+    showFilter.value = true
+  }
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
-  <div class="container-fluid py-4">
+  <div class="container-fluid py-4" data-tour="title">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <div class="shift-tabs-bar">
+      <div class="shift-tabs-bar" data-tour="tabs">
         <button v-for="tab in tabs" :key="tab.key" class="tab-bar-item" :class="{ active: activeTab === tab.key }"
           @click="activeTab = tab.key">
           {{ tab.label }}
         </button>
       </div>
-      <div class="d-flex gap-2" v-if="activeTab === 'shift'">
+      <div class="d-flex gap-2" v-if="activeTab === 'shift'" data-tour="toolbar-shift">
 
         <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateForm = true">
           Thêm
@@ -464,8 +602,16 @@ const handleDeleteClick = async (item) => {
         <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
           Nhập Excel
         </ActionButton>
+        <ActionButton 
+          type="secondary" 
+          icon="fas fa-question-circle me-2" 
+          @click="startTour"
+          title="Hướng dẫn sử dụng"
+        >
+          Hướng dẫn
+        </ActionButton>
       </div>
-      <div class="d-flex gap-2" v-else-if="activeTab === 'machine'">
+      <div class="d-flex gap-2" v-else-if="activeTab === 'machine'" data-tour="toolbar-machine">
         <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateFormAttendanceMachine = true">
           Thêm
         </ActionButton>
@@ -479,12 +625,20 @@ const handleDeleteClick = async (item) => {
         <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
           Nhập Excel
         </ActionButton>
+        <ActionButton 
+          type="secondary" 
+          icon="fas fa-question-circle me-2" 
+          @click="startTour"
+          title="Hướng dẫn sử dụng"
+        >
+          Hướng dẫn
+        </ActionButton>
       </div>
     </div>
     
     <!-- Filter Section for Shifts -->
     <transition name="slide-fade" v-if="activeTab === 'shift'">
-      <div class="filter-section mb-4" v-show="showFilter">
+      <div class="filter-section mb-4" v-show="showFilter" data-tour="filter-shift">
         <div class="row g-3">
           <div class="col-md-10">
             <input
@@ -505,7 +659,7 @@ const handleDeleteClick = async (item) => {
     
     <!-- Filter Section for Machines -->
     <transition name="slide-fade" v-if="activeTab === 'machine'">
-      <div class="filter-section mb-4" v-show="showFilter">
+      <div class="filter-section mb-4" v-show="showFilter" data-tour="filter-machine">
         <div class="row g-3">
           <div class="col-md-10">
             <input
@@ -525,15 +679,15 @@ const handleDeleteClick = async (item) => {
     </transition>
     
     <div v-if="activeTab === 'shift'">
-      <DataTable :columns="shiftColumns" :data="paginatedShiftData">
+      <DataTable :columns="shiftColumns" :data="paginatedShiftData" data-tour="table-shift">
         <template #code="{ item }">
           <span class="emp-count">
             CA-{{ item.code < 10 ? '0' + item.code : item.code }} </span>
         </template>
         <template #actions="{ item }">
-          <div class="d-flex justify-content-start gap-2">
-            <UpdateButton @click.stop="openUpdateForm(item.code)" />
-            <DeleteButton @click.stop="handleDeleteWorkShift(item)" />
+          <div class="d-flex justify-content-start gap-2" data-tour="actions-shift">
+            <ActionButton type="success" icon="fas fa-edit" tooltip="Cập nhật" @click.stop="openUpdateForm(item.code)" />
+            <ActionButton type="danger" icon="fas fa-trash" tooltip="Xóa" @click.stop="handleDeleteWorkShift(item)" />
           </div>
         </template>
       </DataTable>
@@ -542,19 +696,19 @@ const handleDeleteClick = async (item) => {
           Hiển thị {{ paginatedShiftData.length }} trên {{ filteredShiftData.length }} ca làm việc
         </div>
         <Pagination :totalItems="filteredShiftData.length" :itemsPerPage="shiftItemsPerPage" :currentPage="shiftCurrentPage"
-          @update:currentPage="shiftCurrentPage = $event" />
+          @update:currentPage="shiftCurrentPage = $event" data-tour="pagination-shift" />
       </div>
     </div>
     <div v-else-if="activeTab === 'machine'">
-      <DataTable :columns="machineColumns" :data="paginatedMachineData">
+      <DataTable :columns="machineColumns" :data="paginatedMachineData" data-tour="table-machine">
         <template #id="{ item }">
           <span class="emp-count">
             MCC-{{ item.id < 10 ? '0' + item.id : item.id }} </span>
         </template>
         <template #actions="{ item }">
-          <div class="d-flex gap-2">
-            <UpdateButton @click.stop="handleUpdateAttendanceMachineClick(item)" />
-            <DeleteButton @click.stop="handleDeleteClick(item)" />
+          <div class="d-flex gap-2" data-tour="actions-machine">
+            <ActionButton type="success" icon="fas fa-edit" tooltip="Cập nhật" @click.stop="handleUpdateAttendanceMachineClick(item)" />
+            <ActionButton type="danger" icon="fas fa-trash" tooltip="Xóa" @click.stop="handleDeleteClick(item)" />
           </div>
         </template>
       </DataTable>
@@ -563,13 +717,13 @@ const handleDeleteClick = async (item) => {
           Hiển thị {{ paginatedMachineData.length }} trên {{ filteredMachineData.length }} máy chấm công
         </div>
         <Pagination :totalItems="filteredMachineData.length" :itemsPerPage="machineItemsPerPage" :currentPage="machineCurrentPage"
-          @update:currentPage="machineCurrentPage = $event" />
+          @update:currentPage="machineCurrentPage = $event" data-tour="pagination-machine" />
       </div>
     </div>
-    <ModalDialog v-model:show="showCreateForm" title="Tạo ca làm" size="xl">
+    <ModalDialog v-model:show="showCreateForm" title="Tạo ca làm" size="xl" data-tour="create-form-shift">
   <WorkShiftForm mode="create" @close="showCreateForm = false" @submit="handleCreateWorkShift" />
     </ModalDialog>
-    <ModalDialog v-model:show="showCreateFormAttendanceMachine" title="Thêm máy chấm công" size="lg">
+    <ModalDialog v-model:show="showCreateFormAttendanceMachine" title="Thêm máy chấm công" size="lg" data-tour="create-form-machine">
       <AttendanceMachineForm mode="create" @submit="handleCreateMachine" @close="showCreateFormAttendanceMachine = false" />
     </ModalDialog>
     <ModalDialog v-model:show="showUpdateForm" title="Cập nhật ca làm" size="xl">
@@ -578,7 +732,7 @@ const handleDeleteClick = async (item) => {
     <ModalDialog v-model:show="showUpdateFormAttendanceMachine" title="Cập nhật máy chấm công" size="lg">
       <AttendanceMachineForm  :key="selectedItem?.id" mode="update" :attendancemachine="selectedItem" @submit="handleUpdateMachine" @close="showUpdateFormAttendanceMachine = false" />
     </ModalDialog>
-    <ModalDialog v-model:show="showImportModal" title="Nhập máy chấm công từ Excel" size="lg">
+    <ModalDialog v-model:show="showImportModal" title="Nhập máy chấm công từ Excel" size="lg" data-tour="import-modal-machine">
       <div class="p-4">
         <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
         <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
@@ -597,7 +751,14 @@ const handleDeleteClick = async (item) => {
         </div>
       </div>
     </ModalDialog>
-
+  
+  <!-- Tour Guide -->
+  <TourGuide
+    :show="showTourGuide"
+    :steps="tourSteps"
+    @update:show="showTourGuide = $event"
+    @complete="handleTourComplete"
+  />
   </div>
 </template>
 

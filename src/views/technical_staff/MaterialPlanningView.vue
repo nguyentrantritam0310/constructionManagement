@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
@@ -24,6 +24,7 @@ const constructionError = ref('')
 const showMessageDialog = ref(false)
 const messageDialogContent = ref('')
 const messageDialogType = ref('success') // 'success' hoặc 'error'
+const showFilter = ref(false)
 
 function showMessage(content, type = 'success') {
   messageDialogContent.value = content
@@ -56,11 +57,80 @@ const employeeID = computed(() => currentUser.value?.id)
 const currentPage = ref(1)
 const itemsPerPage = 5
 
+// Filter variables
+const searchQuery = ref('')
+const statusFilter = ref('')
+const dateRange = ref({
+  start: '',
+  end: ''
+})
+
+// Filtered constructions
+const filteredConstructions = computed(() => {
+  let result = [...constructions.value]
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(construction =>
+      construction.id?.toString().includes(query) ||
+      construction.constructionName?.toLowerCase().includes(query) ||
+      construction.location?.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply status filter
+  if (statusFilter.value) {
+    result = result.filter(construction => construction.statusName === statusFilter.value)
+  }
+
+  // Apply date range filter
+  if (dateRange.value.start) {
+    const start = new Date(dateRange.value.start)
+    result = result.filter(construction => {
+      const constructionDate = new Date(construction.startDate)
+      return constructionDate >= start
+    })
+  }
+  if (dateRange.value.end) {
+    const end = new Date(dateRange.value.end)
+    end.setHours(23, 59, 59, 999)
+    result = result.filter(construction => {
+      const completionDate = new Date(construction.expectedCompletionDate)
+      return completionDate <= end
+    })
+  }
+
+  return result
+})
+
+// Get unique status values
+const statusOptions = computed(() => {
+  const statuses = new Set(constructions.value.map(c => c.statusName))
+  return Array.from(statuses)
+})
+
 const paginatedConstructions = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
   const end = start + itemsPerPage
-  return constructions.value.slice(start, end)
+  return filteredConstructions.value.slice(start, end)
 })
+
+// Reset filters
+const resetFilters = () => {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  dateRange.value = {
+    start: '',
+    end: ''
+  }
+  currentPage.value = 1
+}
+
+// Watch filters to reset page
+watch([searchQuery, statusFilter, dateRange], () => {
+  currentPage.value = 1
+}, { deep: true })
 
 const currentMaterialPage = ref(1)
 const materialItemsPerPage = 5
@@ -251,11 +321,71 @@ const handleMaterialPageChange = (page) => {
   <div class="container-fluid py-4 material-planning">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
       <h2 class="mb-0">Kế Hoạch Vật Tư</h2>
-      <div class="alert alert-info d-flex align-items-center mb-0 ms-3 guide-alert">
-        <i class="fas fa-info-circle me-2 text-primary" style="font-size: 1.4rem;"></i>
-        <span>Vui lòng chọn một công trình bên dưới để xem và lập kế hoạch vật tư.</span>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+          Lọc
+        </ActionButton>
+        <div class="alert alert-info d-flex align-items-center mb-0 guide-alert">
+          <i class="fas fa-info-circle me-2 text-primary" style="font-size: 1.4rem;"></i>
+          <span>Vui lòng chọn một công trình bên dưới để xem và lập kế hoạch vật tư.</span>
+        </div>
       </div>
     </div>
+
+    <!-- Filter Section -->
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="fas fa-search"></i>
+              </span>
+              <input
+                type="text"
+                class="form-control"
+                v-model="searchQuery"
+                placeholder="Tìm kiếm theo mã, tên, địa điểm..."
+              >
+            </div>
+          </div>
+          <div class="col-md-2">
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="fas fa-tasks"></i>
+              </span>
+              <select class="form-control" v-model="statusFilter">
+                <option value="">Tất cả trạng thái</option>
+                <option v-for="status in statusOptions" :key="status" :value="status">
+                  {{ status }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.start"
+              placeholder="Từ ngày bắt đầu"
+            >
+          </div>
+          <div class="col-md-2">
+            <input
+              type="date"
+              class="form-control"
+              v-model="dateRange.end"
+              placeholder="Đến ngày hoàn thành"
+            >
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-secondary w-100" @click="resetFilters">
+              <i class="fas fa-undo me-2"></i>Đặt lại
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <!-- Bỏ card, chỉ còn DataTable và phân trang -->
     <div>
@@ -310,9 +440,9 @@ const handleMaterialPageChange = (page) => {
       <!-- Phân trang công trình -->
       <div class="d-flex justify-content-between align-items-center mt-4">
         <div class="text-muted">
-          Hiển thị {{ paginatedConstructions.length }} trên {{ constructions.length }} công trình
+          Hiển thị {{ paginatedConstructions.length }} trên {{ filteredConstructions.length }} công trình
         </div>
-        <Pagination :total-items="constructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
+        <Pagination :total-items="filteredConstructions.length" :items-per-page="itemsPerPage" :current-page="currentPage"
           @update:currentPage="handlePageChange" />
       </div>
     </div>
@@ -542,6 +672,63 @@ const handleMaterialPageChange = (page) => {
   min-width: 340px;
   max-width: 600px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.filter-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.filter-section .form-control {
+  height: 42px;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.filter-section .form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.filter-section .input-group-text {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem 0 0 0.5rem;
+  padding: 0.5rem 1rem;
+  color: #6c757d;
+}
+
+.filter-section .input-group .form-control {
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.filter-section .btn {
+  height: 42px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+}
+
+.filter-section .btn-secondary {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+.filter-section .btn-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.gap-2 {
+  gap: 0.5rem;
 }
 
 .slide-fade-enter-active,

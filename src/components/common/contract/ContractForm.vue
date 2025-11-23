@@ -309,7 +309,7 @@ const validateEndDate = () => {
     
     // Validate end date is after start date
     if (formData.value.startDate) {
-      const startDate = new Date(formData.value.startDate)
+    const startDate = new Date(formData.value.startDate)
       if (!isNaN(startDate.getTime()) && startDate >= endDate) {
         errors.value.endDate = 'Ngày kết thúc phải sau ngày bắt đầu'
         return false
@@ -319,9 +319,9 @@ const validateEndDate = () => {
     // Probation contract duration validation (max 2 months)
     if (isProbationContract.value && formData.value.startDate) {
       const startDate = new Date(formData.value.startDate)
-      const durationInMonths = ((endDate.getFullYear() - startDate.getFullYear()) * 12) + (endDate.getMonth() - startDate.getMonth())
-      
-      if (durationInMonths > 2) {
+    const durationInMonths = ((endDate.getFullYear() - startDate.getFullYear()) * 12) + (endDate.getMonth() - startDate.getMonth())
+    
+    if (durationInMonths > 2) {
         errors.value.endDate = 'Hợp đồng thử việc không được vượt quá 2 tháng'
         return false
       }
@@ -659,7 +659,7 @@ watch(() => props.mode, (newMode) => {
               type="text" 
               class="form-control" 
               :class="{ 'is-invalid': errors.contractNumber }"
-              v-model="formData.contractNumber"
+              v-model="formData.contractNumber" 
               @blur="validateField('contractNumber')"
               @input="validateField('contractNumber')"
               maxlength="50"
@@ -731,7 +731,7 @@ watch(() => props.mode, (newMode) => {
               type="date" 
               class="form-control" 
               :class="{ 'is-invalid': errors.startDate }"
-              v-model="formData.startDate"
+              v-model="formData.startDate" 
               @blur="validateField('startDate')"
               @change="validateField('startDate')"
               :max="new Date().toISOString().split('T')[0]"
@@ -748,7 +748,7 @@ watch(() => props.mode, (newMode) => {
               type="date" 
               class="form-control" 
               :class="{ 'is-invalid': errors.endDate }"
-              v-model="formData.endDate"
+              v-model="formData.endDate" 
               @blur="validateField('endDate')"
               @change="validateField('endDate')"
               :readonly="isDeterminedTermContract || isProbationContract"

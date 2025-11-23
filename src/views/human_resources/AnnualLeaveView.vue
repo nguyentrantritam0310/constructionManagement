@@ -14,6 +14,8 @@ import { useOvertimeForm } from '../../composables/useOvertimeForm'
 import { useEmployeeRequest } from '../../composables/useEmployeeRequest'
 import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
 import { isApprovedStatus } from '../../constants/status.js'
+import TourGuide from '@/components/common/TourGuide.vue'
+import ActionButton from '@/components/common/ActionButton.vue'
 
 // Composables
 const { employees, fetchAllEmployees, loading: employeeLoading, error: employeeError } = useEmployee()
@@ -285,6 +287,7 @@ const showOvertimeFormModal = ref(false)
 const selectedLeaveRequest = ref(null)
 const selectedOvertimeRequest = ref(null)
 const currentUser = ref({}) // Mock current user for forms
+const showTourGuide = ref(false)
 
 const leaveTicketColumns = [
   { key: 'ticketId', label: 'Mã phiếu' },
@@ -438,11 +441,157 @@ const reloadData = async () => {
     // Error handling is done by composables
   }
 }
+
+// Tour Guide Steps
+const annualTourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý phép năm quy định. Tại đây bạn có thể xem thông tin phép năm của từng nhân viên theo từng tháng trong năm.'
+  },
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Đây là các tab để chuyển đổi giữa "Phép năm quy định" và "Phép bù tăng ca". Hiện tại bạn đang ở tab "Phép năm quy định".'
+  },
+  {
+    target: '[data-tour="year-filter"]',
+    message: 'Đây là bộ lọc năm. Bạn có thể chọn năm để xem dữ liệu phép năm của năm đó. Nút "Reload" để tải lại dữ liệu từ server.'
+  },
+  {
+    target: '[data-tour="table-annual"]',
+    message: 'Đây là bảng phép năm quy định. Mỗi hàng là một nhân viên, mỗi cột là một tháng trong năm. Bạn có thể thấy số ngày nghỉ phép của từng nhân viên trong từng tháng. Bấm vào số ngày nghỉ để xem chi tiết các phiếu nghỉ phép.'
+  },
+  {
+    target: '[data-tour="modal-detail"]',
+    message: 'Bấm vào số ngày nghỉ trong bảng sẽ mở modal chi tiết. Bạn có thể xem danh sách các phiếu nghỉ phép và bấm vào mã phiếu để xem chi tiết từng phiếu.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="table-annual"] .leave-cell.clickable:first-of-type'
+    }
+  },
+  {
+    target: '[data-tour="modal-detail"]',
+    message: 'Bấm vào cột "Tổng ngày đã nghỉ" sẽ mở modal hiển thị tất cả phiếu nghỉ phép trong năm. Bấm vào mã phiếu để xem chi tiết từng phiếu.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal nếu đang mở
+        const modal = document.querySelector('.modal.show')
+        if (modal) {
+          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
+          if (closeBtn) closeBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+        // Click vào total-used
+        const totalUsed = document.querySelector('[data-tour="total-used"]:first-of-type')
+        if (totalUsed) {
+          totalUsed.click()
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="pagination-annual"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Phép năm quy định"!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal nếu đang mở
+        const modal = document.querySelector('.modal.show')
+        if (modal) {
+          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
+          if (closeBtn) closeBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  }
+]
+
+const otLeaveTourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý phép bù tăng ca. Tại đây bạn có thể xem thông tin phép bù tăng ca của từng nhân viên theo từng tháng trong năm.'
+  },
+  {
+    target: '[data-tour="tabs"]',
+    message: 'Đây là các tab để chuyển đổi giữa "Phép năm quy định" và "Phép bù tăng ca". Hiện tại bạn đang ở tab "Phép bù tăng ca".'
+  },
+  {
+    target: '[data-tour="year-filter"]',
+    message: 'Đây là bộ lọc năm. Bạn có thể chọn năm để xem dữ liệu phép bù tăng ca của năm đó. Nút "Reload" để tải lại dữ liệu từ server.'
+  },
+  {
+    target: '[data-tour="table-otLeave"]',
+    message: 'Đây là bảng phép bù tăng ca. Mỗi hàng là một nhân viên, mỗi cột là một tháng trong năm. Bạn có thể thấy số ngày phép bù tăng ca của từng nhân viên trong từng tháng. Bấm vào số ngày để xem chi tiết các phiếu phép bù tăng ca.'
+  },
+  {
+    target: '[data-tour="modal-detail"]',
+    message: 'Bấm vào số ngày phép bù trong bảng sẽ mở modal chi tiết. Bạn có thể xem danh sách các phiếu phép bù tăng ca và bấm vào mã phiếu để xem chi tiết từng phiếu.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="table-otLeave"] .leave-cell.clickable:first-of-type'
+    }
+  },
+  {
+    target: '[data-tour="modal-detail"]',
+    message: 'Bấm vào cột "Đã nghỉ phép bù" sẽ mở modal hiển thị tất cả phiếu phép bù tăng ca trong năm. Bấm vào mã phiếu để xem chi tiết từng phiếu.',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal nếu đang mở
+        const modal = document.querySelector('.modal.show')
+        if (modal) {
+          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
+          if (closeBtn) closeBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+        // Click vào ot-leave-used
+        const otLeaveUsed = document.querySelector('[data-tour="ot-leave-used"]:first-of-type')
+        if (otLeaveUsed) {
+          otLeaveUsed.click()
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+    }
+  },
+  {
+    target: '[data-tour="pagination-otLeave"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Phép bù tăng ca"!',
+    action: {
+      type: 'function',
+      func: async () => {
+        // Đóng modal nếu đang mở
+        const modal = document.querySelector('.modal.show')
+        if (modal) {
+          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
+          if (closeBtn) closeBtn.click()
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+    }
+  }
+]
+
+const tourSteps = computed(() => {
+  return activeTab.value === 'annual' ? annualTourSteps : otLeaveTourSteps
+})
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
+}
 </script>
 
 <template>
-  <div class="container-fluid py-4">
-    <div class="leave-tabs-bar mb-3">
+  <div class="container-fluid py-4" data-tour="title">
+    <div class="leave-tabs-bar mb-3" data-tour="tabs">
       <button
         v-for="tab in tabs"
         :key="tab.key"
@@ -454,7 +603,7 @@ const reloadData = async () => {
       </button>
     </div>
     <!-- Year Filter -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3" data-tour="year-filter">
       <div class="d-flex align-items-center gap-3">
         <label class="form-label mb-0 fw-bold">Năm:</label>
         <select v-model="selectedYear" class="form-select" style="width: 120px;">
@@ -465,6 +614,14 @@ const reloadData = async () => {
         <button class="btn btn-sm btn-outline-success" @click="reloadData">
           <i class="fas fa-sync me-1"></i> Reload
         </button>
+        <ActionButton 
+          type="secondary" 
+          icon="fas fa-question-circle me-2" 
+          @click="startTour"
+          title="Hướng dẫn sử dụng"
+        >
+          Hướng dẫn
+        </ActionButton>
       </div>
       <div class="text-muted">
         <i class="fas fa-calendar-alt me-2"></i>
@@ -490,17 +647,18 @@ const reloadData = async () => {
       
       <!-- Data Table -->
       <div v-else-if="leaveData && leaveData.length > 0" class="table-responsive leave-table">
-        <DataTable :columns="leaveColumns" :data="paginatedLeaveData">
+        <DataTable :columns="leaveColumns" :data="paginatedLeaveData" data-tour="table-annual">
           <template v-for="i in 12" #[`month${i}`]="{ item }">
             <span
               v-if="item && item[`month${i}`] > 0"
               class="leave-cell clickable"
               @click.stop="openLeaveModal(item.empId, i, 'annual', 'month')"
               title="Xem phiếu nghỉ phép"
+              data-tour="month-cell"
             >
               {{ item[`month${i}`] }}
             </span>
-            <span v-else class="leave-cell">{{ item ? item[`month${i}`] : 0 }}</span>
+            <span v-else class="leave-cell" data-tour="month-cell">{{ item ? item[`month${i}`] : 0 }}</span>
           </template>
           <template #empCode="{ item }">
             <span class="emp-id">{{ item?.empCode || '' }}</span>
@@ -522,6 +680,7 @@ const reloadData = async () => {
               class="total-used clickable"
               @click.stop="item && openLeaveModal(item.empId, 'total', 'annual', 'totalUsed')"
               title="Xem tất cả phiếu nghỉ phép năm"
+              data-tour="total-used"
             >
               {{ item?.totalUsed || 0 }}
             </span>
@@ -539,6 +698,7 @@ const reloadData = async () => {
           :itemsPerPage="annualItemsPerPage"
           :currentPage="annualCurrentPage"
           @update:currentPage="annualCurrentPage = $event"
+          data-tour="pagination-annual"
         />
       </div>
       
@@ -565,17 +725,18 @@ const reloadData = async () => {
       
       <!-- Data Table -->
       <div v-else-if="otLeaveData && otLeaveData.length > 0" class="table-responsive leave-table">
-        <DataTable :columns="otLeaveColumns" :data="paginatedOtLeaveData">
+        <DataTable :columns="otLeaveColumns" :data="paginatedOtLeaveData" data-tour="table-otLeave">
           <template v-for="i in 12" #[`month${i}`]="{ item }">
             <span
               v-if="item && item[`month${i}`] > 0"
               class="leave-cell leave-ot clickable"
               @click.stop="openLeaveModal(item.empId, i, 'otLeave', 'month')"
               title="Xem phiếu phép bù tăng ca"
+              data-tour="month-cell-ot"
             >
               {{ item[`month${i}`] }}
             </span>
-            <span v-else class="leave-cell">{{ item ? item[`month${i}`] : 0 }}</span>
+            <span v-else class="leave-cell" data-tour="month-cell-ot">{{ item ? item[`month${i}`] : 0 }}</span>
           </template>
           <template #empCode="{ item }">
             <span class="emp-id">{{ item?.empCode || '' }}</span>
@@ -591,6 +752,7 @@ const reloadData = async () => {
               class="ot-leave-used clickable"
               @click.stop="item && openLeaveModal(item.empId, 'total', 'otLeave', 'otLeaveUsed')"
               title="Xem tất cả phiếu phép bù tăng ca"
+              data-tour="ot-leave-used"
             >
               {{ item?.otLeaveUsed || 0 }}
             </span>
@@ -605,6 +767,7 @@ const reloadData = async () => {
           :itemsPerPage="otItemsPerPage"
           :currentPage="otCurrentPage"
           @update:currentPage="otCurrentPage = $event"
+          data-tour="pagination-otLeave"
         />
       </div>
       
@@ -625,6 +788,7 @@ const reloadData = async () => {
             : `Tất cả phiếu phép bù tăng ca năm ${selectedYear} - ${modalEmployee}`)"
       size="xl"
       scrollable
+      data-tour="modal-detail"
     >
       <div class="modal-leave-table">
         <DataTable
@@ -637,6 +801,7 @@ const reloadData = async () => {
               class="ticket-id voucher-code-link text-primary cursor-pointer"
               @click="openLeaveFormModal(item.ticketId)"
               :title="'Click để xem chi tiết phiếu nghỉ phép'"
+              data-tour="modal-ticket"
             >
               <i class="fas fa-file-alt me-1"></i>
               {{ item.ticketId }}
@@ -646,11 +811,12 @@ const reloadData = async () => {
               class="ticket-id voucher-code-link text-success cursor-pointer"
               @click="openOvertimeFormModal(item.ticketId)"
               :title="'Click để xem chi tiết phiếu tăng ca'"
+              data-tour="modal-ticket"
             >
               <i class="fas fa-clock me-1"></i>
               {{ item.ticketId }}
             </span>
-            <span v-else class="ticket-id">{{ item.ticketId }}</span>
+            <span v-else class="ticket-id" data-tour="modal-ticket">{{ item.ticketId }}</span>
           </template>
           <template #empName="{ item }">
             <span class="ticket-name">{{ item.empName }}</span>
@@ -700,6 +866,14 @@ const reloadData = async () => {
         @submit-for-approval="closeOvertimeFormModal"
       />
     </ModalDialog>
+  
+  <!-- Tour Guide -->
+  <TourGuide
+    :show="showTourGuide"
+    :steps="tourSteps"
+    @update:show="showTourGuide = $event"
+    @complete="handleTourComplete"
+  />
   </div>
 </template>
 

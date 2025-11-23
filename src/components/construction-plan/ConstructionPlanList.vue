@@ -3,9 +3,8 @@ import { ref, computed } from 'vue'
 import DataTable from '../common/DataTable.vue'
 import StatusBadge from '../common/StatusBadge.vue'
 import PlanDetailDialog from './PlanDetailDialog.vue'
-import UpdateButton from '../common/UpdateButton.vue'
 import StatusChangeDialog from '../common/StatusChangeDialog.vue'
-import ChangeStatusButton from '../common/ChangeStatusButton.vue'
+import ActionButton from '../common/ActionButton.vue'
 import { useConstructionPlan } from '../../composables/useConstructionPlan'
 import PlanForm from './PlanForm.vue'
 import ModalDialog from '../common/ModalDialog.vue'
@@ -158,8 +157,8 @@ const formatDate = (date, isActualCompletion = false) => {
 
       <template #actions="{ item }">
         <div class="d-flex justify-content-center gap-2">
-          <UpdateButton @click.stop="handleUpdateClick(item, $event)" />
-          <ChangeStatusButton @click.stop="handleStatusClick(item, $event)" />
+          <ActionButton icon="fas fa-edit" type="success" tooltip="Cập nhật" @click.stop="handleUpdateClick(item, $event)" />
+          <ActionButton icon="fas fa-exchange-alt" type="warning" tooltip="Đổi trạng thái" @click.stop="handleStatusClick(item, $event)" />
         </div>
       </template>
     </DataTable>

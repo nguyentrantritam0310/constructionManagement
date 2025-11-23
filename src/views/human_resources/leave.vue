@@ -12,6 +12,7 @@ import LeaveForm from '@/components/common/leave/LeaveForm.vue'
 import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
 import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
+import TourGuide from '@/components/common/TourGuide.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -68,6 +69,7 @@ const showDeleteDialog = ref(false)
 const selectedItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
+const showTourGuide = ref(false)
 
 // Approval modal states
 const showApprovalModal = ref(false)
@@ -262,6 +264,77 @@ const openUpdateForm = (voucherCode) => {
 const openDeleteDialog = (voucherCode) => {
   selectedItem.value = leaveRequests.value.find(item => item.voucherCode === voucherCode)
   showDeleteDialog.value = true
+}
+
+// Tour Guide Steps
+const tourSteps = [
+  {
+    target: '[data-tour="title"]',
+    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý đơn nghỉ phép. Tại đây bạn có thể xem, tạo, và quản lý các đơn nghỉ phép của nhân viên.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
+  },
+  {
+    target: '[data-tour="create-form"]',
+    message: 'Đây là form tạo đơn nghỉ phép mới. Bạn có thể chọn nhân viên, loại nghỉ phép, ca làm việc, ngày bắt đầu, ngày kết thúc và lý do nghỉ phép. Sau khi điền đầy đủ thông tin, bấm "Lưu" để tạo đơn.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:first-child'
+    }
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc đơn nghỉ phép theo nhiều tiêu chí khác nhau như số phiếu, mã nhân viên, loại nghỉ phép, trạng thái và khoảng thời gian.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:nth-child(2)'
+    }
+  },
+  {
+    target: '[data-tour="filter"]',
+    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo số phiếu, mã nhân viên, tên. Chọn loại nghỉ phép và trạng thái từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Sau đó bấm "Đặt lại" để xóa bộ lọc.'
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách đơn nghỉ phép ra file Excel để lưu trữ hoặc xử lý thêm. Khi bấm vào đây, file Excel sẽ được tải xuống tự động.'
+  },
+  {
+    target: '[data-tour="import-modal"]',
+    message: 'Đây là modal nhập Excel. Bạn có thể chọn file Excel từ máy tính, sau đó bấm "Nhập dữ liệu" để import các đơn nghỉ phép vào hệ thống.',
+    action: {
+      type: 'click',
+      selector: '[data-tour="toolbar"] button:nth-child(4)'
+    }
+  },
+  {
+    target: '[data-tour="toolbar"]',
+    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng của trang này bất cứ lúc nào.'
+  },
+  {
+    target: '[data-tour="actions"]',
+    message: 'Cột "Thao tác" chứa các nút để bạn thực hiện các hành động như: Sửa đơn nghỉ phép, Xóa đơn, Gửi duyệt, Duyệt, Từ chối hoặc Trả lại đơn. Các nút sẽ hiển thị tùy theo quyền của bạn và trạng thái đơn.'
+  },
+  {
+    target: '[data-tour="pagination"]',
+    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều đơn nghỉ phép hơn. Bạn có thể thấy số lượng đơn nghỉ phép hiện tại và tổng số đơn nghỉ phép. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
+  }
+]
+
+const handleTourComplete = () => {
+  showTourGuide.value = false
+}
+
+const startTour = () => {
+  // Mở filter section nếu chưa mở để có thể highlight
+  if (!showFilter.value) {
+    showFilter.value = true
+  }
+  // Đợi một chút để UI render xong
+  setTimeout(() => {
+    showTourGuide.value = true
+  }, 300)
 }
 
 const formatDateTime = (dateTime) => {
@@ -503,8 +576,8 @@ defineExpose({
   
   <div v-else class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h4 class="adjustment-title mb-0">Danh sách đơn nghỉ phép</h4>
-      <div class="d-flex gap-2">
+      <h4 class="adjustment-title mb-0" data-tour="title">Danh sách đơn nghỉ phép</h4>
+      <div class="d-flex gap-2" data-tour="toolbar">
         <ActionButton 
           v-if="canCreate('leave')" 
           type="primary" 
@@ -529,18 +602,18 @@ defineExpose({
         </ActionButton>
         <ActionButton 
           type="secondary" 
-          icon="fas fa-sync me-2" 
-          @click="refreshUserInfo"
-          title="Làm mới thông tin người dùng"
+          icon="fas fa-question-circle me-2" 
+          @click="startTour"
+          title="Hướng dẫn sử dụng"
         >
-          Refresh
+          Hướng dẫn
         </ActionButton>
       </div>
     </div>
     
     <!-- Filter Section -->
     <transition name="slide-fade">
-      <div class="filter-section mb-4" v-show="showFilter">
+      <div class="filter-section mb-4" v-show="showFilter" data-tour="filter">
         <div class="row g-3">
           <div class="col-md-3">
             <input
@@ -592,10 +665,10 @@ defineExpose({
     </div>
     
     <!-- Data table -->
-    <div v-else class="table-responsive adjustment-table">
+    <div v-else class="table-responsive adjustment-table" data-tour="table">
       <DataTable :columns="leaveColumns" :data="paginatedLeaveData">
         <template #actions="{ item }">
-          <div class="d-flex justify-content-start gap-2">
+          <div class="d-flex justify-content-start gap-2" data-tour="actions">
             <!-- Edit button based on centralized permissions -->
             <ActionButton 
               v-if="canEditItem('leave', item)" 
@@ -677,7 +750,7 @@ defineExpose({
     </div>
     
     <!-- Pagination -->
-    <div class="d-flex justify-content-between align-items-center mt-3">
+    <div class="d-flex justify-content-between align-items-center mt-3" data-tour="pagination">
       <div class="text-muted">
         Hiển thị {{ paginatedLeaveData.length }} trên {{ filteredLeaveRequests.length }} đơn nghỉ phép
       </div>
@@ -691,7 +764,7 @@ defineExpose({
   </div>
   
   <!-- Create Form Modal -->
-  <ModalDialog v-model:show="showCreateForm" title="Thêm đơn nghỉ phép" size="lg">
+  <ModalDialog v-model:show="showCreateForm" title="Thêm đơn nghỉ phép" size="lg" data-tour="create-form">
     <LeaveForm 
       mode="create" 
       @submit="handleCreate" 
@@ -745,7 +818,7 @@ defineExpose({
   />
 
   <!-- Import Excel Modal -->
-  <ModalDialog v-model:show="showImportModal" title="Nhập đơn nghỉ phép từ Excel" size="lg">
+  <ModalDialog v-model:show="showImportModal" title="Nhập đơn nghỉ phép từ Excel" size="lg" data-tour="import-modal">
     <div class="p-4">
       <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
       <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
@@ -764,6 +837,15 @@ defineExpose({
       </div>
     </div>
   </ModalDialog>
+
+  <!-- Tour Guide -->
+  <TourGuide
+    :show="showTourGuide"
+    :steps="tourSteps"
+    @update:show="showTourGuide = $event"
+    @complete="handleTourComplete"
+    v-if="showTourGuide"
+  />
 </template>
 
 <style scoped>

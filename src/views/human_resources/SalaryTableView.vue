@@ -2003,237 +2003,155 @@ const printTaxFinalizationReport = () => {
 
 /* Personal Salary Card Layout */
 .personal-salary-header {
-  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 8px 32px rgba(52, 152, 219, 0.3);
-  position: relative;
-}
-
-.personal-salary-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
-  animation: shimmer 3s infinite;
-}
-
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  background: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  animation: fadeInUp 0.4s ease-out;
 }
 
 /* Leave Card - unified light style */
 .leave-card {
   background: #fff;
   color: inherit;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  position: relative;
-  overflow: hidden;
-}
-
-.leave-card .card-header {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-bottom: 2px solid #dee2e6;
-  border-radius: 16px 16px 0 0 !important;
-  padding: 1.25rem 1.5rem;
-}
-
-.leave-card .card-header h6 {
-  color: #2c3e50;
-  font-weight: 700;
-}
-
-.leave-card .card-header h6 i {
-  color: #3498db;
-}
-
-.leave-card .card-body {
-  background: transparent;
-}
-
-.leave-card .salary-item.total-item {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-top: 2px solid #dee2e6;
-  border-radius: 12px;
+  border: 1px solid #dee2e6;
 }
 
 .personal-salary-header .card {
   background: transparent;
   border: none;
-  color: white;
 }
 
 .personal-salary-header .card-body {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
+  background: linear-gradient(135deg, #fafbfd 0%, #ffffff 100%);
+  transition: all 0.3s ease;
+}
+
+.personal-salary-header:hover .card-body {
+  background: linear-gradient(135deg, #f5f7fb 0%, #fafafa 100%);
 }
 
 .personal-icon-wrapper {
   width: 50px;
   height: 50px;
-  background: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, #f0f4f8 0%, #e9ecef 100%);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  color: white;
-  backdrop-filter: blur(10px);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-size: 24px;
+  color: #495057;
+  border: 1px solid #dee2e6;
   transition: all 0.3s ease;
-  position: relative;
-  z-index: 2;
+  cursor: pointer;
 }
 
 .personal-icon-wrapper:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, #e0e8f0 0%, #d9dfe8 100%);
 }
 
 .personal-salary-header .info-label {
-  color: rgba(255, 255, 255, 0.8);
+  color: #6c757d;
 }
 
 .personal-salary-header .info-value {
-  color: white;
+  color: #212529;
 }
 
 .net-salary-display {
   text-align: center;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  padding: 1.25rem;
+  background: linear-gradient(135deg, #f0f9f5 0%, #e8f5e9 100%);
+  border-radius: 8px;
+  border: 1px solid #c3e6cb;
   transition: all 0.3s ease;
-  position: relative;
-  z-index: 2;
+  cursor: default;
 }
 
 .net-salary-display:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+  border-color: #a3d9a5;
 }
 
 .net-salary-label {
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.8);
-  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-bottom: 0.5rem;
   font-weight: 500;
-  letter-spacing: 0.5px;
 }
 
 .net-salary-amount {
-  font-size: 1.8rem;
-  font-weight: 800;
-  color: white;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  background: linear-gradient(45deg, #fff, #e8f4fd);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #28a745;
 }
 
 .salary-card {
   background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #dee2e6;
   height: 100%;
-  position: relative;
-  overflow: hidden;
-}
-
-.salary-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #3498db, #2980b9);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.3s ease;
-}
-
-.salary-card:hover::before {
-  transform: scaleX(1);
+  transition: all 0.3s ease;
+  animation: fadeInUp 0.5s ease-out;
+  animation-fill-mode: both;
 }
 
 .salary-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
-  border-color: rgba(52, 152, 219, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transform: translateY(-3px);
+  border-color: #cbd5e0;
 }
 
 .salary-card .card-header {
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-bottom: 2px solid #dee2e6;
-  border-radius: 16px 16px 0 0 !important;
-  padding: 1.25rem 1.5rem;
-  position: relative;
+  border-bottom: 1px solid #dee2e6;
+  border-radius: 8px 8px 0 0 !important;
+  padding: 1rem 1.25rem;
+  transition: all 0.3s ease;
 }
 
-.salary-card .card-header::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #3498db, #2980b9);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.salary-card:hover .card-header::after {
-  opacity: 1;
+.salary-card:hover .card-header {
+  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
 }
 
 .salary-card .card-header h6 {
-  color: #2c3e50;
-  font-weight: 700;
-  font-size: 1.1rem;
+  color: #212529;
+  font-weight: 600;
+  font-size: 1rem;
   margin: 0;
   display: flex;
   align-items: center;
 }
 
 .salary-card .card-header h6 i {
-  margin-right: 0.75rem;
-  color: #3498db;
-  font-size: 1.2rem;
+  margin-right: 0.5rem;
+  color: #6c757d;
+  font-size: 1rem;
 }
 
 .salary-card .card-body {
-  padding: 1.5rem;
-  position: relative;
+  padding: 1.25rem;
 }
 
 .salary-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
-  position: relative;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e9ecef;
+  transition: all 0.25s ease;
 }
 
 .salary-item:hover {
-  background: rgba(52, 152, 219, 0.02);
+  background-color: #f8f9fa;
   padding-left: 0.5rem;
   padding-right: 0.5rem;
   margin: 0 -0.5rem;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .salary-item:last-child {
@@ -2242,95 +2160,69 @@ const printTaxFinalizationReport = () => {
 
 .salary-item.total-item {
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-top: 2px solid #dee2e6;
-  margin-top: 1rem;
-  padding: 1.25rem 1rem;
-  border-radius: 12px;
-  font-weight: 700;
-  position: relative;
-}
-
-.salary-item.total-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #3498db, #2980b9);
+  border-top: 1px solid #dee2e6;
+  margin-top: 0.75rem;
+  padding: 0.875rem 0.75rem;
+  border-radius: 4px;
+  font-weight: 600;
 }
 
 .salary-label {
-  font-weight: 600;
-  color: #495057;
-  font-size: 0.95rem;
-  transition: color 0.2s ease;
+  font-weight: 500;
+  color: #6c757d;
+  font-size: 0.9rem;
 }
 
 .salary-value {
-  font-weight: 700;
-  color: #2c3e50;
-  font-size: 0.95rem;
-  transition: color 0.2s ease;
-}
-
-.salary-item:hover .salary-label {
-  color: #3498db;
-}
-
-.salary-item:hover .salary-value {
-  color: #2980b9;
+  font-weight: 600;
+  color: #212529;
+  font-size: 0.9rem;
 }
 
 .salary-value.overtime-link {
   color: #3498db;
   cursor: pointer;
   text-decoration: underline;
+  transition: all 0.25s ease;
+  padding: 2px 4px;
+  border-radius: 4px;
 }
 
 .salary-value.overtime-link:hover {
   color: #2980b9;
   text-decoration: none;
+  background-color: rgba(52, 152, 219, 0.1);
+  transform: scale(1.05);
 }
 
 .final-summary-card {
-  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-  color: white;
-  position: relative;
-  overflow: hidden;
+  background: #fff;
+  border: 2px solid #28a745;
+  animation: fadeInUp 0.6s ease-out;
+  animation-fill-mode: both;
 }
 
-.final-summary-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
-  animation: shimmer 5s infinite;
+.final-summary-card:hover {
+  box-shadow: 0 6px 16px rgba(40, 167, 69, 0.2);
+  transform: translateY(-3px);
 }
 
 .final-summary-card .card-header {
-  background: rgba(255, 255, 255, 0.15);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
-  position: relative;
-  z-index: 2;
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  border-bottom: 1px solid #c3e6cb;
 }
 
 .final-summary-card .card-header h6 {
-  color: white;
-  font-weight: 700;
+  color: #212529;
+  font-weight: 600;
 }
 
 .final-summary-card .card-header h6 i {
-  color: rgba(255, 255, 255, 0.9);
+  color: #6c757d;
 }
 
 .final-summary-card .card-body {
-  background: rgba(255, 255, 255, 0.1);
-  position: relative;
-  z-index: 2;
+  background: transparent;
 }
 
 .final-summary {
@@ -2342,7 +2234,16 @@ const printTaxFinalizationReport = () => {
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid #e9ecef;
+  transition: all 0.25s ease;
+}
+
+.summary-row:hover {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  margin: 0 -0.5rem;
+  background-color: rgba(248, 249, 250, 0.5);
+  border-radius: 6px;
 }
 
 .summary-row:last-child {
@@ -2351,41 +2252,46 @@ const printTaxFinalizationReport = () => {
 
 .summary-label {
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 1rem;
+  color: #6c757d;
+  font-size: 0.9rem;
 }
 
 .summary-value {
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 
 .summary-value.income {
-  color: #90ee90;
+  color: #28a745;
 }
 
 .summary-value.deduction {
-  color: #ffb6c1;
+  color: #dc3545;
 }
 
 .summary-value.net-salary {
-  color: white;
-  font-size: 1.2rem;
+  color: #28a745;
+  font-size: 1.1rem;
   font-weight: 700;
 }
 
 .summary-divider {
-  height: 2px;
-  background: rgba(255, 255, 255, 0.3);
+  height: 1px;
+  background: #dee2e6;
   margin: 0.75rem 0;
-  border-radius: 1px;
 }
 
 .final-row {
-  background: rgba(255, 255, 255, 0.1);
-  margin: 0 -1.25rem;
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  margin: 0 -1.25rem -1.25rem;
   padding: 1rem 1.25rem;
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 6px 6px;
+  border-top: 1px solid #c3e6cb;
+  transition: all 0.3s ease;
+}
+
+.final-row:hover {
+  background: linear-gradient(135deg, #d4edda 0%, #b8e0c0 100%);
 }
 
 /* Responsive adjustments */
@@ -2405,6 +2311,43 @@ const printTaxFinalizationReport = () => {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
   border: 1px solid rgba(0, 0, 0, 0.05);
   overflow: hidden;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stagger animation for cards */
+.personal-salary-content .row > div:nth-child(1) .salary-card {
+  animation-delay: 0.1s;
+}
+
+.personal-salary-content .row > div:nth-child(2) .salary-card {
+  animation-delay: 0.2s;
+}
+
+.personal-salary-content .row > div:nth-child(3) .salary-card {
+  animation-delay: 0.3s;
+}
+
+.personal-salary-content .row > div:nth-child(4) .salary-card {
+  animation-delay: 0.4s;
+}
+
+.personal-salary-content .row > div:nth-child(5) .salary-card {
+  animation-delay: 0.5s;
+}
+
+.personal-salary-content .row > div:nth-child(6) .salary-card {
+  animation-delay: 0.6s;
 }
 
 @media (max-width: 768px) {
@@ -2429,28 +2372,12 @@ const printTaxFinalizationReport = () => {
   .salary-value {
     font-weight: 700;
   }
-}
-
-/* Card Loading Animation */
-.personal-salary-content .row > div {
-  animation: slideInUp 0.6s ease-out forwards;
-  opacity: 0;
-  transform: translateY(30px);
-}
-
-.personal-salary-content .row > div:nth-child(1) { animation-delay: 0.1s; }
-.personal-salary-content .row > div:nth-child(2) { animation-delay: 0.2s; }
-.personal-salary-content .row > div:nth-child(3) { animation-delay: 0.3s; }
-.personal-salary-content .row > div:nth-child(4) { animation-delay: 0.4s; }
-.personal-salary-content .row > div:nth-child(5) { animation-delay: 0.5s; }
-.personal-salary-content .row > div:nth-child(6) { animation-delay: 0.6s; }
-
-@keyframes slideInUp {
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  
+  .salary-card:hover {
+    transform: translateY(-2px);
   }
 }
+
 
 /* Header Styles for all tabs */
 .salary-header,

@@ -14,11 +14,9 @@ import { useManagementReport } from '../../composables/useManagementReport'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
 import TechnicalReportForm from '../../components/technical-report/TechnicalReportForm.vue'
-import UpdateButton from '@/components/common/UpdateButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
-import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 
 const { showMessage } = useGlobalMessage()
 
@@ -511,9 +509,10 @@ const isResubmitMode = computed(() => {
       </template>
 
       <template #actions="{ item }">
-        <UpdateButton @click="handleUpdateStatus(item)" />
-        <ChangeStatusButton @click.stop="openStatusDialog(item)" />
-
+        <div class="d-flex gap-2">
+          <ActionButton type="success" icon="fas fa-edit" tooltip="Cập nhật" @click="handleUpdateStatus(item)" />
+          <ActionButton type="warning" icon="fas fa-exchange-alt" tooltip="Đổi trạng thái" @click.stop="openStatusDialog(item)" />
+        </div>
       </template>
 
     </DataTable>

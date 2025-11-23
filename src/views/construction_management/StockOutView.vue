@@ -168,6 +168,7 @@ const showDetails = ref(false)
 const showCreateForm = ref(false)
 const selectedStockOut = ref(null)
 const actualQuantities = ref([])
+const showFilter = ref(false)
 
 // Form data for creating new export order
 const newExportOrder = ref({
@@ -358,13 +359,19 @@ const formatDate = (date, isActualCompletion = false) => {
   <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h1 class="h3 mb-0">Xuất Kho</h1>
-      <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
-        Tạo Phiếu Xuất
-      </ActionButton>
+      <div class="d-flex gap-2">
+        <ActionButton type="warning" icon="fas fa-filter me-2" @click="showFilter = !showFilter">
+          Lọc
+        </ActionButton>
+        <ActionButton type="primary" icon="fas fa-plus" @click="showCreateForm = true">
+          Tạo Phiếu Xuất
+        </ActionButton>
+      </div>
     </div>
 
     <!-- Filter Section -->
-    <div class="filter-section mb-4">
+    <transition name="slide-fade">
+      <div class="filter-section mb-4" v-show="showFilter">
       <div class="row g-3 align-items-end">
         <div class="col-md-4">
           <label class="form-label fw-semibold">Tìm kiếm</label>
@@ -396,7 +403,8 @@ const formatDate = (date, isActualCompletion = false) => {
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </transition>
 
     <!-- Loading State -->
     <div v-if="loading" class="text-center py-4">
@@ -810,5 +818,22 @@ const formatDate = (date, isActualCompletion = false) => {
   background-color: #e9ecef;
   border-color: #dee2e6;
   color: #495057;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-fade-enter-to,
+.slide-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 </style>
