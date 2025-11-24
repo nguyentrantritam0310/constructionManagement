@@ -3,6 +3,7 @@ import { ref, watch, onMounted, computed } from 'vue'
 import FormField from '../FormField.vue'
 import { CONTRACT_APPROVE_STATUS, CONTRACT_APPROVE_STATUS_LABELS } from '../../../constants/status.js'
 import { contractService } from '../../../services/contractService.js'
+import { useContract } from '../../../composables/useContract.js'
 
 const props = defineProps({
   mode: {
@@ -28,6 +29,9 @@ const contractTypes = ref([])
 const allowances = ref([])
 const loading = ref(false)
 
+// Get contracts for overlap checking
+const { contracts, fetchAllContracts } = useContract()
+
 const formData = ref({
   id: props.contract?.id ?? '',
   contractNumber: props.contract?.contractNumber ?? '',
@@ -38,7 +42,6 @@ const formData = ref({
   contractSalary: props.contract?.contractSalary ?? '',
   insuranceSalary: props.contract?.insuranceSalary ?? '',
   approveStatus: props.contract?.approveStatus ?? 'Tạo mới',
-  validityPeriod: props.contract?.validityPeriod ?? '', // Thêm trường hiệu lực
   allowances: (props.contract?.allowances || []).map(a => ({
     allowanceID: a.allowanceID || a.allowance?.id || '',
     value: a.value || 0
@@ -55,8 +58,6 @@ const regexPatterns = {
   id: /^[1-9]\d*$/,
   // Lương: số dương, có thể có số thập phân (2 chữ số)
   salary: /^[1-9]\d{0,9}(\.\d{1,2})?$|^0\.\d{1,2}$/,
-  // Hiệu lực: 3, 6, 12, 24, 36 tháng
-  validityPeriod: /^(3|6|12|24|36)$/,
   // Giá trị phụ cấp: số dương hoặc 0, có thể có số thập phân
   allowanceValue: /^\d+(\.\d{1,2})?$/
 }
@@ -70,8 +71,8 @@ const errors = ref({
   endDate: '',
   contractSalary: '',
   insuranceSalary: '',
-  validityPeriod: '',
-  allowances: ''
+  allowances: '',
+  contractOverlap: ''
 })
 
 
@@ -80,14 +81,6 @@ const approveStatusOptions = [
   { value: 'Chờ duyệt', text: 'Chờ duyệt' },
   { value: 'Đã duyệt', text: 'Đã duyệt' },
   { value: 'Từ chối', text: 'Từ chối' }
-]
-
-const validityOptions = [
-  { value: '3', text: '3 tháng' },
-  { value: '6', text: '6 tháng' },
-  { value: '12', text: '12 tháng' },
-  { value: '24', text: '24 tháng' },
-  { value: '36', text: '36 tháng' }
 ]
 
 // Computed properties
@@ -148,7 +141,6 @@ watch(() => props.contract, (newContract) => {
       contractSalary: newContract.contractSalary ?? '',
       insuranceSalary: newContract.insuranceSalary ?? '',
       approveStatus: approveStatusValue,
-      validityPeriod: newContract.validityPeriod ?? '',
       allowances: (newContract.allowances || []).map(a => ({
         allowanceID: a.allowanceID || a.allowance?.id || '',
         value: a.value || 0
@@ -163,46 +155,32 @@ function formatDateForInput(dateString) {
   return date.toISOString().split('T')[0]
 }
 
-// Function to calculate end date based on validity period
-function calculateEndDate(startDate, validityMonths) {
-  if (!startDate || !validityMonths) return ''
-  
-  const start = new Date(startDate)
-  const end = new Date(start)
-  end.setMonth(end.getMonth() + parseInt(validityMonths))
-  
-  return end.toISOString().split('T')[0]
+// Helper function to calculate end date (startDate + months)
+const calculateEndDate = (startDate, months) => {
+  if (!startDate) return ''
+  const date = new Date(startDate)
+  date.setMonth(date.getMonth() + parseInt(months))
+  return date.toISOString().split('T')[0]
 }
 
-// Watch for changes in start date and validity period to auto-calculate end date
-watch([() => formData.value.startDate, () => formData.value.validityPeriod], ([newStartDate, newValidityPeriod]) => {
-  if (isDeterminedTermContract.value && newStartDate && newValidityPeriod) {
-    formData.value.endDate = calculateEndDate(newStartDate, newValidityPeriod)
-  }
-  
+// Watch for changes in start date to auto-calculate end date for probation contracts
+watch(() => formData.value.startDate, (newStartDate) => {
   // For probation contracts, always use 2 months
   if (isProbationContract.value && newStartDate) {
-    formData.value.endDate = calculateEndDate(newStartDate, '2')
+    formData.value.endDate = calculateEndDate(newStartDate, 2)
   }
 })
 
-// Watch for contract type changes to reset validity period
+// Watch for contract type changes
 watch(() => formData.value.contractTypeID, (newContractTypeID) => {
-  if (!isDeterminedTermContract.value && !isProbationContract.value) {
-    formData.value.validityPeriod = ''
-    if (isIndeterminateTermContract.value) {
-      // For indeterminate term contracts, set end date to empty or a far future date
-      formData.value.endDate = ''
-    }
+  if (isIndeterminateTermContract.value) {
+    // For indeterminate term contracts, clear end date
+    formData.value.endDate = ''
   }
   
-  // Auto-set validity period for probation contracts
-  if (isProbationContract.value) {
-    formData.value.validityPeriod = '2' // 2 months default for probation
-    // Auto-calculate end date if start date is set
-    if (formData.value.startDate) {
-      formData.value.endDate = calculateEndDate(formData.value.startDate, '2')
-    }
+  // Auto-calculate end date for probation contracts if start date is set
+  if (isProbationContract.value && formData.value.startDate) {
+    formData.value.endDate = calculateEndDate(formData.value.startDate, 2)
   }
 })
 
@@ -262,12 +240,6 @@ const validateStartDate = () => {
     return false
   }
   
-  // Ngày bắt đầu không được quá tương lai
-  if (startDate > new Date()) {
-    errors.value.startDate = 'Ngày bắt đầu không được lớn hơn ngày hiện tại'
-    return false
-  }
-  
   // Validate end date when start date changes
   if (formData.value.endDate && !isIndeterminateTermContract.value) {
     const endDate = new Date(formData.value.endDate)
@@ -284,13 +256,20 @@ const validateStartDate = () => {
 const validateEndDate = () => {
   const value = formData.value.endDate
   
-  // End date is optional for indeterminate term contracts
-  if (isIndeterminateTermContract.value && !value) {
+  // End date is optional and readonly for indeterminate term contracts
+  if (isIndeterminateTermContract.value) {
     errors.value.endDate = ''
     return true
   }
   
-  if (!value && !isIndeterminateTermContract.value) {
+  // End date is readonly for probation contracts (auto-calculated)
+  if (isProbationContract.value) {
+    errors.value.endDate = ''
+    return true
+  }
+  
+  // For determined term contracts, end date is required
+  if (!value && isDeterminedTermContract.value) {
     errors.value.endDate = 'Ngày kết thúc không được để trống'
     return false
   }
@@ -309,26 +288,108 @@ const validateEndDate = () => {
     
     // Validate end date is after start date
     if (formData.value.startDate) {
-    const startDate = new Date(formData.value.startDate)
+      const startDate = new Date(formData.value.startDate)
       if (!isNaN(startDate.getTime()) && startDate >= endDate) {
         errors.value.endDate = 'Ngày kết thúc phải sau ngày bắt đầu'
-        return false
-      }
-    }
-    
-    // Probation contract duration validation (max 2 months)
-    if (isProbationContract.value && formData.value.startDate) {
-      const startDate = new Date(formData.value.startDate)
-    const durationInMonths = ((endDate.getFullYear() - startDate.getFullYear()) * 12) + (endDate.getMonth() - startDate.getMonth())
-    
-    if (durationInMonths > 2) {
-        errors.value.endDate = 'Hợp đồng thử việc không được vượt quá 2 tháng'
         return false
       }
     }
   }
   
   errors.value.endDate = ''
+  return true
+}
+
+// Helper function to check if approveStatus indicates approved
+const isApproved = (approveStatus) => {
+  if (!approveStatus) return false
+  if (typeof approveStatus === 'string') {
+    return approveStatus === 'Đã duyệt' || approveStatus === 'Approved'
+  }
+  if (typeof approveStatus === 'number') {
+    return approveStatus === 2
+  }
+  return false
+}
+
+// Check for contract overlap with approved contracts
+const checkContractOverlap = () => {
+  // Only check if we have employee, startDate, and endDate (or indeterminate term)
+  if (!formData.value.employeeID || !formData.value.startDate) {
+    errors.value.contractOverlap = ''
+    return true
+  }
+
+  // For indeterminate term contracts without endDate, check if employee has any approved contract
+  if (isIndeterminateTermContract.value && !formData.value.endDate) {
+    const existingIndeterminateContract = contracts.value.find(c => 
+      c.employeeID === formData.value.employeeID &&
+      isApproved(c.approveStatus) &&
+      c.id !== formData.value.id && // Exclude current contract if updating
+      (!c.endDate || c.endDate === null || c.endDate === '')
+    )
+    
+    if (existingIndeterminateContract) {
+      errors.value.contractOverlap = 'Nhân viên này đã có hợp đồng không xác định thời hạn còn hiệu lực. Không thể tạo hợp đồng mới.'
+      return false
+    }
+  }
+
+  const newStartDate = new Date(formData.value.startDate)
+  newStartDate.setHours(0, 0, 0, 0)
+  
+  // For contracts with endDate, use it; for indeterminate, use a far future date for comparison
+  let newEndDate
+  if (formData.value.endDate) {
+    newEndDate = new Date(formData.value.endDate)
+    newEndDate.setHours(23, 59, 59, 999)
+  } else if (isIndeterminateTermContract.value) {
+    // For indeterminate term, treat as infinite (use far future date)
+    newEndDate = new Date('2099-12-31')
+    newEndDate.setHours(23, 59, 59, 999)
+  } else {
+    // If no endDate and not indeterminate, validation should have caught this
+    errors.value.contractOverlap = ''
+    return true
+  }
+
+  // Get all approved contracts for this employee (excluding current contract if updating)
+  const existingContracts = contracts.value.filter(c => 
+    c.employeeID === formData.value.employeeID &&
+    isApproved(c.approveStatus) &&
+    c.id !== formData.value.id // Exclude current contract if updating
+  )
+
+  // Check for overlap with each existing contract
+  for (const existingContract of existingContracts) {
+    const existingStartDate = new Date(existingContract.startDate)
+    existingStartDate.setHours(0, 0, 0, 0)
+    
+    let existingEndDate
+    if (existingContract.endDate) {
+      existingEndDate = new Date(existingContract.endDate)
+      existingEndDate.setHours(23, 59, 59, 999)
+    } else {
+      // Indeterminate term contract - treat as infinite
+      existingEndDate = new Date('2099-12-31')
+      existingEndDate.setHours(23, 59, 59, 999)
+    }
+
+    // Check if there's an overlap
+    // Overlap occurs if: newStartDate <= existingEndDate AND newEndDate >= existingStartDate
+    if (newStartDate <= existingEndDate && newEndDate >= existingStartDate) {
+      const contractNumber = existingContract.contractNumber || existingContract.id
+      const existingStart = existingStartDate.toLocaleDateString('vi-VN')
+      const existingEnd = existingContract.endDate 
+        ? existingEndDate.toLocaleDateString('vi-VN')
+        : 'không xác định thời hạn'
+      
+      errors.value.contractOverlap = `Hợp đồng này trùng với hợp đồng đã duyệt: ${contractNumber} (${existingStart} - ${existingEnd}). Mỗi thời điểm nhân viên chỉ được phép có 1 hợp đồng còn hiệu lực.`
+      return false
+    }
+  }
+
+  errors.value.contractOverlap = ''
   return true
 }
 
@@ -402,28 +463,6 @@ const validateInsuranceSalary = () => {
   return true
 }
 
-const validateValidityPeriod = () => {
-  // Validity period only required for determined term contracts
-  if (!isDeterminedTermContract.value && !isProbationContract.value) {
-    errors.value.validityPeriod = ''
-    return true
-  }
-  
-  const value = formData.value.validityPeriod
-  if (!value) {
-    errors.value.validityPeriod = 'Vui lòng chọn hiệu lực hợp đồng'
-    return false
-  }
-  
-  if (!regexPatterns.validityPeriod.test(value)) {
-    errors.value.validityPeriod = 'Hiệu lực hợp đồng không hợp lệ (phải là 3, 6, 12, 24 hoặc 36 tháng)'
-    return false
-  }
-  
-  errors.value.validityPeriod = ''
-  return true
-}
-
 const validateAllowances = () => {
   // Validate each allowance in the array
   for (let i = 0; i < formData.value.allowances.length; i++) {
@@ -486,18 +525,23 @@ const validateField = (fieldName) => {
     case 'contractTypeID':
       validateContractTypeID()
       // Re-validate validity period when contract type changes
-      if (isDeterminedTermContract.value || isProbationContract.value) {
-        validateValidityPeriod()
-      }
       break
     case 'employeeID':
       validateEmployeeID()
+      // Check overlap when employee changes
+      if (formData.value.startDate) {
+        checkContractOverlap()
+      }
       break
     case 'startDate':
       validateStartDate()
       // Re-validate end date when start date changes
       if (formData.value.endDate) {
         validateEndDate()
+      }
+      // Check overlap when dates change
+      if (formData.value.employeeID) {
+        checkContractOverlap()
       }
       break
     case 'endDate':
@@ -506,15 +550,16 @@ const validateField = (fieldName) => {
       if (formData.value.startDate) {
         validateStartDate()
       }
+      // Check overlap when dates change
+      if (formData.value.employeeID) {
+        checkContractOverlap()
+      }
       break
     case 'contractSalary':
       validateContractSalary()
       break
     case 'insuranceSalary':
       validateInsuranceSalary()
-      break
-    case 'validityPeriod':
-      validateValidityPeriod()
       break
     case 'allowances':
       validateAllowances()
@@ -530,9 +575,9 @@ const validateForm = () => {
     validateEmployeeID(),
     validateStartDate(),
     validateEndDate(),
+    checkContractOverlap(), // Check for contract overlap
     validateContractSalary(),
     validateInsuranceSalary(),
-    validateValidityPeriod(),
     validateAllowances()
   ]
   
@@ -619,7 +664,8 @@ const fetchAllowances = async () => {
 onMounted(async () => {
   await Promise.all([
     fetchContractTypes(),
-    fetchAllowances()
+    fetchAllowances(),
+    fetchAllContracts() // Load contracts for overlap checking
   ])
 })
 
@@ -636,7 +682,6 @@ watch(() => props.mode, (newMode) => {
       contractSalary: '',
       insuranceSalary: '',
       approveStatus: 'Tạo mới',
-      validityPeriod: '',
       allowances: []
     }
   }
@@ -708,24 +753,7 @@ watch(() => props.mode, (newMode) => {
           Thời gian hợp đồng
         </h6>
         <div class="row g-4">
-          <!-- Hiệu lực hợp đồng cho hợp đồng xác định thời hạn -->
-          <div v-if="isDeterminedTermContract || isProbationContract" class="col-md-4">
-            <label class="form-label">Hiệu lực <span class="text-danger">*</span></label>
-            <select 
-              class="form-select" 
-              :class="{ 'is-invalid': errors.validityPeriod }"
-              v-model="formData.validityPeriod"
-              @change="validateField('validityPeriod')"
-            >
-              <option value="">Chọn hiệu lực</option>
-              <option v-for="validity in validityOptions" :key="validity.value" :value="validity.value">
-                {{ validity.text }}
-              </option>
-            </select>
-            <div class="invalid-feedback">{{ errors.validityPeriod }}</div>
-          </div>
-          
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label">Từ ngày <span class="text-danger">*</span></label>
             <input 
               type="date" 
@@ -734,15 +762,14 @@ watch(() => props.mode, (newMode) => {
               v-model="formData.startDate" 
               @blur="validateField('startDate')"
               @change="validateField('startDate')"
-              :max="new Date().toISOString().split('T')[0]"
             />
             <div class="invalid-feedback">{{ errors.startDate }}</div>
           </div>
           
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label">
               Đến ngày 
-              <span v-if="!isIndeterminateTermContract" class="text-danger">*</span>
+              <span v-if="isDeterminedTermContract" class="text-danger">*</span>
             </label>
             <input 
               type="date" 
@@ -751,28 +778,25 @@ watch(() => props.mode, (newMode) => {
               v-model="formData.endDate" 
               @blur="validateField('endDate')"
               @change="validateField('endDate')"
-              :readonly="isDeterminedTermContract || isProbationContract"
-              :required="!isIndeterminateTermContract"
+              :readonly="isProbationContract || isIndeterminateTermContract"
+              :required="isDeterminedTermContract"
+              :disabled="isProbationContract || isIndeterminateTermContract"
             />
             <div class="invalid-feedback">{{ errors.endDate }}</div>
-            <small v-if="isDeterminedTermContract || isProbationContract" class="form-text text-muted">
-              Tự động tính dựa trên từ ngày và hiệu lực
+            <small v-if="isProbationContract" class="form-text text-muted">
+              Tự động tính: từ ngày + 2 tháng
             </small>
             <small v-else-if="isIndeterminateTermContract" class="form-text text-muted">
-              Hợp đồng không xác định thời hạn (tùy chọn)
+              Hợp đồng không xác định thời hạn (không cần nhập đến ngày)
             </small>
           </div>
         </div>
-        
-        <!-- Thông báo cho hợp đồng thử việc -->
-        <div v-if="isProbationContract" class="row g-4 mt-2">
-          <div class="col-12">
-            <div class="alert alert-info">
-              <i class="fas fa-info-circle me-2"></i>
-              <strong>Hợp đồng thử việc:</strong> Tự động có hiệu lực 2 tháng
-            </div>
-          </div>
+        <!-- Contract Overlap Error -->
+        <div v-if="errors.contractOverlap" class="alert alert-danger mt-3" role="alert">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          {{ errors.contractOverlap }}
         </div>
+        
       </div>
 
       <!-- Thông tin lương và trạng thái -->
@@ -834,70 +858,81 @@ watch(() => props.mode, (newMode) => {
             <i class="fas fa-plus me-1"></i> Thêm phụ cấp
           </button>
         </div>
-        <div class="row g-4">
-          <div v-if="errors.allowances" class="col-12">
-            <div class="alert alert-danger mb-3" role="alert">
-              <i class="fas fa-exclamation-circle me-2"></i>{{ errors.allowances }}
+        <div class="allowances-container">
+          <div v-if="errors.allowances" class="alert alert-danger mb-3" role="alert">
+            <i class="fas fa-exclamation-circle me-2"></i>{{ errors.allowances }}
+          </div>
+          
+          <div v-if="formData.allowances.length > 0" class="allowances-list">
+            <div 
+              v-for="(allowance, index) in formData.allowances" 
+              :key="index"
+              class="allowance-item"
+            >
+              <div class="allowance-item-content">
+                <div class="allowance-field">
+                  <label class="allowance-label">
+                    Loại phụ cấp <span class="text-danger">*</span>
+                  </label>
+                  <select 
+                    class="form-select" 
+                    :class="{ 'is-invalid': errors.allowances && !allowance.allowanceID && (allowance.value || allowance.value === 0) }"
+                    v-model="allowance.allowanceID"
+                    @change="validateField('allowances')"
+                    :disabled="loading"
+                  >
+                    <option value="">{{ loading ? 'Đang tải...' : 'Chọn phụ cấp' }}</option>
+                    <option v-for="allow in allowances" :key="allow.id" :value="allow.id">
+                      {{ allow.allowanceName }}
+                    </option>
+                  </select>
+                </div>
+                
+                <div class="allowance-field">
+                  <label class="allowance-label">
+                    Giá trị (VNĐ) <span class="text-danger">*</span>
+                  </label>
+                  <div class="input-group">
+                    <input 
+                      type="number" 
+                      class="form-control" 
+                      :class="{ 'is-invalid': errors.allowances && (!allowance.value && allowance.value !== 0) && allowance.allowanceID }"
+                      v-model.number="allowance.value"
+                      @blur="validateField('allowances')"
+                      @input="validateField('allowances')"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                
+                <div class="allowance-action">
+                  <button 
+                    type="button" 
+                    class="btn btn-outline-danger btn-remove"
+                    @click="removeAllowance(index); validateField('allowances')"
+                    :disabled="loading"
+                    title="Xóa phụ cấp"
+                  >
+                    <i class="fas fa-times"></i>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           
-          <div v-if="formData.allowances.length === 0" class="col-12">
-            <div class="text-muted text-center py-3">
-              Chưa có phụ cấp nào
-            </div>
-          </div>
-          
-          <div v-for="(allowance, index) in formData.allowances" :key="index" class="col-12">
-            <div class="row g-3">
-              <div class="col-md-5">
-                <label class="form-label">Loại phụ cấp</label>
-                <select 
-                  class="form-select" 
-                  :class="{ 'is-invalid': errors.allowances && !allowance.allowanceID && (allowance.value || allowance.value === 0) }"
-                  v-model="allowance.allowanceID"
-                  @change="validateField('allowances')"
-                  :disabled="loading"
-                >
-                  <option value="">{{ loading ? 'Đang tải...' : 'Chọn phụ cấp' }}</option>
-                  <option v-for="allow in allowances" :key="allow.id" :value="allow.id">
-                    {{ allow.allowanceName }}
-                  </option>
-                </select>
-              </div>
-              <div class="col-md-5">
-                <label class="form-label">Giá trị</label>
-                <input 
-                  type="number" 
-                  class="form-control" 
-                  :class="{ 'is-invalid': errors.allowances && (!allowance.value && allowance.value !== 0) && allowance.allowanceID }"
-                  v-model.number="allowance.value"
-                  @blur="validateField('allowances')"
-                  @input="validateField('allowances')"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                />
-              </div>
-              <div class="col-md-2 d-flex align-items-end">
-                <button 
-                  type="button" 
-                  class="btn btn-outline-danger btn-sm" 
-                  @click="removeAllowance(index); validateField('allowances')"
-                >
-                  <i class="fas fa-trash"></i>
-                </button>
-              </div>
-            </div>
+          <div v-else class="allowances-empty">
+            <i class="fas fa-inbox"></i>
+            <p>Chưa có phụ cấp nào được thêm</p>
           </div>
         </div>
       </div>
 
       <div class="d-flex justify-content-end gap-2 mt-4">
-        <button type="button" class="btn btn-outline-secondary btn-lg" @click="handleClose">
-          <i class="fas fa-times me-1"></i> Hủy
-        </button>
-        <button type="submit" class="btn btn-primary btn-gradient btn-lg">
-          <i class="fas fa-save me-1"></i> {{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}
+        <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
+        <button type="submit" class="btn btn-primary" :disabled="loading">
+          {{ loading ? 'Đang xử lý...' : (props.mode === 'update' ? 'Cập nhật' : 'Tạo mới') }}
         </button>
       </div>
     </form>
@@ -1015,6 +1050,101 @@ input[type="email"]:focus {
   color: #0c5460;
 }
 
+/* Allowances styling */
+.allowances-container {
+  padding: 0;
+}
+
+.allowances-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.allowance-item {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.2s ease;
+}
+
+.allowance-item:hover {
+  border-color: #c0c0c0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.allowance-item-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.allowance-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.allowance-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #495057;
+  margin: 0;
+}
+
+.allowance-field .form-select,
+.allowance-field .form-control {
+  width: 100%;
+}
+
+.allowance-field .input-group {
+  width: 100%;
+}
+
+.allowance-action {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 0.5rem;
+}
+
+.btn-remove {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-remove:hover {
+  background-color: #dc3545;
+  border-color: #dc3545;
+  color: #fff;
+  transform: scale(1.05);
+}
+
+.allowances-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6c757d;
+}
+
+.allowances-empty i {
+  font-size: 3rem;
+  color: #dee2e6;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.allowances-empty p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .form-card {
@@ -1032,6 +1162,24 @@ input[type="email"]:focus {
   
   .form-group {
     margin-bottom: 1rem;
+  }
+  
+  .allowance-item-content {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  
+  .allowance-action {
+    padding-bottom: 0;
+    justify-content: flex-end;
+  }
+  
+  .allowances-empty {
+    padding: 2rem 1rem;
+  }
+  
+  .allowances-empty i {
+    font-size: 2.5rem;
   }
 }
 </style>

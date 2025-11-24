@@ -44,105 +44,189 @@ export function useSalary() {
     return false
   }
 
-  // Computed properties
-  const salaryTableData = computed(() => {
-    if (!employees.value || employees.value.length === 0) return []
-    
-    return employees.value.map((employee, index) => {
-      // Tìm hợp đồng ĐÃ DUYỆT của nhân viên
-      // Chỉ lấy hợp đồng có approveStatus = 'Đã duyệt', 'Approved' hoặc 2
-      const contract = contracts.value.find(c => 
-        c.employeeID === employee.id && isApproved(c.approveStatus)
-      )
-      
-      // Tìm dữ liệu chấm công của nhân viên trong tháng
-      const attendanceData = attendanceList.value.filter(att => 
-        att.employeeID === employee.id && 
-        new Date(att.workDate).getMonth() + 1 === selectedMonth.value &&
-        new Date(att.workDate).getFullYear() === selectedYear.value
-      )
+  // Helper function to get all contracts active in a month for an employee
+  const getContractsInMonth = (employeeId, year, month) => {
+    const monthStartDate = new Date(year, month - 1, 1)
+    monthStartDate.setHours(0, 0, 0, 0)
+    const monthEndDate = new Date(year, month, 0)
+    monthEndDate.setHours(23, 59, 59, 999)
 
-      // Tính toán các chỉ số từ dữ liệu thực tế
-      // Nếu không có hợp đồng đã duyệt, lương = 0
-      const contractSalary = contract?.contractSalary || 0
-      const insuranceSalary = contract?.insuranceSalary || 0
-      
-      // Tính tổng ngày công chuẩn từ số ngày được phân ca trong tháng
-      const assignedDays = shiftAssignments.value.filter(assignment => {
-        const assignmentDate = new Date(assignment.workDate)
-        return assignment.employeeID === employee.id && 
-               assignmentDate.getMonth() + 1 === selectedMonth.value &&
-               assignmentDate.getFullYear() === selectedYear.value
-      }).length
-      
-      const standardDays = assignedDays || 0 // Ngày công chuẩn = số ngày được phân ca
-      
-      // Tính tổng ngày công = tổng ngày đi làm từ tab dữ liệu chấm công chi tiết
-      // Đếm số ngày duy nhất có dữ liệu chấm công hợp lệ (có checkIn và checkOut)
-      const validAttendanceDays = attendanceData.filter(att => {
-        // Kiểm tra có dữ liệu chấm công hợp lệ
-        const hasValidCheckIn = att.checkInTime && att.checkInTime.trim() !== ''
-        const hasValidCheckOut = att.checkOutTime && att.checkOutTime.trim() !== ''
-        
-        // Chỉ tính những ngày có cả check-in và check-out
-        return hasValidCheckIn && hasValidCheckOut
+    return contracts.value
+      .filter(contract => {
+        if (contract.employeeID !== employeeId) return false
+        if (!isApproved(contract.approveStatus)) return false
+
+        const contractStartDate = new Date(contract.startDate)
+        contractStartDate.setHours(0, 0, 0, 0)
+
+        // Contract must start before or on the last day of the month
+        if (contractStartDate > monthEndDate) return false
+
+        // Contract must end after or on the first day of the month (or be indeterminate)
+        if (contract.endDate) {
+          const contractEndDate = new Date(contract.endDate)
+          contractEndDate.setHours(23, 59, 59, 999)
+          if (contractEndDate < monthStartDate) return false
+        }
+        // If no endDate, it's an indeterminate term contract (always active)
+
+        return true
       })
-      
-      // Lấy danh sách các ngày duy nhất (tránh đếm trùng lặp)
-      const uniqueWorkDays = new Set()
-      validAttendanceDays.forEach(att => {
-        const workDate = new Date(att.workDate || att.attendanceDate).toISOString().split('T')[0]
-        uniqueWorkDays.add(workDate)
+      .sort((a, b) => {
+        // Sort by startDate
+        const dateA = new Date(a.startDate)
+        const dateB = new Date(b.startDate)
+        return dateA - dateB
       })
+  }
+
+  // Helper function to get contract period within a month
+  const getContractPeriodInMonth = (contract, year, month) => {
+    const monthStartDate = new Date(year, month - 1, 1)
+    monthStartDate.setHours(0, 0, 0, 0)
+    const monthEndDate = new Date(year, month, 0)
+    monthEndDate.setHours(23, 59, 59, 999)
+
+    const contractStartDate = new Date(contract.startDate)
+    contractStartDate.setHours(0, 0, 0, 0)
+
+    let contractEndDate
+    if (contract.endDate) {
+      contractEndDate = new Date(contract.endDate)
+      contractEndDate.setHours(23, 59, 59, 999)
+    } else {
+      // Indeterminate term - use month end
+      contractEndDate = monthEndDate
+    }
+
+    // Calculate period within month
+    const periodStart = contractStartDate > monthStartDate ? contractStartDate : monthStartDate
+    const periodEnd = contractEndDate < monthEndDate ? contractEndDate : monthEndDate
+
+    return {
+      start: periodStart,
+      end: periodEnd,
+      startDate: periodStart,
+      endDate: periodEnd
+    }
+  }
+
+  // Helper function to format contract period string
+  const formatContractPeriod = (startDate, endDate) => {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const startStr = `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}`
+    const endStr = `${String(end.getDate()).padStart(2, '0')}/${String(end.getMonth() + 1).padStart(2, '0')}`
+    return `${startStr} - ${endStr}`
+  }
+
+  // Helper function to calculate salary for a specific period
+  const calculateSalaryForPeriod = (employee, contract, periodStart, periodEnd, year, month) => {
+    // Calculate days in period
+    const periodStartDate = new Date(periodStart)
+    periodStartDate.setHours(0, 0, 0, 0)
+    const periodEndDate = new Date(periodEnd)
+    periodEndDate.setHours(23, 59, 59, 999)
+
+    const contractSalary = contract?.contractSalary || 0
+    const insuranceSalary = contract?.insuranceSalary || 0
+
+    // Filter attendance data for this period
+    const attendanceData = attendanceList.value.filter(att => {
+      const workDate = new Date(att.workDate)
+      workDate.setHours(0, 0, 0, 0)
+      return att.employeeID === employee.id &&
+             workDate >= periodStartDate &&
+             workDate <= periodEndDate
+    })
+
+    // Filter shift assignments for this period
+    const assignedDays = shiftAssignments.value.filter(assignment => {
+      const assignmentDate = new Date(assignment.workDate)
+      assignmentDate.setHours(0, 0, 0, 0)
+      return assignment.employeeID === employee.id &&
+             assignmentDate >= periodStartDate &&
+             assignmentDate <= periodEndDate
+    }).length
+
+    const standardDays = assignedDays || 0
+
+    // Calculate valid attendance days in period
+    const validAttendanceDays = attendanceData.filter(att => {
+      const hasValidCheckIn = att.checkInTime && att.checkInTime.trim() !== ''
+      const hasValidCheckOut = att.checkOutTime && att.checkOutTime.trim() !== ''
+      return hasValidCheckIn && hasValidCheckOut
+    })
+
+    const uniqueWorkDays = new Set()
+    validAttendanceDays.forEach(att => {
+      const workDate = new Date(att.workDate || att.attendanceDate).toISOString().split('T')[0]
+      uniqueWorkDays.add(workDate)
+    })
+
+    const totalDays = uniqueWorkDays.size
+
+    // Calculate paid leave days in period
+    const approvedLeaveRequests = leaveRequests.value.filter(leave => {
+      const leaveStartDate = new Date(leave.startDateTime)
+      const leaveEndDate = new Date(leave.endDateTime)
       
-      const totalDays = uniqueWorkDays.size
+      return leave.employeeID === employee.id &&
+             leaveStartDate <= periodEndDate &&
+             leaveEndDate >= periodStartDate &&
+             isApproved(leave.approveStatus) &&
+             leave.leaveTypeName && leave.leaveTypeName.toLowerCase().includes('phép')
+    })
+
+    let totalPaidLeaveDays = 0
+    approvedLeaveRequests.forEach(leave => {
+      const startDate = new Date(leave.startDateTime)
+      const endDate = new Date(leave.endDateTime)
       
-      // Tính tổng nghỉ có lương = tổng số ngày nghỉ phép từ leave requests ĐÃ DUYỆT
-      const approvedLeaveRequests = leaveRequests.value.filter(leave => {
-        const leaveStartDate = new Date(leave.startDateTime)
-        const leaveEndDate = new Date(leave.endDateTime)
-        
-        return leave.employeeID === employee.id &&
-               leaveStartDate.getMonth() + 1 === selectedMonth.value &&
-               leaveStartDate.getFullYear() === selectedYear.value &&
-               isApproved(leave.approveStatus) &&
-               leave.leaveTypeName && leave.leaveTypeName.toLowerCase().includes('phép')
-      })
+      const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+      const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
       
-      // Tính tổng số ngày nghỉ phép (không phải số phiếu)
-      let totalPaidLeaveDays = 0
-      approvedLeaveRequests.forEach(leave => {
-        const startDate = new Date(leave.startDateTime)
-        const endDate = new Date(leave.endDateTime)
-        
-        // Tính số ngày nghỉ trong phiếu này
-        const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
+      // Only count days within the period
+      const periodStartDay = new Date(periodStartDate.getFullYear(), periodStartDate.getMonth(), periodStartDate.getDate())
+      const periodEndDay = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth(), periodEndDate.getDate())
+      
+      const actualStart = startDay > periodStartDay ? startDay : periodStartDay
+      const actualEnd = endDay < periodEndDay ? endDay : periodEndDay
+      
+      if (actualStart <= actualEnd) {
+        const daysDiff = Math.ceil((actualEnd - actualStart) / (1000 * 60 * 60 * 24)) + 1
         totalPaidLeaveDays += daysDiff
-      })
-      
-      const paidLeaveDays = totalPaidLeaveDays
-      
-      // Tính công tăng ca và lương tăng ca
-      // Lọc các đơn tăng ca ĐÃ DUYỆT trong tháng
-      const approvedOvertimeForMonth = (overtimeRequests?.value || []).filter(ot => {
-        if (!ot || !ot.startDateTime) return false
-        const start = new Date(ot.startDateTime)
-        const isSameMonth = (start.getFullYear() === selectedYear.value) && (start.getMonth() + 1 === selectedMonth.value)
-        const isApprovedStatus = isApproved(ot.approveStatus)
-        const employeeMatch = ot.employeeID === employee.id || String(ot.employeeID) === String(employee.id)
-        return isSameMonth && isApprovedStatus && employeeMatch
-      })
+      }
+    })
 
-      // Tính tổng số giờ tăng ca và các chỉ số chi tiết
-      let totalOvertimeHours = 0 // tổng giờ tăng ca
-      let totalOvertimeDayUnits = 0 // tổng ngày quy đổi (8h = 1 ngày)
-      let totalOvertimeHoursWithCoeff = 0 // tổng giờ có hệ số
-      let totalOvertimeDaysWithCoeff = 0 // tổng ngày có hệ số
+    const paidLeaveDays = totalPaidLeaveDays
+
+    // Calculate overtime in period
+    const approvedOvertimeForMonth = (overtimeRequests?.value || []).filter(ot => {
+      if (!ot || !ot.startDateTime) return false
+      const start = new Date(ot.startDateTime)
+      const end = new Date(ot.endDateTime)
+      return ot.employeeID === employee.id &&
+             start <= periodEndDate &&
+             end >= periodStartDate &&
+             isApproved(ot.approveStatus)
+    })
+
+    let totalOvertimeHours = 0
+    let totalOvertimeDayUnits = 0
+    let totalOvertimeHoursWithCoeff = 0
+    let totalOvertimeDaysWithCoeff = 0
+
+    approvedOvertimeForMonth.forEach(ot => {
+      const start = new Date(ot.startDateTime)
+      const end = new Date(ot.endDateTime)
       
-      approvedOvertimeForMonth.forEach(ot => {
-        const start = new Date(ot.startDateTime)
-        const end = new Date(ot.endDateTime)
-        const hours = Math.max(0, (end - start) / (1000 * 60 * 60))
+      // Only count hours within the period
+      const actualStart = start > periodStartDate ? start : periodStartDate
+      const actualEnd = end < periodEndDate ? end : periodEndDate
+      
+      if (actualStart <= actualEnd) {
+        const hours = Math.max(0, (actualEnd - actualStart) / (1000 * 60 * 60))
         const dayUnits = hours / 8
         const coeff = Number(ot.coefficient) || 1
         
@@ -150,200 +234,265 @@ export function useSalary() {
         totalOvertimeDayUnits += dayUnits
         totalOvertimeHoursWithCoeff += hours * coeff
         totalOvertimeDaysWithCoeff += dayUnits * coeff
-      })
-
-      const otDays = Math.round(totalOvertimeDayUnits * 100) / 100
-      const otHours = Math.round(totalOvertimeHours * 100) / 100
-      const otHoursWithCoeff = Math.round(totalOvertimeHoursWithCoeff * 100) / 100
-      const otDaysWithCoeff = Math.round(totalOvertimeDaysWithCoeff * 100) / 100
-      const otSalary = standardDays > 0 ? (contractSalary * totalOvertimeDaysWithCoeff / standardDays) : 0
-
-      // Tính lương theo ngày công = lương hợp đồng * tổng ngày công / tổng ngày công chuẩn
-      const salaryByDays = standardDays > 0 ? contractSalary * (totalDays / standardDays) : 0
-      
-      // Tính tổng lương phép = lương hợp đồng * tổng nghỉ có lương / tổng ngày công chuẩn
-      const leaveSalary = standardDays > 0 ? contractSalary * (paidLeaveDays / standardDays) : 0
-      
-      // Tính tổng lương thực tế = lương theo ngày công + tổng lương phép
-      const actualSalary = salaryByDays + leaveSalary
-      
-      // Tính các khoản phụ cấp từ hợp đồng
-      const mealAllowance = contract?.allowances?.find(a => 
-        a.allowanceName?.toLowerCase().includes('ăn') || 
-        a.allowanceName?.toLowerCase().includes('meal') ||
-        a.allowanceName?.toLowerCase().includes('trưa') ||
-        a.allowanceName?.toLowerCase().includes('ca')
-      )?.value || 0
-      
-      const fuelAllowance = contract?.allowances?.find(a => 
-        a.allowanceName?.toLowerCase().includes('xăng') || 
-        a.allowanceName?.toLowerCase().includes('xe') ||
-        a.allowanceName?.toLowerCase().includes('fuel') ||
-        a.allowanceName?.toLowerCase().includes('điện thoại')
-      )?.value || 0
-      
-      const responsibilityAllowance = contract?.allowances?.find(a => 
-        a.allowanceName?.toLowerCase().includes('trách nhiệm') ||
-        a.allowanceName?.toLowerCase().includes('responsibility')
-      )?.value || 0
-      
-      // Debug: Log allowance information for first employee
-      if (index === 0) {
-        console.log('=== ALLOWANCE DEBUG ===')
-        console.log('Employee:', employee.firstName, employee.lastName)
-        console.log('Contract allowances:', contract?.allowances)
-        console.log('Meal allowance:', mealAllowance)
-        console.log('Fuel allowance:', fuelAllowance)
-        console.log('Responsibility allowance:', responsibilityAllowance)
-        console.log('=== END ALLOWANCE DEBUG ===')
-      }
-      
-      // Tính bảo hiểm nhân viên đóng
-      const insuranceEmployee = insuranceSalary * 0.105 // 10.5%
-      const unionFee = insuranceSalary * 0.01 // 1% đoàn phí
-      
-      // Tính số người phụ thuộc từ quan hệ gia đình
-      // Chỉ tính những người có quan hệ trong khoảng thời gian của tháng được chọn
-      const monthStartDate = new Date(selectedYear.value, selectedMonth.value - 1, 1) // Ngày đầu tháng
-      const monthEndDate = new Date(selectedYear.value, selectedMonth.value, 0) // Ngày cuối tháng
-      
-      const dependents = familyRelations.value.filter(relation => {
-        // Kiểm tra quan hệ gia đình của nhân viên này
-        const isEmployeeRelation = relation.employeeID === employee.id
-        
-        // Kiểm tra thời gian hiệu lực (từ ngày bắt đầu đến ngày kết thúc)
-        const startDate = new Date(relation.startDate)
-        const endDate = new Date(relation.endDate)
-        
-        // Kiểm tra xem quan hệ có hiệu lực trong tháng được chọn không
-        // Quan hệ phải có ít nhất 1 ngày trong tháng được chọn
-        const isActiveInMonth = (startDate <= monthEndDate) && (endDate >= monthStartDate)
-        
-        // Chỉ tính các mối quan hệ phụ thuộc (con, vợ/chồng, cha/mẹ)
-        const isDependentRelation = ['Con', 'Vợ', 'Chồng', 'Cha', 'Mẹ'].includes(relation.relationShipName)
-        
-        return isEmployeeRelation && isActiveInMonth && isDependentRelation
-      }).length
-      
-      // Tính các khoản trừ từ khoản cộng trừ
-      // Chỉ tính các khoản cộng trừ có tính chất TRỪ: Kỷ luật, Truy thu, Tạm ứng
-      // và tất cả các hạng mục thuộc các khoản này
-      // CHỈ ÁP DỤNG KHI ĐÃ DUYỆT
-      const getAdjustmentDeductions = (employeeId, year, month) => {
-        // Lấy các khoản cộng trừ ĐÃ DUYỆT trong tháng
-        const approvedAdjustments = (payrollAdjustments?.value || []).filter(adj => {
-          if (!adj || !adj.decisionDate) return false
-          const adjDate = new Date(adj.decisionDate)
-          const adjMonth = adjDate.getMonth() + 1
-          const adjYear = adjDate.getFullYear()
-          
-          return adjYear === year && 
-                 adjMonth === month &&
-                 isApproved(adj.approveStatus) &&
-                 // CHỈ LẤY CÁC KHOẢN CÓ TÍNH CHẤT TRỪ:
-                 // - Kỷ luật: các hình thức kỷ luật, phạt
-                 // - Truy thu: thu hồi các khoản đã chi
-                 // - Tạm ứng: tạm ứng lương, chi phí
-                 ['Kỷ luật', 'Truy thu', 'Tạm ứng'].includes(adj.adjustmentTypeName)
-        })
-        
-        // Tính tổng giá trị các khoản trừ cho nhân viên này
-        let totalAdjustmentDeductions = 0
-        approvedAdjustments.forEach(adj => {
-          const employees = adj.Employees || adj.employees || []
-          employees.forEach(emp => {
-            if (emp.employeeID === employeeId || emp.employeeCode === employee.id) {
-              totalAdjustmentDeductions += Math.abs(emp.Value || emp.value || 0)
-            }
-          })
-        })
-        
-        return totalAdjustmentDeductions
-      }
-      
-      const adjustmentDeductions = getAdjustmentDeductions(employee.id, selectedYear.value, selectedMonth.value)
-      
-      // Tính thuế TNCN
-      const personalDeduction = 11000000 // Giảm trừ bản thân
-      const dependentDeduction = dependents * 4400000 // Giảm trừ người phụ thuộc
-      
-      const totalIncome = actualSalary + mealAllowance + fuelAllowance + responsibilityAllowance + otSalary
-      
-      // THAY ĐỔI LOGIC TÍNH THUẾ:
-      // 1. Tổng thu nhập chịu thuế = Tổng thu nhập (không trừ gì)
-      const taxableIncome = totalIncome
-      
-      // 2. Tổng thu nhập tính thuế = IF(tổng thu nhập - bảo hiểm NV đóng - giảm trừ bản thân - giảm trừ người phụ thuộc > 0, ..., 0)
-      const pitIncome = Math.max(0, totalIncome - insuranceEmployee - personalDeduction - dependentDeduction)
-      
-      // 3. Tính thuế TNCN theo thuế luỹ tiến từ pitIncome
-      let pitTax = 0
-      if (pitIncome > 0) {
-        if (pitIncome <= 5000000) {
-          pitTax = pitIncome * 0.05
-        } else if (pitIncome <= 10000000) {
-          pitTax = 250000 + (pitIncome - 5000000) * 0.1
-        } else if (pitIncome <= 18000000) {
-          pitTax = 750000 + (pitIncome - 10000000) * 0.15
-        } else if (pitIncome <= 32000000) {
-          pitTax = 1950000 + (pitIncome - 18000000) * 0.2
-        } else if (pitIncome <= 52000000) {
-          pitTax = 4750000 + (pitIncome - 32000000) * 0.25
-        } else if (pitIncome <= 80000000) {
-          pitTax = 9750000 + (pitIncome - 52000000) * 0.3
-        } else {
-          pitTax = 18150000 + (pitIncome - 80000000) * 0.35
-        }
-      }
-      
-      const totalDeduction = insuranceEmployee + unionFee + pitTax + adjustmentDeductions
-      const netSalary = Math.max(0, totalIncome - totalDeduction) // Thực lãnh không được âm
-
-      return {
-        empId: employee.id,
-        empName: `${employee.firstName} ${employee.lastName}`,
-        title: employee.roleName || 'Nhân viên',
-        contractType: contract?.contractTypeName || 'Không xác định',
-        contractSalary,
-        insuranceSalary,
-        totalContractSalary: contractSalary + insuranceSalary,
-        standardDays,
-        totalDays,
-        salaryByDays,
-        paidLeaveDays,
-        leaveSalary,
-        actualSalary,
-        otDays,
-        otHours,
-        otHoursWithCoeff,
-        otDaysWithCoeff,
-        otSalary,
-        mealAllowance,
-        fuelAllowance,
-        responsibilityAllowance,
-        totalSupport: mealAllowance + fuelAllowance + responsibilityAllowance,
-        insuranceEmployee,
-        unionFee,
-        totalIncome,
-        taxableIncome,
-        personalDeduction,
-        dependents,
-        dependentDeduction,
-        bonus: 0, // Có thể tính từ khen thưởng
-        otherIncome: 0,
-        pitIncome,
-        pitTax,
-        adjustmentDeductions,
-        totalDeduction,
-        netSalary,
-        // Thông tin bổ sung
-        email: employee.email,
-        phone: employee.phone,
-        birthday: employee.birthday,
-        joinDate: employee.joinDate,
-        status: employee.status
       }
     })
+
+    const otDays = Math.round(totalOvertimeDayUnits * 100) / 100
+    const otHours = Math.round(totalOvertimeHours * 100) / 100
+    const otHoursWithCoeff = Math.round(totalOvertimeHoursWithCoeff * 100) / 100
+    const otDaysWithCoeff = Math.round(totalOvertimeDaysWithCoeff * 100) / 100
+    const otSalary = standardDays > 0 ? (contractSalary * totalOvertimeDaysWithCoeff / standardDays) : 0
+
+    // Calculate salary
+    const salaryByDays = standardDays > 0 ? contractSalary * (totalDays / standardDays) : 0
+    const leaveSalary = standardDays > 0 ? contractSalary * (paidLeaveDays / standardDays) : 0
+    const actualSalary = salaryByDays + leaveSalary
+
+    // Get allowances from contract
+    const mealAllowance = contract?.allowances?.find(a => 
+      a.allowanceName?.toLowerCase().includes('ăn') || 
+      a.allowanceName?.toLowerCase().includes('meal') ||
+      a.allowanceName?.toLowerCase().includes('trưa') ||
+      a.allowanceName?.toLowerCase().includes('ca')
+    )?.value || 0
+
+    const fuelAllowance = contract?.allowances?.find(a => 
+      a.allowanceName?.toLowerCase().includes('xăng') || 
+      a.allowanceName?.toLowerCase().includes('xe') ||
+      a.allowanceName?.toLowerCase().includes('fuel') ||
+      a.allowanceName?.toLowerCase().includes('điện thoại')
+    )?.value || 0
+
+    const responsibilityAllowance = contract?.allowances?.find(a => 
+      a.allowanceName?.toLowerCase().includes('trách nhiệm') ||
+      a.allowanceName?.toLowerCase().includes('responsibility')
+    )?.value || 0
+
+    // Calculate insurance
+    const insuranceEmployee = insuranceSalary * 0.105
+    const unionFee = insuranceSalary * 0.01
+
+    // Calculate dependents (same logic as before, but for the period)
+    const monthStartDate = new Date(year, month - 1, 1)
+    monthStartDate.setHours(0, 0, 0, 0)
+    const monthEndDate = new Date(year, month, 0)
+    monthEndDate.setHours(23, 59, 59, 999)
+
+    const dependents = familyRelations.value.filter(relation => {
+      const isEmployeeRelation = relation.employeeID === employee.id || 
+                                 String(relation.employeeID) === String(employee.id)
+      if (!isEmployeeRelation) return false
+
+      const isDependentRelation = ['Con', 'Vợ', 'Chồng', 'Cha', 'Mẹ'].includes(relation.relationShipName)
+      if (!isDependentRelation) return false
+
+      const startDate = new Date(relation.startDate)
+      startDate.setHours(0, 0, 0, 0)
+      const endDate = new Date(relation.endDate)
+      endDate.setHours(23, 59, 59, 999)
+
+      const isActiveInMonth = (startDate <= monthEndDate) && (endDate >= monthStartDate)
+      return isActiveInMonth
+    }).length
+
+    // Calculate adjustments (same logic, but filtered by period)
+    const getAdjustmentDeductions = (employeeId, year, month) => {
+      const approvedAdjustments = (payrollAdjustments?.value || []).filter(adj => {
+        if (!adj) return false
+        const adjMonth = adj.Month || adj.month
+        const adjYear = adj.Year || adj.year
+        if (!adjMonth || !adjYear) return false
+        return parseInt(adjYear) === year && 
+               parseInt(adjMonth) === month &&
+               isApproved(adj.approveStatus) &&
+               ['Kỷ luật', 'Truy thu'].includes(adj.adjustmentTypeName)
+      })
+
+      let totalAdjustmentDeductions = 0
+      approvedAdjustments.forEach(adj => {
+        const employees = adj.Employees || adj.employees || []
+        employees.forEach(emp => {
+          if (emp.employeeID === employeeId || emp.employeeCode === employee.id) {
+            totalAdjustmentDeductions += Math.abs(emp.Value || emp.value || 0)
+          }
+        })
+      })
+      return totalAdjustmentDeductions
+    }
+
+    const adjustmentDeductions = getAdjustmentDeductions(employee.id, year, month)
+
+    const getBonus = (employeeId, year, month) => {
+      const approvedBonuses = (payrollAdjustments?.value || []).filter(adj => {
+        if (!adj) return false
+        const adjMonth = adj.Month || adj.month
+        const adjYear = adj.Year || adj.year
+        if (!adjMonth || !adjYear) return false
+        return parseInt(adjYear) === year && 
+               parseInt(adjMonth) === month &&
+               isApproved(adj.approveStatus) &&
+               adj.adjustmentTypeName === 'Khen thưởng'
+      })
+
+      let totalBonus = 0
+      approvedBonuses.forEach(adj => {
+        const employees = adj.Employees || adj.employees || []
+        employees.forEach(emp => {
+          if (emp.employeeID === employeeId || emp.employeeCode === employee.id) {
+            totalBonus += Math.abs(emp.Value || emp.value || 0)
+          }
+        })
+      })
+      return totalBonus
+    }
+
+    const bonus = getBonus(employee.id, year, month)
+
+    const getOtherIncome = (employeeId, year, month) => {
+      const approvedOtherIncomes = (payrollAdjustments?.value || []).filter(adj => {
+        if (!adj) return false
+        const adjMonth = adj.Month || adj.month
+        const adjYear = adj.Year || adj.year
+        if (!adjMonth || !adjYear) return false
+        return parseInt(adjYear) === year && 
+               parseInt(adjMonth) === month &&
+               isApproved(adj.approveStatus) &&
+               adj.adjustmentTypeName === 'Truy lãnh'
+      })
+
+      let totalOtherIncome = 0
+      approvedOtherIncomes.forEach(adj => {
+        const employees = adj.Employees || adj.employees || []
+        employees.forEach(emp => {
+          if (emp.employeeID === employeeId || emp.employeeCode === employee.id) {
+            totalOtherIncome += Math.abs(emp.Value || emp.value || 0)
+          }
+        })
+      })
+      return totalOtherIncome
+    }
+
+    const otherIncome = getOtherIncome(employee.id, year, month)
+
+    // Calculate tax
+    const personalDeduction = 11000000
+    const dependentDeduction = dependents * 4400000
+
+    const totalIncome = actualSalary + mealAllowance + fuelAllowance + responsibilityAllowance + otSalary + bonus + otherIncome
+    const taxableIncome = totalIncome
+    const pitIncome = Math.max(0, totalIncome - insuranceEmployee - personalDeduction - dependentDeduction)
+
+    let pitTax = 0
+    if (pitIncome > 0) {
+      if (pitIncome <= 5000000) {
+        pitTax = pitIncome * 0.05
+      } else if (pitIncome <= 10000000) {
+        pitTax = 250000 + (pitIncome - 5000000) * 0.1
+      } else if (pitIncome <= 18000000) {
+        pitTax = 750000 + (pitIncome - 10000000) * 0.15
+      } else if (pitIncome <= 32000000) {
+        pitTax = 1950000 + (pitIncome - 18000000) * 0.2
+      } else if (pitIncome <= 52000000) {
+        pitTax = 4750000 + (pitIncome - 32000000) * 0.25
+      } else if (pitIncome <= 80000000) {
+        pitTax = 9750000 + (pitIncome - 52000000) * 0.3
+      } else {
+        pitTax = 18150000 + (pitIncome - 80000000) * 0.35
+      }
+    }
+
+    const totalDeduction = insuranceEmployee + unionFee + pitTax + adjustmentDeductions
+    const netSalary = Math.max(0, totalIncome - totalDeduction)
+
+    return {
+      contractId: contract.id,
+      contractNumber: contract.contractNumber,
+      contractStartDate: contract.startDate,
+      contractEndDate: contract.endDate,
+      contractPeriod: formatContractPeriod(periodStart, periodEnd),
+      contractSalary,
+      insuranceSalary,
+      totalContractSalary: contractSalary + insuranceSalary,
+      standardDays,
+      totalDays,
+      salaryByDays,
+      paidLeaveDays,
+      leaveSalary,
+      actualSalary,
+      otDays,
+      otHours,
+      otHoursWithCoeff,
+      otDaysWithCoeff,
+      otSalary,
+      mealAllowance,
+      fuelAllowance,
+      responsibilityAllowance,
+      totalSupport: mealAllowance + fuelAllowance + responsibilityAllowance,
+      insuranceEmployee,
+      unionFee,
+      totalIncome,
+      taxableIncome,
+      personalDeduction,
+      dependents,
+      dependentDeduction,
+      bonus,
+      otherIncome,
+      pitIncome,
+      pitTax,
+      adjustmentDeductions,
+      totalDeduction,
+      netSalary
+    }
+  }
+
+  // Computed properties
+  const salaryTableData = computed(() => {
+    if (!employees.value || employees.value.length === 0) return []
+    
+    const result = []
+    
+    employees.value.forEach((employee) => {
+      // Get all contracts active in the selected month
+      const activeContracts = getContractsInMonth(employee.id, selectedYear.value, selectedMonth.value)
+      
+      // If no active contracts, skip this employee (no salary row)
+      if (activeContracts.length === 0) {
+        return
+      }
+
+      // For each contract, create a salary row
+      activeContracts.forEach((contract) => {
+        // Get contract period within the month
+        const period = getContractPeriodInMonth(contract, selectedYear.value, selectedMonth.value)
+        
+        // Calculate salary for this period
+        const salaryData = calculateSalaryForPeriod(
+          employee,
+          contract,
+          period.start,
+          period.end,
+          selectedYear.value,
+          selectedMonth.value
+        )
+
+        // Add employee info and contract info to the result
+        result.push({
+          empId: employee.id,
+          empName: `${employee.firstName} ${employee.lastName}`,
+          title: employee.roleName || 'Nhân viên',
+          contractType: contract?.contractTypeName || 'Không xác định',
+          ...salaryData,
+          // Additional employee info
+          email: employee.email,
+          phone: employee.phone,
+          birthday: employee.birthday,
+          joinDate: employee.joinDate,
+          status: employee.status
+        })
+      })
+    })
+    
+    return result
   })
 
   const insuranceTableData = computed(() => {
@@ -528,7 +677,14 @@ export function useSalary() {
       window.URL.revokeObjectURL(url)
       
     } catch (err) {
-      error.value = err.message || 'Lỗi khi xuất Excel'
+      // Don't set error.value for network errors (will be handled by fallback)
+      const isNetworkError = err?.code === 'ERR_NETWORK' || 
+                            err?.message?.includes('Network Error') ||
+                            err?.message?.includes('ERR_CONNECTION_REFUSED')
+      
+      if (!isNetworkError) {
+        error.value = err.message || 'Lỗi khi xuất Excel'
+      }
       throw err
     }
   }

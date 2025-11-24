@@ -7,13 +7,16 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import { useSalary } from '../../composables/useSalary.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
 import { useAuth } from '../../composables/useAuth.js'
+import { useLeaveRequest } from '../../composables/useLeaveRequest.js'
+import { useShiftAssignment } from '../../composables/useShiftAssignment.js'
+import { useWorkShift } from '../../composables/useWorkShift.js'
 import TourGuide from '../../components/common/TourGuide.vue'
 import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 
 const activeTab = ref('salary')
-const tabs = [
+const allTabs = [
   { key: 'salary', label: 'Quản lý bảng lương' },
   { key: 'personalSalary', label: 'Bảng lương cá nhân' },
   { key: 'insurance', label: 'Bảo hiểm theo tháng' },
@@ -38,28 +41,71 @@ const {
 
 const { showMessage } = useGlobalMessage()
 const { currentUser } = useAuth()
+const { leaveRequests, fetchLeaveRequests } = useLeaveRequest()
+const { shiftAssignments, fetchAllShiftAssignments } = useShiftAssignment()
+const { workshifts, fetchWorkShifts } = useWorkShift()
+
+// Filter tabs based on user role
+const tabs = computed(() => {
+  const userRole = currentUser.value?.role
+  
+  // Các role được phép xem tất cả tabs: hr_employee, hr_manager, director
+  if (['hr_employee', 'hr_manager', 'director'].includes(userRole)) {
+    return allTabs
+  }
+  
+  // Các role khác chỉ thấy tab bảng lương cá nhân
+  return allTabs.filter(tab => tab.key === 'personalSalary')
+})
 
 // Sync tab from query param
 const route = useRoute()
 const router = useRouter()
-const tabKeys = tabs.map(t => t.key)
+const tabKeys = computed(() => tabs.value.map(t => t.key))
 
 onMounted(() => {
   const qTab = route.query.tab
-  if (typeof qTab === 'string' && tabKeys.includes(qTab)) {
+  const availableTabs = tabKeys.value
+  
+  // Nếu tab trong query không có trong danh sách tabs được phép, chuyển về tab đầu tiên
+  if (typeof qTab === 'string' && availableTabs.includes(qTab)) {
     activeTab.value = qTab
+  } else {
+    // Set tab mặc định dựa trên role
+    if (availableTabs.length > 0) {
+      activeTab.value = availableTabs[0]
+      // Cập nhật URL nếu cần
+      if (qTab && !availableTabs.includes(qTab)) {
+        router.replace({ path: route.path, query: { ...route.query, tab: availableTabs[0] } }).catch(() => {})
+      }
+    }
   }
 })
 
 watch(() => route.query.tab, (newTab) => {
-  if (typeof newTab === 'string' && tabKeys.includes(newTab)) {
+  const availableTabs = tabKeys.value
+  if (typeof newTab === 'string' && availableTabs.includes(newTab)) {
     activeTab.value = newTab
+  } else if (availableTabs.length > 0 && !availableTabs.includes(newTab)) {
+    // Nếu tab không hợp lệ, chuyển về tab đầu tiên
+    activeTab.value = availableTabs[0]
+    router.replace({ path: route.path, query: { ...route.query, tab: availableTabs[0] } }).catch(() => {})
   }
 })
 
+// Watch tabs để cập nhật activeTab nếu tab hiện tại không còn hợp lệ
+watch(() => tabs.value, (newTabs) => {
+  const availableKeys = newTabs.map(t => t.key)
+  if (!availableKeys.includes(activeTab.value) && availableKeys.length > 0) {
+    activeTab.value = availableKeys[0]
+    router.replace({ path: route.path, query: { ...route.query, tab: availableKeys[0] } }).catch(() => {})
+  }
+}, { immediate: true })
+
 // Keep URL in sync when tab changes inside this view (if you have UI changing tabs)
 const setActiveTab = async (key) => {
-  if (tabKeys.includes(key)) {
+  const availableTabs = tabKeys.value
+  if (availableTabs.includes(key)) {
     activeTab.value = key
     router.replace({ path: route.path, query: { ...route.query, tab: key } }).catch(() => {})
   }
@@ -83,7 +129,9 @@ function formatMoney(value) {
 // Load dữ liệu khi component mount
 onMounted(async () => {
   await fetchSalaryData()
-  await fetchClosingStatus(selectedYear.value, selectedMonth.value)
+  await fetchLeaveRequests()
+  await fetchAllShiftAssignments()
+  await fetchWorkShifts()
 })
 
 const handleTimeChange = async (year, month) => {
@@ -100,11 +148,306 @@ const handleRecalculateSalaries = async () => {
 }
 
 const handleExportToExcel = async (type) => {
+  if (!salaryTableData.value || salaryTableData.value.length === 0) {
+    showMessage('Không có dữ liệu để xuất Excel!', 'warning')
+    return
+  }
+  
   try {
-    await exportToExcel(type)
-    showMessage('Xuất Excel thành công!', 'success')
+    showMessage('Đang xuất Excel...', 'info')
+    
+    // Try backend export first, fallback to client-side if fails
+    try {
+      await exportToExcel(type)
+      showMessage('Xuất Excel thành công!', 'success')
+      return // Success, exit early
+    } catch (backendError) {
+      // Silently fallback to client-side export for network errors
+      // Only log if it's not a network/connection error
+      const isNetworkError = backendError?.code === 'ERR_NETWORK' || 
+                            backendError?.message?.includes('Network Error') ||
+                            backendError?.message?.includes('ERR_CONNECTION_REFUSED')
+      
+      if (!isNetworkError) {
+        // Only log non-network errors (might be other issues)
+        console.warn('Backend export failed, using client-side export:', backendError)
+      }
+      
+      // Fallback to client-side export
+      await exportSalaryToExcelClientSide(type)
+      showMessage('Xuất Excel thành công!', 'success')
+    }
   } catch (err) {
-    showMessage(`Lỗi: ${err.message}`, 'error')
+    console.error('Error exporting to Excel:', err)
+    showMessage(`Lỗi khi xuất Excel: ${err.message || 'Vui lòng thử lại sau'}`, 'error')
+  }
+}
+
+const exportSalaryToExcelClientSide = async (type) => {
+  try {
+    const workbook = new ExcelJS.Workbook()
+    let worksheet
+    let title
+    let headers
+    let dataSource
+    let columns
+    
+    if (type === 'salary') {
+      worksheet = workbook.addWorksheet('Bảng lương')
+      title = `BẢNG LƯƠNG THÁNG ${selectedMonth.value}/${selectedYear.value}`
+      headers = salaryColumns.map(col => col.label)
+      dataSource = salaryTableData.value
+      columns = salaryColumns
+    } else if (type === 'insurance') {
+      worksheet = workbook.addWorksheet('Bảo hiểm')
+      title = `BẢO HIỂM THEO THÁNG ${selectedMonth.value}/${selectedYear.value}`
+      headers = insuranceColumns.map(col => col.label)
+      dataSource = insuranceTableData.value
+      columns = insuranceColumns
+    } else if (type === 'tax') {
+      worksheet = workbook.addWorksheet('Thuế TNCN')
+      title = `THUẾ TNCN THÁNG ${selectedMonth.value}/${selectedYear.value}`
+      headers = taxColumns.map(col => col.label)
+      dataSource = taxTableData.value
+      columns = taxColumns
+    } else {
+      throw new Error('Loại xuất Excel không hợp lệ')
+    }
+    
+    // Helper function to check if column is money
+    const isMoneyColumn = (key) => {
+      return key.includes('Salary') || key.includes('Income') || key.includes('Deduction') || 
+             key.includes('Tax') || key.includes('Allowance') || key.includes('Support') || 
+             key.includes('Fee') || key.includes('Insurance') || key.includes('Com') || 
+             key.includes('Emp') || key.includes('Total')
+    }
+    
+    // Add title
+    const titleRow = worksheet.addRow([title])
+    worksheet.mergeCells(1, 1, 1, headers.length)
+    const titleCell = worksheet.getCell(1, 1)
+    
+    // Style title cell
+    titleCell.font = { 
+      size: 16, 
+      bold: true, 
+      color: { argb: 'FF212529' },
+      name: 'Arial'
+    }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE9ECEF' }
+    }
+    
+    // Border for title cell
+    titleCell.border = {
+      top: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      left: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      bottom: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      right: { style: 'thin', color: { argb: 'FFADB5BD' } }
+    }
+    
+    titleRow.height = 30
+    
+    // Add empty row for spacing
+    worksheet.addRow([])
+    
+    // Add headers
+    const headerRow = worksheet.addRow(headers)
+    headerRow.height = 25
+    
+    // Style header cells with borders and subtle background
+    headerRow.eachCell((cell, colNumber) => {
+      // Border for all sides
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        left: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        bottom: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        right: { style: 'thin', color: { argb: 'FFADB5BD' } }
+      }
+      
+      // Subtle gray background
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF1F3F5' }
+      }
+      
+      // Font - bold but not too dark
+      cell.font = { 
+        bold: true, 
+        size: 10,
+        color: { argb: 'FF212529' },
+        name: 'Arial'
+      }
+      
+      // Alignment
+      cell.alignment = { 
+        horizontal: 'center', 
+        vertical: 'middle', 
+        wrapText: true 
+      }
+    })
+    
+    // Add data rows
+    dataSource.forEach((item, rowIndex) => {
+      const row = []
+      columns.forEach(col => {
+        const value = item[col.key]
+        if (typeof value === 'number' && isMoneyColumn(col.key)) {
+          row.push(value || 0)
+        } else {
+          row.push(value ?? '')
+        }
+      })
+      
+      const dataRow = worksheet.addRow(row)
+      dataRow.height = 18
+      
+      // Style cells with borders and alignment - no background color for data rows
+      dataRow.eachCell((cell, colNumber) => {
+        const col = columns[colNumber - 1]
+        
+        // Border for all sides - consistent gray
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          left: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          bottom: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          right: { style: 'thin', color: { argb: 'FFDEE2E6' } }
+        }
+        
+        // No background fill for data rows (white)
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' }
+        }
+        
+        // Font - regular weight, not bold
+        cell.font = {
+          size: 9,
+          name: 'Arial',
+          color: { argb: 'FF212529' },
+          bold: false
+        }
+        
+        // Alignment and number format
+        if (col && typeof cell.value === 'number' && isMoneyColumn(col.key)) {
+          cell.numFmt = '#,##0'
+          cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        } else if (col && typeof cell.value === 'number') {
+          cell.numFmt = '0'
+          cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        } else {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' }
+        }
+      })
+    })
+    
+    // Add summary row for salary type
+    if (type === 'salary' && dataSource.length > 0) {
+      worksheet.addRow([])
+      const summaryRow = worksheet.addRow(['TỔNG CỘNG', ...Array(headers.length - 1).fill('')])
+      
+      // Calculate totals for money columns
+      columns.forEach((col, colIndex) => {
+        if (isMoneyColumn(col.key)) {
+          const total = dataSource.reduce((sum, item) => {
+            const value = item[col.key]
+            return sum + (typeof value === 'number' ? value : 0)
+          }, 0)
+          summaryRow.getCell(colIndex + 1).value = total
+        }
+      })
+      
+      summaryRow.height = 22
+      
+      // Style summary row - subtle gray background, bold text
+      summaryRow.eachCell((cell, colNumber) => {
+        const col = columns[colNumber - 1]
+        
+        // Border - medium top and bottom for emphasis
+        cell.border = {
+          top: { style: 'medium', color: { argb: 'FF6C757D' } },
+          left: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          bottom: { style: 'medium', color: { argb: 'FF6C757D' } },
+          right: { style: 'thin', color: { argb: 'FFDEE2E6' } }
+        }
+        
+        // Subtle gray background - not too dark
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE9ECEF' }
+        }
+        
+        // Font - bold but not too large
+        cell.font = { 
+          bold: true, 
+          size: 10,
+          color: { argb: 'FF212529' },
+          name: 'Arial'
+        }
+        
+        // Alignment
+        cell.alignment = { 
+          horizontal: col && isMoneyColumn(col.key) ? 'right' : 'left', 
+          vertical: 'middle' 
+        }
+        
+        // Number format for money columns
+        if (col && isMoneyColumn(col.key) && typeof cell.value === 'number') {
+          cell.numFmt = '#,##0'
+        }
+      })
+    }
+    
+    // Auto-fit columns with better width calculation
+    worksheet.columns.forEach((column, index) => {
+      const col = columns[index]
+      if (col) {
+        // Calculate width based on header and data
+        let maxWidth = col.label.length + 2
+        dataSource.forEach(item => {
+          const value = item[col.key]
+          if (value !== null && value !== undefined) {
+            const valueLength = String(value).length
+            if (valueLength > maxWidth) {
+              maxWidth = valueLength
+            }
+          }
+        })
+        column.width = Math.min(Math.max(maxWidth, 12), 30)
+      } else {
+        column.width = 12
+      }
+    })
+    
+    // Freeze header row
+    worksheet.views = [
+      {
+        state: 'frozen',
+        ySplit: 2, // Freeze first 2 rows (title + header)
+        activeCell: 'A3',
+        showGridLines: true
+      }
+    ]
+    
+    // Generate buffer and download
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const fileName = type === 'salary' 
+      ? `BangLuong_${selectedYear.value}_${selectedMonth.value}.xlsx`
+      : type === 'insurance'
+      ? `BaoHiem_${selectedYear.value}_${selectedMonth.value}.xlsx`
+      : `ThueTNCN_${selectedYear.value}_${selectedMonth.value}.xlsx`
+    
+    saveAs(blob, fileName)
+  } catch (error) {
+    console.error('Error in client-side Excel export:', error)
+    throw error
   }
 }
 
@@ -147,6 +490,9 @@ const goToCurrentYear = () => {
 
 const showOvertimeModal = ref(false)
 const selectedOvertimeEmployee = ref(null)
+const showLeaveModal = ref(false)
+const selectedLeaveEmployee = ref(null)
+const leaveDetails = ref([])
 const showTourGuide = ref(false)
 
 const openOvertimeModal = (employee) => {
@@ -159,11 +505,181 @@ const closeOvertimeModal = () => {
   selectedOvertimeEmployee.value = null
 }
 
+const openLeaveModal = async (employee) => {
+  selectedLeaveEmployee.value = employee
+  showLeaveModal.value = true
+  
+  // Lấy danh sách đơn nghỉ phép đã duyệt trong tháng
+  try {
+    await fetchLeaveRequests()
+    const employeeId = String(employee.empId || employee.id)
+    const month = selectedMonth.value
+    const year = selectedYear.value
+    
+    // Lọc đơn nghỉ phép đã duyệt trong tháng
+    const approvedLeaves = leaveRequests.value.filter(request => {
+      const requestDate = new Date(request.startDateTime)
+      const requestMonth = requestDate.getMonth() + 1
+      const requestYear = requestDate.getFullYear()
+      const requestEmployeeId = String(request.employeeID)
+      
+      return requestEmployeeId === employeeId &&
+             requestMonth === month &&
+             requestYear === year &&
+             (request.approveStatus === 'Đã duyệt' || request.approveStatus === 'Approved')
+    })
+    
+    // Tính số giờ nghỉ và quy đổi thành số ngày
+    leaveDetails.value = approvedLeaves.map(request => {
+      const startDate = new Date(request.startDateTime)
+      const endDate = new Date(request.endDateTime)
+      
+      // Tính tổng số giờ nghỉ (từ startDateTime đến endDateTime)
+      const totalHoursDiff = (endDate - startDate) / (1000 * 60 * 60)
+      
+      // Tính số giờ nghỉ trưa cần trừ (lấy từ shift details trong DB)
+      let lunchBreakHours = 0
+      const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+      const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+      
+      // Helper function để parse time
+      const parseTime = (timeStr) => {
+        if (!timeStr || timeStr === '00:00:00') return null
+        const parts = timeStr.split(':')
+        return { hour: parseInt(parts[0]), minute: parseInt(parts[1]) || 0 }
+      }
+      
+      // Helper function để lấy giờ nghỉ trưa từ DB hoặc dùng mặc định
+      const getLunchBreak = (currentDay) => {
+        const dayStr = currentDay.toISOString().split('T')[0]
+        const employeeId = String(employee.empId || employee.id)
+        
+        // Tìm shift assignment của nhân viên cho ngày này
+        const shiftAssignment = shiftAssignments.value.find(sa => {
+          const saDate = new Date(sa.workDate).toISOString().split('T')[0]
+          return String(sa.employeeID) === employeeId && saDate === dayStr
+        })
+        
+        if (shiftAssignment && shiftAssignment.workShiftID) {
+          // Tìm shift details từ workShiftID
+          const workShift = workshifts.value.find(ws => ws.id === shiftAssignment.workShiftID)
+          
+          if (workShift && workShift.shiftDetails) {
+            // Lấy dayOfWeek từ ngày hiện tại (0 = Chủ nhật, 1 = Thứ 2, ...)
+            const dayOfWeek = currentDay.getDay()
+            const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+            const dayName = dayNames[dayOfWeek]
+            
+            // Tìm shift detail cho ngày này
+            const shiftDetail = workShift.shiftDetails.find(sd => sd.dayOfWeek === dayName)
+            
+            if (shiftDetail && shiftDetail.breakStart && shiftDetail.breakEnd) {
+              const breakStart = parseTime(shiftDetail.breakStart)
+              const breakEnd = parseTime(shiftDetail.breakEnd)
+              
+              if (breakStart && breakEnd) {
+                return {
+                  start: breakStart.hour + breakStart.minute / 60,
+                  end: breakEnd.hour + breakEnd.minute / 60,
+                  duration: (breakEnd.hour + breakEnd.minute / 60) - (breakStart.hour + breakStart.minute / 60)
+                }
+              }
+            }
+          }
+        }
+        
+        // Fallback: dùng giờ nghỉ trưa mặc định 12:00-13:00
+        return {
+          start: 12,
+          end: 13,
+          duration: 1
+        }
+      }
+      
+      // Duyệt qua từng ngày trong khoảng thời gian nghỉ để trừ giờ nghỉ trưa
+      for (let d = new Date(startDay); d <= endDay; d.setDate(d.getDate() + 1)) {
+        const currentDay = new Date(d)
+        const isFirstDay = currentDay.getTime() === startDay.getTime()
+        const isLastDay = currentDay.getTime() === endDay.getTime()
+        
+        // Lấy giờ nghỉ trưa (từ DB hoặc mặc định)
+        const lunchBreak = getLunchBreak(currentDay)
+        
+        // Xác định thời gian nghỉ trong ngày
+        let dayStartDecimal, dayEndDecimal
+        
+        if (isFirstDay && isLastDay) {
+          // Cùng ngày: dùng thời gian thực tế của đơn nghỉ
+          dayStartDecimal = startDate.getHours() + startDate.getMinutes() / 60
+          dayEndDecimal = endDate.getHours() + endDate.getMinutes() / 60
+        } else if (isFirstDay) {
+          // Ngày đầu: từ giờ bắt đầu nghỉ đến cuối ca (17:00 hoặc từ shift detail)
+          dayStartDecimal = startDate.getHours() + startDate.getMinutes() / 60
+          dayEndDecimal = 17 // Mặc định, có thể lấy từ shift detail nếu cần
+        } else if (isLastDay) {
+          // Ngày cuối: từ đầu ca (8:00 hoặc từ shift detail) đến giờ kết thúc nghỉ
+          dayStartDecimal = 8 // Mặc định, có thể lấy từ shift detail nếu cần
+          dayEndDecimal = endDate.getHours() + endDate.getMinutes() / 60
+        } else {
+          // Các ngày ở giữa: trừ toàn bộ giờ nghỉ trưa
+          lunchBreakHours += lunchBreak.duration
+          continue
+        }
+        
+        // Tính phần chồng lên giờ nghỉ trưa
+        if (dayStartDecimal < lunchBreak.end && dayEndDecimal > lunchBreak.start) {
+          const overlapStart = Math.max(dayStartDecimal, lunchBreak.start)
+          const overlapEnd = Math.min(dayEndDecimal, lunchBreak.end)
+          if (overlapEnd > overlapStart) {
+            lunchBreakHours += (overlapEnd - overlapStart)
+          }
+        }
+      }
+      
+      // Số giờ nghỉ thực tế = tổng giờ - giờ nghỉ trưa
+      const hours = Math.max(0, Math.round((totalHoursDiff - lunchBreakHours) * 10) / 10)
+      
+      // Quy đổi số giờ thành số ngày (dựa trên số giờ công chuẩn trong ngày)
+      // Giả sử 1 ngày công = 8 giờ (có thể lấy từ standardDays và tổng giờ công)
+      const hoursPerDay = 8 // Số giờ công chuẩn trong 1 ngày
+      const days = Math.round((hours / hoursPerDay) * 10) / 10 // Làm tròn 1 chữ số thập phân
+      
+      // Format ngày giờ để hiển thị
+      const formatDateTime = (date) => {
+        const dateStr = date.toLocaleDateString('vi-VN')
+        const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        return `${dateStr} ${timeStr}`
+      }
+      
+      return {
+        voucherCode: request.voucherCode,
+        startDate: formatDateTime(startDate),
+        endDate: formatDateTime(endDate),
+        days: days,
+        hours: hours,
+        leaveTypeName: request.leaveTypeName || 'Nghỉ phép',
+        notes: request.notes || ''
+      }
+    })
+  } catch (error) {
+    console.error('Error fetching leave details:', error)
+    leaveDetails.value = []
+  }
+}
+
+const closeLeaveModal = () => {
+  showLeaveModal.value = false
+  selectedLeaveEmployee.value = null
+  leaveDetails.value = []
+}
+
 // Cột bảng lương
 const salaryColumns = [
   { key: 'empId', label: 'Mã nhân viên' },
   { key: 'empName', label: 'Tên nhân viên' },
   { key: 'title', label: 'Chức vụ' },
+  { key: 'contractNumber', label: 'Số hợp đồng' },
+  { key: 'contractPeriod', label: 'Khoảng thời gian' },
   { key: 'contractType', label: 'Loại hợp đồng' },
   { key: 'contractSalary', label: 'Lương hợp đồng' },
   { key: 'insuranceSalary', label: 'Lương bảo hiểm' },
@@ -320,24 +836,33 @@ const paginatedTaxFinalizationData = computed(() => {
 })
 
 const exportTaxFinalizationToExcel = async () => {
+  if (!taxFinalizationTableData.value || taxFinalizationTableData.value.length === 0) {
+    showMessage('Không có dữ liệu để xuất Excel!', 'warning')
+    return
+  }
+  
   try {
+    showMessage('Đang xuất Excel...', 'info')
+    
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('Quyết toán thuế TNCN')
 
-    // Add title
-    worksheet.mergeCells('A1:Z1')
-    const titleCell = worksheet.getCell('A1')
-    titleCell.value = `BẢNG QUYẾT TOÁN THUẾ THU NHẬP CÁ NHÂN NĂM ${selectedYear.value}`
-    titleCell.font = { size: 16, bold: true }
-    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
-    titleCell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF2C3E50' }
+    const title = `BẢNG QUYẾT TOÁN THUẾ THU NHẬP CÁ NHÂN NĂM ${selectedYear.value}`
+    
+    // Helper function to check if column is money
+    const isMoneyColumn = (colIndex) => {
+      // Year columns: totalDeduction (3), insuranceEmployee (4), totalIncome (5), taxableIncome (6), pitTax (7)
+      // Monthly columns: every 6 columns starting from column 9 (0-indexed: 8, 14, 20, ...)
+      // For monthly: columns 2, 3, 4, 5 of each month group are money
+      if (colIndex < 8) {
+        return colIndex >= 3 && colIndex <= 7 // Year money columns
+      } else {
+        const monthCol = (colIndex - 8) % 6
+        return monthCol >= 1 && monthCol <= 5 // Monthly money columns (except NPT which is col 0)
+      }
     }
-    titleCell.font = { color: { argb: 'FFFFFFFF' }, size: 16, bold: true }
-
-    // Add headers
+    
+    // Build headers
     const headers = [
       'Mã NV', 'Tên nhân viên',
       'Tổng số NPT', 'Tổng số tiền giảm trừ', 'Tổng BH NV đóng', 'Tổng thu nhập', 'Tổng thu nhập chịu thuế', 'Thuế TNCN'
@@ -348,18 +873,66 @@ const exportTaxFinalizationToExcel = async () => {
       headers.push(`T${m}_NPT`, `T${m}_Giảm trừ`, `T${m}_BH NV`, `T${m}_Thu nhập`, `T${m}_Chịu thuế`, `T${m}_Thuế`)
     }
 
-    // Set headers
-    worksheet.addRow(headers)
-    const headerRow = worksheet.getRow(2)
-    headerRow.font = { bold: true }
-    headerRow.fill = {
+    // Add title
+    const titleRow = worksheet.addRow([title])
+    worksheet.mergeCells(1, 1, 1, headers.length)
+    const titleCell = worksheet.getCell(1, 1)
+    
+    titleCell.font = { 
+      size: 16, 
+      bold: true, 
+      color: { argb: 'FF212529' },
+      name: 'Arial'
+    }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleCell.fill = {
       type: 'pattern',
       pattern: 'solid',
       fgColor: { argb: 'FFE9ECEF' }
     }
+    titleCell.border = {
+      top: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      left: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      bottom: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      right: { style: 'thin', color: { argb: 'FFADB5BD' } }
+    }
+    titleRow.height = 30
+
+    // Add empty row for spacing
+    worksheet.addRow([])
+
+    // Add headers
+    const headerRow = worksheet.addRow(headers)
+    headerRow.height = 25
+    
+    // Style header cells
+    headerRow.eachCell((cell, colNumber) => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        left: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        bottom: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        right: { style: 'thin', color: { argb: 'FFADB5BD' } }
+      }
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF1F3F5' }
+      }
+      cell.font = { 
+        bold: true, 
+        size: 10,
+        color: { argb: 'FF212529' },
+        name: 'Arial'
+      }
+      cell.alignment = { 
+        horizontal: 'center', 
+        vertical: 'middle', 
+        wrapText: true 
+      }
+    })
 
     // Add data rows
-    taxFinalizationTableData.value.forEach(emp => {
+    taxFinalizationTableData.value.forEach((emp, rowIndex) => {
       const row = [
         emp.empId,
         emp.empName,
@@ -374,22 +947,154 @@ const exportTaxFinalizationToExcel = async () => {
       // Add monthly data
       for (let m = 1; m <= 12; m++) {
         row.push(
-          emp[`m${m}_dependents`],
-          emp[`m${m}_totalDeduction`],
-          emp[`m${m}_insuranceEmployee`],
-          emp[`m${m}_income`],
-          emp[`m${m}_taxableIncome`],
-          emp[`m${m}_pitTax`]
+          emp[`m${m}_dependents`] || 0,
+          emp[`m${m}_totalDeduction`] || 0,
+          emp[`m${m}_insuranceEmployee`] || 0,
+          emp[`m${m}_income`] || 0,
+          emp[`m${m}_taxableIncome`] || 0,
+          emp[`m${m}_pitTax`] || 0
         )
       }
       
-      worksheet.addRow(row)
+      const dataRow = worksheet.addRow(row)
+      dataRow.height = 18
+      
+      // Style data cells
+      dataRow.eachCell((cell, colNumber) => {
+        // Border
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          left: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          bottom: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          right: { style: 'thin', color: { argb: 'FFDEE2E6' } }
+        }
+        
+        // Background
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' }
+        }
+        
+        // Font
+        cell.font = {
+          size: 9,
+          name: 'Arial',
+          color: { argb: 'FF212529' },
+          bold: false
+        }
+        
+        // Alignment and number format
+        if (isMoneyColumn(colNumber - 1) && typeof cell.value === 'number') {
+          cell.numFmt = '#,##0'
+          cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        } else if (typeof cell.value === 'number') {
+          cell.numFmt = '0'
+          cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        } else {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' }
+        }
+      })
     })
 
+    // Add summary row
+    if (taxFinalizationTableData.value.length > 0) {
+      worksheet.addRow([])
+      const summaryRow = worksheet.addRow(['TỔNG CỘNG', ...Array(headers.length - 1).fill('')])
+      
+      // Calculate totals
+      summaryRow.eachCell((cell, colNumber) => {
+        if (colNumber === 1) {
+          cell.value = 'TỔNG CỘNG'
+        } else if (colNumber === 2) {
+          cell.value = ''
+        } else if (isMoneyColumn(colNumber - 1)) {
+          const total = taxFinalizationTableData.value.reduce((sum, emp) => {
+            let value = 0
+            if (colNumber <= 8) {
+              // Year columns
+              const colMap = { 3: 'year_dependents', 4: 'year_totalDeduction', 5: 'year_insuranceEmployee', 
+                              6: 'year_totalIncome', 7: 'year_taxableIncome', 8: 'year_pitTax' }
+              const key = colMap[colNumber]
+              if (key) value = emp[key] || 0
+            } else {
+              // Monthly columns
+              const monthIndex = Math.floor((colNumber - 9) / 6) + 1
+              const monthCol = (colNumber - 9) % 6
+              const monthKeys = ['dependents', 'totalDeduction', 'insuranceEmployee', 'income', 'taxableIncome', 'pitTax']
+              const key = `m${monthIndex}_${monthKeys[monthCol]}`
+              value = emp[key] || 0
+            }
+            return sum + (typeof value === 'number' ? value : 0)
+          }, 0)
+          cell.value = total
+        } else if (colNumber === 3) {
+          // Total dependents
+          const total = taxFinalizationTableData.value.reduce((sum, emp) => sum + (emp.year_dependents || 0), 0)
+          cell.value = total
+        }
+      })
+      
+      summaryRow.height = 22
+      
+      // Style summary row
+      summaryRow.eachCell((cell, colNumber) => {
+        cell.border = {
+          top: { style: 'medium', color: { argb: 'FF6C757D' } },
+          left: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          bottom: { style: 'medium', color: { argb: 'FF6C757D' } },
+          right: { style: 'thin', color: { argb: 'FFDEE2E6' } }
+        }
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE9ECEF' }
+        }
+        cell.font = { 
+          bold: true, 
+          size: 10,
+          color: { argb: 'FF212529' },
+          name: 'Arial'
+        }
+        cell.alignment = { 
+          horizontal: isMoneyColumn(colNumber - 1) || colNumber === 3 ? 'right' : 'left', 
+          vertical: 'middle' 
+        }
+        if (isMoneyColumn(colNumber - 1) && typeof cell.value === 'number') {
+          cell.numFmt = '#,##0'
+        } else if (colNumber === 3 && typeof cell.value === 'number') {
+          cell.numFmt = '0'
+        }
+      })
+    }
+
     // Auto-fit columns
-    worksheet.columns.forEach(column => {
-      column.width = 15
+    worksheet.columns.forEach((column, index) => {
+      let maxWidth = headers[index]?.length || 10
+      taxFinalizationTableData.value.forEach(emp => {
+        const value = index < 8 
+          ? (index === 0 ? emp.empId : index === 1 ? emp.empName : 
+             index === 2 ? emp.year_dependents : index === 3 ? emp.year_totalDeduction :
+             index === 4 ? emp.year_insuranceEmployee : index === 5 ? emp.year_totalIncome :
+             index === 6 ? emp.year_taxableIncome : emp.year_pitTax)
+          : null
+        if (value !== null && value !== undefined) {
+          const valueLength = String(value).length
+          if (valueLength > maxWidth) maxWidth = valueLength
+        }
+      })
+      column.width = Math.min(Math.max(maxWidth + 2, 10), 20)
     })
+
+    // Freeze header row
+    worksheet.views = [
+      {
+        state: 'frozen',
+        ySplit: 2,
+        activeCell: 'A3',
+        showGridLines: true
+      }
+    ]
 
     // Generate buffer and download
     const buffer = await workbook.xlsx.writeBuffer()
@@ -399,14 +1104,50 @@ const exportTaxFinalizationToExcel = async () => {
     showMessage('Xuất Excel thành công!', 'success')
   } catch (error) {
     console.error('Error exporting Excel:', error)
-    showMessage('Có lỗi khi xuất Excel!', 'error')
+    showMessage(`Lỗi khi xuất Excel: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
   }
 }
 
 const printSalaryReport = () => {
+  if (!salaryTableData.value || salaryTableData.value.length === 0) {
+    showMessage('Không có dữ liệu để in!', 'warning')
+    return
+  }
+  
   try {
     const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      showMessage('Không thể mở cửa sổ in. Vui lòng cho phép popup!', 'error')
+      return
+    }
+    
     const currentDate = new Date().toLocaleDateString('vi-VN')
+    
+    // Helper function to format value
+    const formatValue = (emp, col) => {
+      const value = emp[col.key]
+      if (value === null || value === undefined) return ''
+      
+      // Check if it's a money column
+      const isMoney = col.key.includes('Salary') || col.key.includes('Income') || 
+                     col.key.includes('Deduction') || col.key.includes('Tax') || 
+                     col.key.includes('Allowance') || col.key.includes('Support') || 
+                     col.key.includes('Fee') || col.key.includes('Insurance')
+      
+      if (typeof value === 'number') {
+        return isMoney ? formatMoney(value) : value
+      }
+      return value
+    }
+    
+    const headers = salaryColumns.map(col => col.label).join('</th><th>')
+    const rows = salaryTableData.value.map(emp => {
+      const cells = salaryColumns.map(col => {
+        const value = formatValue(emp, col)
+        return `<td>${value}</td>`
+      }).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -414,15 +1155,24 @@ const printSalaryReport = () => {
       <head>
         <title>Báo cáo bảng lương tháng ${selectedMonth.value}/${selectedYear.value}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          .title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
-          .subtitle { font-size: 14px; color: #666; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          .footer { margin-top: 30px; text-align: right; font-size: 12px; color: #666; }
-          @media print { body { margin: 0; } }
+          @page { size: A4 landscape; margin: 1cm; }
+          body { font-family: Arial, sans-serif; margin: 10px; font-size: 10px; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .title { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
+          .subtitle { font-size: 12px; color: #666; }
+          .table-container { overflow-x: auto; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9px; }
+          th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: center; }
+          th { background-color: #f1f3f5; font-weight: bold; position: sticky; top: 0; }
+          td { white-space: nowrap; }
+          .money { text-align: right; }
+          .footer { margin-top: 20px; text-align: right; font-size: 10px; color: #666; }
+          @media print { 
+            body { margin: 0; }
+            .table-container { overflow: visible; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+          }
         </style>
       </head>
       <body>
@@ -430,59 +1180,86 @@ const printSalaryReport = () => {
           <div class="title">BẢNG LƯƠNG THÁNG ${selectedMonth.value}/${selectedYear.value}</div>
         </div>
         
-        <table>
-          <thead>
-            <tr>
-              <th>Mã NV</th>
-              <th>Tên nhân viên</th>
-              <th>Lương hợp đồng</th>
-              <th>Tổng ngày công</th>
-              <th>Tổng nghỉ có lương</th>
-              <th>Lương thực tế</th>
-              <th>Tổng thu nhập</th>
-              <th>Tổng các khoản trừ</th>
-              <th>Thực lãnh</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${salaryTableData.value.map(emp => `
+        <div class="table-container">
+          <table>
+            <thead>
               <tr>
-                <td>${emp.empId}</td>
-                <td>${emp.empName}</td>
-                <td>${formatMoney(emp.contractSalary)}</td>
-                <td>${emp.totalDays}</td>
-                <td>${emp.paidLeaveDays}</td>
-                <td>${formatMoney(emp.actualSalary)}</td>
-                <td>${formatMoney(emp.totalIncome)}</td>
-                <td>${formatMoney(emp.totalDeduction)}</td>
-                <td>${formatMoney(emp.netSalary)}</td>
+                <th>${headers}</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
         
         <div class="footer">
           <div>Ngày in: ${currentDate}</div>
+          <div>Tổng số nhân viên: ${salaryTableData.value.length}</div>
         </div>
       </body>
       </html>
     `)
     
     printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
+    
+    // Wait for content to load before printing
+    printWindow.onload = () => {
+      printWindow.focus()
+      printWindow.print()
+    }
+    
+    setTimeout(() => {
+      printWindow.focus()
+      printWindow.print()
+    }, 500)
     
     showMessage('Đã mở cửa sổ in!', 'success')
   } catch (error) {
     console.error('Error printing report:', error)
-    showMessage('Có lỗi khi in báo cáo!', 'error')
+    showMessage(`Có lỗi khi in báo cáo: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
   }
 }
 
 const printInsuranceReport = () => {
+  if (!insuranceTableData.value || insuranceTableData.value.length === 0) {
+    showMessage('Không có dữ liệu để in!', 'warning')
+    return
+  }
+  
   try {
     const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      showMessage('Không thể mở cửa sổ in. Vui lòng cho phép popup!', 'error')
+      return
+    }
+    
     const currentDate = new Date().toLocaleDateString('vi-VN')
+    
+    // Helper function to format value
+    const formatValue = (emp, col) => {
+      const value = emp[col.key]
+      if (value === null || value === undefined) return ''
+      
+      const isMoney = col.key.includes('Salary') || col.key.includes('Insurance') || 
+                     col.key.includes('Emp') || col.key.includes('Com') || col.key.includes('Total')
+      
+      if (typeof value === 'number') {
+        return isMoney ? formatMoney(value) : value
+      }
+      return value
+    }
+    
+    const headers = insuranceColumns.map(col => col.label).join('</th><th>')
+    const rows = insuranceTableData.value.map(emp => {
+      const cells = insuranceColumns.map(col => {
+        const value = formatValue(emp, col)
+        const isMoney = col.key.includes('Salary') || col.key.includes('Insurance') || 
+                       col.key.includes('Emp') || col.key.includes('Com') || col.key.includes('Total')
+        return `<td class="${isMoney ? 'money' : ''}">${value}</td>`
+      }).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -490,14 +1267,23 @@ const printInsuranceReport = () => {
       <head>
         <title>Báo cáo bảo hiểm tháng ${selectedMonth.value}/${selectedYear.value}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          .title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          .footer { margin-top: 30px; text-align: right; font-size: 12px; color: #666; }
-          @media print { body { margin: 0; } }
+          @page { size: A4 landscape; margin: 1cm; }
+          body { font-family: Arial, sans-serif; margin: 10px; font-size: 10px; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .title { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
+          .table-container { overflow-x: auto; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9px; }
+          th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: center; }
+          th { background-color: #f1f3f5; font-weight: bold; position: sticky; top: 0; }
+          td { white-space: nowrap; }
+          .money { text-align: right; }
+          .footer { margin-top: 20px; text-align: right; font-size: 10px; color: #666; }
+          @media print { 
+            body { margin: 0; }
+            .table-container { overflow: visible; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+          }
         </style>
       </head>
       <body>
@@ -505,63 +1291,85 @@ const printInsuranceReport = () => {
           <div class="title">BẢO HIỂM THEO THÁNG ${selectedMonth.value}/${selectedYear.value}</div>
         </div>
         
-        <table>
-          <thead>
-            <tr>
-              <th>Mã NV</th>
-              <th>Tên nhân viên</th>
-              <th>Lương cơ bản</th>
-              <th>BHXH NV</th>
-              <th>BHYT NV</th>
-              <th>BHTN NV</th>
-              <th>Tổng BH NV</th>
-              <th>BHXH CT</th>
-              <th>BHYT CT</th>
-              <th>BHTN CT</th>
-              <th>Tổng BH CT</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${insuranceTableData.value.map(emp => `
+        <div class="table-container">
+          <table>
+            <thead>
               <tr>
-                <td>${emp.empId}</td>
-                <td>${emp.empName}</td>
-                <td>${formatMoney(emp.basicSalary)}</td>
-                <td>${formatMoney(emp.socialInsuranceEmployee)}</td>
-                <td>${formatMoney(emp.healthInsuranceEmployee)}</td>
-                <td>${formatMoney(emp.unemploymentInsuranceEmployee)}</td>
-                <td>${formatMoney(emp.totalInsuranceEmployee)}</td>
-                <td>${formatMoney(emp.socialInsuranceCompany)}</td>
-                <td>${formatMoney(emp.healthInsuranceCompany)}</td>
-                <td>${formatMoney(emp.unemploymentInsuranceCompany)}</td>
-                <td>${formatMoney(emp.totalInsuranceCompany)}</td>
+                <th>${headers}</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
         
         <div class="footer">
           <div>Ngày in: ${currentDate}</div>
+          <div>Tổng số nhân viên: ${insuranceTableData.value.length}</div>
         </div>
       </body>
       </html>
     `)
     
     printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
+    
+    printWindow.onload = () => {
+      printWindow.focus()
+      printWindow.print()
+    }
+    
+    setTimeout(() => {
+      printWindow.focus()
+      printWindow.print()
+    }, 500)
     
     showMessage('Đã mở cửa sổ in!', 'success')
   } catch (error) {
     console.error('Error printing report:', error)
-    showMessage('Có lỗi khi in báo cáo!', 'error')
+    showMessage(`Có lỗi khi in báo cáo: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
   }
 }
 
 const printTaxReport = () => {
+  if (!taxTableData.value || taxTableData.value.length === 0) {
+    showMessage('Không có dữ liệu để in!', 'warning')
+    return
+  }
+  
   try {
     const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      showMessage('Không thể mở cửa sổ in. Vui lòng cho phép popup!', 'error')
+      return
+    }
+    
     const currentDate = new Date().toLocaleDateString('vi-VN')
+    
+    // Helper function to format value
+    const formatValue = (emp, col) => {
+      const value = emp[col.key]
+      if (value === null || value === undefined) return ''
+      
+      const isMoney = col.key.includes('Deduction') || col.key.includes('Income') || 
+                     col.key.includes('Tax') || col.key.includes('insurance')
+      
+      if (typeof value === 'number') {
+        return isMoney ? formatMoney(value) : value
+      }
+      return value
+    }
+    
+    const headers = taxColumns.map(col => col.label).join('</th><th>')
+    const rows = taxTableData.value.map(emp => {
+      const cells = taxColumns.map(col => {
+        const value = formatValue(emp, col)
+        const isMoney = col.key.includes('Deduction') || col.key.includes('Income') || 
+                       col.key.includes('Tax') || col.key.includes('insurance')
+        return `<td class="${isMoney ? 'money' : ''}">${value}</td>`
+      }).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -569,14 +1377,23 @@ const printTaxReport = () => {
       <head>
         <title>Báo cáo thuế TNCN tháng ${selectedMonth.value}/${selectedYear.value}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          .title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          .footer { margin-top: 30px; text-align: right; font-size: 12px; color: #666; }
-          @media print { body { margin: 0; } }
+          @page { size: A4 landscape; margin: 1cm; }
+          body { font-family: Arial, sans-serif; margin: 10px; font-size: 10px; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .title { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
+          .table-container { overflow-x: auto; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9px; }
+          th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: center; }
+          th { background-color: #f1f3f5; font-weight: bold; position: sticky; top: 0; }
+          td { white-space: nowrap; }
+          .money { text-align: right; }
+          .footer { margin-top: 20px; text-align: right; font-size: 10px; color: #666; }
+          @media print { 
+            body { margin: 0; }
+            .table-container { overflow: visible; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+          }
         </style>
       </head>
       <body>
@@ -584,60 +1401,59 @@ const printTaxReport = () => {
           <div class="title">THUẾ TNCN THÁNG ${selectedMonth.value}/${selectedYear.value}</div>
         </div>
         
-        <table>
-          <thead>
-            <tr>
-              <th>Mã NV</th>
-              <th>Tên nhân viên</th>
-              <th>Tổng thu nhập</th>
-              <th>Tổng thu nhập chịu thuế</th>
-              <th>Tổng thu nhập tính thuế</th>
-              <th>Thuế TNCN</th>
-              <th>Số người phụ thuộc</th>
-              <th>Giảm trừ bản thân</th>
-              <th>Giảm trừ người phụ thuộc</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${taxTableData.value.map(emp => `
+        <div class="table-container">
+          <table>
+            <thead>
               <tr>
-                <td>${emp.empId}</td>
-                <td>${emp.empName}</td>
-                <td>${formatMoney(emp.totalIncome)}</td>
-                <td>${formatMoney(emp.taxableIncome)}</td>
-                <td>${formatMoney(emp.pitIncome)}</td>
-                <td>${formatMoney(emp.pitTax)}</td>
-                <td>${emp.dependents}</td>
-                <td>${formatMoney(emp.personalDeduction)}</td>
-                <td>${formatMoney(emp.dependentDeduction)}</td>
+                <th>${headers}</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
         
         <div class="footer">
           <div>Ngày in: ${currentDate}</div>
+          <div>Tổng số nhân viên: ${taxTableData.value.length}</div>
         </div>
       </body>
       </html>
     `)
     
     printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
+    
+    printWindow.onload = () => {
+      printWindow.focus()
+      printWindow.print()
+    }
+    
+    setTimeout(() => {
+      printWindow.focus()
+      printWindow.print()
+    }, 500)
     
     showMessage('Đã mở cửa sổ in!', 'success')
   } catch (error) {
     console.error('Error printing report:', error)
-    showMessage('Có lỗi khi in báo cáo!', 'error')
+    showMessage(`Có lỗi khi in báo cáo: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
   }
 }
 
 // Print report function for tax finalization
 const printTaxFinalizationReport = () => {
+  if (!taxFinalizationTableData.value || taxFinalizationTableData.value.length === 0) {
+    showMessage('Không có dữ liệu để in!', 'warning')
+    return
+  }
+  
   try {
-    // Create a new window for printing
     const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      showMessage('Không thể mở cửa sổ in. Vui lòng cho phép popup!', 'error')
+      return
+    }
     
     const taxData = taxFinalizationData.value
     const currentDate = new Date().toLocaleDateString('vi-VN')
@@ -648,18 +1464,28 @@ const printTaxFinalizationReport = () => {
       <head>
         <title>Báo cáo quyết toán thuế TNCN ${selectedYear.value}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          .title { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
-          .subtitle { font-size: 14px; color: #666; }
-          .summary { margin-bottom: 20px; }
-          .summary-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
-          .summary-label { font-weight: bold; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          .footer { margin-top: 30px; text-align: right; font-size: 12px; color: #666; }
-          @media print { body { margin: 0; } }
+          @page { size: A4 landscape; margin: 0.5cm; }
+          body { font-family: Arial, sans-serif; margin: 10px; font-size: 9px; }
+          .header { text-align: center; margin-bottom: 15px; }
+          .title { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+          .subtitle { font-size: 11px; color: #666; }
+          .summary { margin-bottom: 15px; display: flex; justify-content: space-around; flex-wrap: wrap; }
+          .summary-item { margin: 5px 10px; }
+          .summary-label { font-weight: bold; font-size: 9px; }
+          .summary-value { font-size: 9px; }
+          .table-container { overflow-x: auto; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 8px; }
+          th, td { border: 1px solid #ddd; padding: 3px 4px; text-align: center; }
+          th { background-color: #f1f3f5; font-weight: bold; position: sticky; top: 0; }
+          td { white-space: nowrap; }
+          .money { text-align: right; }
+          .footer { margin-top: 15px; text-align: right; font-size: 9px; color: #666; }
+          @media print { 
+            body { margin: 0; }
+            .table-container { overflow: visible; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+          }
         </style>
       </head>
       <body>
@@ -669,136 +1495,172 @@ const printTaxFinalizationReport = () => {
         </div>
         
         <div class="summary">
-          <div class="summary-row">
+          <div class="summary-item">
             <span class="summary-label">Tổng số nhân viên:</span>
-            <span>${taxData?.totalEmployees || 0}</span>
+            <span class="summary-value">${taxData?.totalEmployees || 0}</span>
           </div>
-          <div class="summary-row">
+          <div class="summary-item">
             <span class="summary-label">Tổng thu nhập:</span>
-            <span>${formatMoney(taxData?.totalIncome || 0)}</span>
+            <span class="summary-value">${formatMoney(taxData?.totalIncome || 0)}</span>
           </div>
-          <div class="summary-row">
+          <div class="summary-item">
             <span class="summary-label">Tổng thuế TNCN:</span>
-            <span>${formatMoney(taxData?.totalPitTax || 0)}</span>
+            <span class="summary-value">${formatMoney(taxData?.totalPitTax || 0)}</span>
           </div>
-          <div class="summary-row">
-            <span class="summary-label">Tổng bảo hiểm nhân viên:</span>
-            <span>${formatMoney(taxData?.totalInsuranceEmployee || 0)}</span>
+          <div class="summary-item">
+            <span class="summary-label">Tổng BH NV:</span>
+            <span class="summary-value">${formatMoney(taxData?.totalInsuranceEmployee || 0)}</span>
           </div>
         </div>
         
-        <table>
-          <thead>
-            <tr>
-              <th rowspan="2">Mã NV</th>
-              <th rowspan="2">Tên nhân viên</th>
-              <th colspan="6">Quyết toán thuế</th>
-              ${Array.from({length: 12}, (_, i) => `<th colspan="6">Tháng ${i+1}</th>`).join('')}
-            </tr>
-            <tr>
-              <th>Tổng số NPT</th>
-              <th>Tổng số tiền giảm trừ</th>
-              <th>Tổng BH NV đóng</th>
-              <th>Tổng thu nhập</th>
-              <th>Tổng thu nhập chịu thuế</th>
-              <th>Thuế TNCN</th>
-              ${Array.from({length: 12}, () => 
-                '<th>Tổng số NPT</th><th>Tổng số tiền giảm trừ</th><th>Tổng BH NV đóng</th><th>Tổng thu nhập</th><th>Tổng thu nhập chịu thuế</th><th>Thuế TNCN</th>'
-              ).join('')}
-            </tr>
-          </thead>
-          <tbody>
-            ${taxFinalizationTableData.value.map(emp => `
+        <div class="table-container">
+          <table>
+            <thead>
               <tr>
-                <td>${emp.empId}</td>
-                <td>${emp.empName}</td>
-                <td>${emp.year_dependents}</td>
-                <td>${formatMoney(emp.year_totalDeduction)}</td>
-                <td>${formatMoney(emp.year_insuranceEmployee)}</td>
-                <td>${formatMoney(emp.year_totalIncome)}</td>
-                <td>${formatMoney(emp.year_taxableIncome)}</td>
-                <td>${formatMoney(emp.year_pitTax)}</td>
-                ${Array.from({length: 12}, (_, i) => {
-                  const m = i + 1
-                  return `
-                    <td>${emp[`m${m}_dependents`]}</td>
-                    <td>${formatMoney(emp[`m${m}_totalDeduction`])}</td>
-                    <td>${formatMoney(emp[`m${m}_insuranceEmployee`])}</td>
-                    <td>${formatMoney(emp[`m${m}_income`])}</td>
-                    <td>${formatMoney(emp[`m${m}_taxableIncome`])}</td>
-                    <td>${formatMoney(emp[`m${m}_pitTax`])}</td>
-                  `
-                }).join('')}
+                <th rowspan="2">Mã NV</th>
+                <th rowspan="2">Tên nhân viên</th>
+                <th colspan="6">Quyết toán thuế</th>
+                ${Array.from({length: 12}, (_, i) => `<th colspan="6">Tháng ${i+1}</th>`).join('')}
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+              <tr>
+                <th>Tổng số NPT</th>
+                <th>Tổng số tiền giảm trừ</th>
+                <th>Tổng BH NV đóng</th>
+                <th>Tổng thu nhập</th>
+                <th>Tổng thu nhập chịu thuế</th>
+                <th>Thuế TNCN</th>
+                ${Array.from({length: 12}, () => 
+                  '<th>Tổng số NPT</th><th>Tổng số tiền giảm trừ</th><th>Tổng BH NV đóng</th><th>Tổng thu nhập</th><th>Tổng thu nhập chịu thuế</th><th>Thuế TNCN</th>'
+                ).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${taxFinalizationTableData.value.map(emp => `
+                <tr>
+                  <td>${emp.empId}</td>
+                  <td>${emp.empName}</td>
+                  <td>${emp.year_dependents || 0}</td>
+                  <td class="money">${formatMoney(emp.year_totalDeduction || 0)}</td>
+                  <td class="money">${formatMoney(emp.year_insuranceEmployee || 0)}</td>
+                  <td class="money">${formatMoney(emp.year_totalIncome || 0)}</td>
+                  <td class="money">${formatMoney(emp.year_taxableIncome || 0)}</td>
+                  <td class="money">${formatMoney(emp.year_pitTax || 0)}</td>
+                  ${Array.from({length: 12}, (_, i) => {
+                    const m = i + 1
+                    return `
+                      <td>${emp[`m${m}_dependents`] || 0}</td>
+                      <td class="money">${formatMoney(emp[`m${m}_totalDeduction`] || 0)}</td>
+                      <td class="money">${formatMoney(emp[`m${m}_insuranceEmployee`] || 0)}</td>
+                      <td class="money">${formatMoney(emp[`m${m}_income`] || 0)}</td>
+                      <td class="money">${formatMoney(emp[`m${m}_taxableIncome`] || 0)}</td>
+                      <td class="money">${formatMoney(emp[`m${m}_pitTax`] || 0)}</td>
+                    `
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
         
         <div class="footer">
           <div>Ngày in: ${currentDate}</div>
+          <div>Tổng số nhân viên: ${taxFinalizationTableData.value.length}</div>
         </div>
       </body>
       </html>
     `)
     
     printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
+    
+    printWindow.onload = () => {
+      printWindow.focus()
+      printWindow.print()
+    }
+    
+    setTimeout(() => {
+      printWindow.focus()
+      printWindow.print()
+    }, 500)
     
     showMessage('Đã mở cửa sổ in!', 'success')
   } catch (error) {
     console.error('Error printing report:', error)
-    showMessage('Có lỗi khi in báo cáo!', 'error')
+    showMessage(`Có lỗi khi in báo cáo: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
   }
 }
 
-// Tour Guide Steps
-const tourSteps = [
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý bảng lương. Bạn có thể xem bảng lương, bảng lương cá nhân, bảo hiểm theo tháng, thuế TNCN và quyết toán thuế TNCN.'
-  },
-  {
-    target: '[data-tour="salary-tab"]',
-    message: 'Tab "Quản lý bảng lương" hiển thị bảng lương tổng hợp của tất cả nhân viên trong tháng được chọn. Bạn có thể xem chi tiết lương, các khoản phụ cấp, các khoản trừ và thực lãnh của từng nhân viên. Bấm vào số ngày tăng ca để xem chi tiết.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="salary-tab"]'
+// Tour Guide Steps - chỉ hiển thị các bước phù hợp với role
+const tourSteps = computed(() => {
+  const userRole = currentUser.value?.role
+  const isHRRole = ['hr_employee', 'hr_manager', 'director'].includes(userRole)
+  
+  const baseSteps = [
+    {
+      target: '[data-tour="tabs"]',
+      message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý bảng lương.'
     }
-  },
-  {
-    target: '[data-tour="personal-salary-tab"]',
-    message: 'Tab "Bảng lương cá nhân" hiển thị chi tiết bảng lương của bạn. Bạn có thể xem thông tin lương cơ bản, tăng ca, nghỉ phép, các khoản phụ cấp, các khoản trừ và thực lãnh.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="personal-salary-tab"]'
-    }
-  },
-  {
-    target: '[data-tour="insurance-tab"]',
-    message: 'Tab "Bảo hiểm theo tháng" hiển thị chi tiết các khoản bảo hiểm của nhân viên trong tháng được chọn, bao gồm BHXH, BHYT, BHTN cho cả nhân viên và doanh nghiệp.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="insurance-tab"]'
-    }
-  },
-  {
-    target: '[data-tour="tax-tab"]',
-    message: 'Tab "Thuế TNCN" hiển thị thông tin thuế thu nhập cá nhân của nhân viên trong tháng được chọn, bao gồm tổng thu nhập, thu nhập chịu thuế và số thuế phải nộp.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="tax-tab"]'
-    }
-  },
-  {
-    target: '[data-tour="tax-finalization-tab"]',
-    message: 'Tab "Quyết toán thuế TNCN" hiển thị bảng quyết toán thuế thu nhập cá nhân theo năm, bao gồm tổng hợp theo năm và chi tiết từng tháng. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
-    action: {
-      type: 'click',
-      selector: '[data-tour="tax-finalization-tab"]'
-    }
+  ]
+  
+  if (isHRRole) {
+    // Các role HR xem tất cả tabs
+    return [
+      ...baseSteps,
+      {
+        target: '[data-tour="salary-tab"]',
+        message: 'Tab "Quản lý bảng lương" hiển thị bảng lương tổng hợp của tất cả nhân viên trong tháng được chọn. Bạn có thể xem chi tiết lương, các khoản phụ cấp, các khoản trừ và thực lãnh của từng nhân viên. Bấm vào số ngày tăng ca để xem chi tiết.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="salary-tab"]'
+        }
+      },
+      {
+        target: '[data-tour="personal-salary-tab"]',
+        message: 'Tab "Bảng lương cá nhân" hiển thị chi tiết bảng lương của bạn. Bạn có thể xem thông tin lương cơ bản, tăng ca, nghỉ phép, các khoản phụ cấp, các khoản trừ và thực lãnh.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="personal-salary-tab"]'
+        }
+      },
+      {
+        target: '[data-tour="insurance-tab"]',
+        message: 'Tab "Bảo hiểm theo tháng" hiển thị chi tiết các khoản bảo hiểm của nhân viên trong tháng được chọn, bao gồm BHXH, BHYT, BHTN cho cả nhân viên và doanh nghiệp.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="insurance-tab"]'
+        }
+      },
+      {
+        target: '[data-tour="tax-tab"]',
+        message: 'Tab "Thuế TNCN" hiển thị thông tin thuế thu nhập cá nhân của nhân viên trong tháng được chọn, bao gồm tổng thu nhập, thu nhập chịu thuế và số thuế phải nộp.',
+        action: {
+          type: 'click',
+          selector: '[data-tour="tax-tab"]'
+        }
+      },
+      {
+        target: '[data-tour="tax-finalization-tab"]',
+        message: 'Tab "Quyết toán thuế TNCN" hiển thị bảng quyết toán thuế thu nhập cá nhân theo năm, bao gồm tổng hợp theo năm và chi tiết từng tháng. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
+        action: {
+          type: 'click',
+          selector: '[data-tour="tax-finalization-tab"]'
+        }
+      }
+    ]
+  } else {
+    // Các role khác chỉ thấy tab bảng lương cá nhân
+    return [
+      ...baseSteps,
+      {
+        target: '[data-tour="personal-salary-tab"]',
+        message: 'Tab "Bảng lương cá nhân" hiển thị chi tiết bảng lương của bạn. Bạn có thể xem thông tin lương cơ bản, tăng ca, nghỉ phép, các khoản phụ cấp, các khoản trừ và thực lãnh. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
+        action: {
+          type: 'click',
+          selector: '[data-tour="personal-salary-tab"]'
+        }
+      }
+    ]
   }
-]
+})
 
 const handleTourComplete = () => {
   showTourGuide.value = false
@@ -896,11 +1758,21 @@ const startTour = () => {
               
               <!-- Action Buttons -->
               <div class="d-flex gap-2">
-                <button class="btn btn-outline-light btn-sm" @click="handleExportToExcel('salary')" :disabled="loading">
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="handleExportToExcel('salary')" 
+                  :disabled="loading || !salaryTableData || salaryTableData.length === 0"
+                  :title="(!salaryTableData || salaryTableData.length === 0) ? 'Không có dữ liệu để xuất' : 'Xuất bảng lương ra Excel'"
+                >
                   <i class="fas fa-download me-1"></i>
                   Xuất Excel
                 </button>
-                <button class="btn btn-outline-light btn-sm" @click="printSalaryReport">
+                <button 
+                  class="btn btn-outline-light btn-sm" 
+                  @click="printSalaryReport"
+                  :disabled="loading || !salaryTableData || salaryTableData.length === 0"
+                  :title="(!salaryTableData || salaryTableData.length === 0) ? 'Không có dữ liệu để in' : 'In báo cáo bảng lương'"
+                >
                   <i class="fas fa-print me-1"></i>
                   In báo cáo
                 </button>
@@ -918,6 +1790,12 @@ const startTour = () => {
       </div>
       <div class="table-responsive salary-table">
           <DataTable :columns="salaryColumns" :data="paginatedSalaryData">
+          <template #contractNumber="{ item }">
+            <span>{{ item.contractNumber || '-' }}</span>
+          </template>
+          <template #contractPeriod="{ item }">
+            <span class="text-muted small">{{ item.contractPeriod || '-' }}</span>
+          </template>
           <template #contractSalary="{ item }">
             <span class="money">{{ formatMoney(item.contractSalary) }}</span>
           </template>
@@ -1023,8 +1901,8 @@ const startTour = () => {
           <div class="card-body py-3">
             <div class="row align-items-center">
               <div class="col-lg-8">
-                <div class="d-flex align-items-center">
-                  <div class="personal-icon-wrapper me-3">
+                <div class="d-flex align-items-center flex-wrap gap-3">
+                  <div class="personal-icon-wrapper">
                     <i class="fas fa-user-circle"></i>
                   </div>
                   <div class="flex-grow-1">
@@ -1032,10 +1910,6 @@ const startTour = () => {
                       <i class="fas fa-money-bill-wave me-2"></i>
                       Bảng lương cá nhân
                     </h5>
-                    <p class="mb-0 text-muted small">
-                      <i class="fas fa-calendar-alt me-1"></i>
-                      Tháng {{ selectedMonth }}/{{ selectedYear }}
-                    </p>
                     <div v-if="currentUser" class="employee-info-compact mt-1">
                       <div class="info-item">
                         <span class="info-label">Mã NV:</span>
@@ -1043,8 +1917,53 @@ const startTour = () => {
                       </div>
                       <div class="info-item">
                         <span class="info-label">Tên:</span>
-                        <span class="info-value">{{ currentUser.firstName }} {{ currentUser.lastName }}</span>
+                        <span class="info-value">
+                          {{ personalSalaryData.length > 0 ? personalSalaryData[0].empName : (currentUser.fullName || 'Chưa có thông tin') }}
+                        </span>
                       </div>
+                      <div v-if="personalSalaryData.length > 0 && personalSalaryData[0].contractNumber" class="info-item">
+                        <span class="info-label">Số hợp đồng:</span>
+                        <span class="info-value">{{ personalSalaryData[0].contractNumber }}</span>
+                      </div>
+                      <div v-if="personalSalaryData.length > 0 && personalSalaryData[0].contractPeriod" class="info-item">
+                        <span class="info-label">Khoảng thời gian:</span>
+                        <span class="info-value">{{ personalSalaryData[0].contractPeriod }}</span>
+                      </div>
+                      <div v-if="personalSalaryData.length > 1" class="info-item">
+                        <span class="badge bg-warning">Có {{ personalSalaryData.length }} hợp đồng trong tháng</span>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Bộ lọc tháng -->
+                  <div class="time-filter-compact">
+                    <div class="d-flex align-items-center gap-2">
+                      <button 
+                        class="btn btn-outline-primary btn-sm" 
+                        @click="goToPreviousMonth"
+                        title="Tháng trước"
+                        :disabled="loading"
+                      >
+                        <i class="fas fa-chevron-left"></i>
+                      </button>
+                      <div class="text-center px-2">
+                        <h6 class="mb-0 fw-semibold text-primary">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
+                      </div>
+                      <button 
+                        class="btn btn-outline-primary btn-sm" 
+                        @click="goToNextMonth"
+                        title="Tháng sau"
+                        :disabled="loading"
+                      >
+                        <i class="fas fa-chevron-right"></i>
+                      </button>
+                      <button 
+                        class="btn btn-outline-primary btn-sm" 
+                        @click="goToCurrentMonth"
+                        title="Tháng hiện tại"
+                        :disabled="loading"
+                      >
+                        <i class="fas fa-calendar-day"></i>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1158,7 +2077,9 @@ const startTour = () => {
               <div class="card-body">
                 <div class="salary-item">
                   <span class="salary-label">Tổng nghỉ có lương:</span>
-                  <span class="salary-value">{{ personalSalaryData[0].paidLeaveDays }} ngày</span>
+                  <span class="salary-value leave-days-link" @click="openLeaveModal(personalSalaryData[0])">
+                    {{ personalSalaryData[0].paidLeaveDays }} ngày
+                  </span>
                 </div>
                 <div class="salary-item total-item">
                   <span class="salary-label">Tổng lương phép:</span>
@@ -1548,7 +2469,12 @@ const startTour = () => {
           </div>
           <div class="col-md-6">
             <div class="header-actions d-flex gap-2 justify-content-end">
-              <button class="btn btn-outline-light btn-sm" @click="exportTaxFinalizationToExcel">
+              <button 
+                class="btn btn-outline-light btn-sm" 
+                @click="exportTaxFinalizationToExcel"
+                :disabled="loading || !taxFinalizationTableData || taxFinalizationTableData.length === 0"
+                :title="(!taxFinalizationTableData || taxFinalizationTableData.length === 0) ? 'Không có dữ liệu để xuất' : 'Xuất quyết toán thuế ra Excel'"
+              >
                 <i class="fas fa-download me-1"></i>
                 Xuất Excel
               </button>
@@ -1673,6 +2599,113 @@ const startTour = () => {
       </div>
     </div>
   </div>
+
+  <!-- Leave Detail Modal -->
+  <ModalDialog :show="showLeaveModal" title="Chi tiết nghỉ phép" size="lg" @update:show="closeLeaveModal">
+    <div v-if="selectedLeaveEmployee" class="p-4">
+      <!-- Employee Info -->
+      <div class="modal-emp-header mb-4">
+        <div class="modal-emp-info">
+          <div class="emp-name fw-bold h5">{{ selectedLeaveEmployee.empName }}</div>
+          <div class="emp-id text-muted">Mã NV: {{ selectedLeaveEmployee.empId }}</div>
+          <div class="emp-pos text-muted">Chức vụ: {{ selectedLeaveEmployee.title }}</div>
+        </div>
+        <div class="modal-emp-date">
+          <span class="fw-bold">Tháng: </span>
+          <span>{{ selectedMonth }}/{{ selectedYear }}</span>
+        </div>
+      </div>
+
+      <!-- Leave Summary -->
+      <div class="overtime-summary-card">
+        <h6 class="fw-bold mb-3">Tổng hợp nghỉ phép tháng</h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Tổng nghỉ có lương:</span>
+              <span class="summary-value">{{ selectedLeaveEmployee.paidLeaveDays }} ngày</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Tổng lương phép:</span>
+              <span class="summary-value">{{ formatMoney(selectedLeaveEmployee.leaveSalary) }}</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Lương hợp đồng:</span>
+              <span class="summary-value">{{ formatMoney(selectedLeaveEmployee.contractSalary) }}</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="summary-item">
+              <span class="summary-label">Tổng ngày công chuẩn:</span>
+              <span class="summary-value">{{ selectedLeaveEmployee.standardDays }} ngày</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leave Details List -->
+      <div v-if="leaveDetails.length > 0" class="leave-details-list mt-4">
+        <h6 class="fw-bold mb-3">Danh sách ngày nghỉ</h6>
+        <div class="table-responsive">
+          <table class="table table-bordered">
+            <thead>
+              <tr>
+                <th>Mã phiếu</th>
+                <th>Từ ngày</th>
+                <th>Đến ngày</th>
+                <th>Số ngày</th>
+                <th>Số giờ</th>
+                <th>Loại nghỉ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(leave, index) in leaveDetails" :key="index">
+                <td>{{ leave.voucherCode }}</td>
+                <td>{{ leave.startDate }}</td>
+                <td>{{ leave.endDate }}</td>
+                <td><strong>{{ leave.days }} ngày</strong></td>
+                <td><strong>{{ leave.hours }} giờ</strong></td>
+                <td>{{ leave.leaveTypeName }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div v-else class="alert alert-info mt-4">
+        <i class="fas fa-info-circle me-2"></i>
+        Không có đơn nghỉ phép đã duyệt trong tháng {{ selectedMonth }}/{{ selectedYear }}
+      </div>
+
+      <!-- Calculation Formula -->
+      <div class="calculation-formula mt-4">
+        <h6 class="fw-bold mb-3">Công thức tính lương phép</h6>
+        <div class="alert alert-info">
+          <div class="formula-text">
+            <strong>Lương phép = Số ngày nghỉ có lương × Lương hợp đồng / Tổng ngày công chuẩn</strong>
+          </div>
+          <div class="formula-breakdown mt-2">
+            <small class="text-muted">
+              = {{ selectedLeaveEmployee.paidLeaveDays }} × {{ formatMoney(selectedLeaveEmployee.contractSalary) }} / {{ selectedLeaveEmployee.standardDays }}
+              <br>
+              = {{ formatMoney(selectedLeaveEmployee.leaveSalary) }}
+            </small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Note -->
+      <div class="mt-3">
+        <small class="text-muted">
+          <i class="fas fa-info-circle me-1"></i>
+          Lương phép được tính từ các đơn nghỉ phép đã được duyệt trong tháng {{ selectedMonth }}/{{ selectedYear }}
+        </small>
+      </div>
+    </div>
+  </ModalDialog>
 
   <!-- Overtime Detail Modal -->
   <ModalDialog :show="showOvertimeModal" title="Chi tiết tăng ca" size="lg" @update:show="closeOvertimeModal">
@@ -1857,10 +2890,10 @@ const startTour = () => {
   border: 1px solid #e9ecef;
 }
 .money-net {
-  color: #e74c3c;
-  background: #fff5f5;
+  color: #3498db;
+  background: #e8f4fd;
   font-weight: 700;
-  border: 1px solid #fecaca;
+  border: 1px solid #85c1e9;
 }
 .table tbody tr td[data-group="nl"] {
   background: #f0f8ff;
@@ -2008,6 +3041,33 @@ const startTour = () => {
   padding: 1.5rem;
 }
 
+.leave-details-list {
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.leave-details-list .table {
+  margin-bottom: 0;
+}
+
+.leave-details-list .table th {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  font-weight: 600;
+  color: #495057;
+  border: 1px solid #dee2e6;
+}
+
+.leave-details-list .table td {
+  border: 1px solid #dee2e6;
+  vertical-align: middle;
+}
+
+.leave-details-list .table tbody tr:hover {
+  background: #f8f9fa;
+}
+
 .summary-item {
   display: flex;
   justify-content: space-between;
@@ -2138,22 +3198,23 @@ const startTour = () => {
 .net-salary-display {
   text-align: center;
   padding: 1.25rem;
-  background: linear-gradient(135deg, #f0f9f5 0%, #e8f5e9 100%);
+  background: linear-gradient(135deg, #e8f4fd 0%, #d6eaf8 100%);
   border-radius: 8px;
-  border: 1px solid #c3e6cb;
+  border: 1px solid #85c1e9;
   transition: all 0.3s ease;
   cursor: default;
 }
 
 .net-salary-display:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
-  border-color: #a3d9a5;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+  border-color: #5dade2;
+  background: linear-gradient(135deg, #d6eaf8 0%, #aed6f1 100%);
 }
 
 .net-salary-label {
   font-size: 0.875rem;
-  color: #6c757d;
+  color: #2c3e50;
   margin-bottom: 0.5rem;
   font-weight: 500;
 }
@@ -2161,7 +3222,8 @@ const startTour = () => {
 .net-salary-amount {
   font-size: 1.75rem;
   font-weight: 700;
-  color: #28a745;
+  color: #3498db;
+  text-shadow: 0 1px 2px rgba(52, 152, 219, 0.1);
 }
 
 .salary-card {
@@ -2254,7 +3316,8 @@ const startTour = () => {
   font-size: 0.9rem;
 }
 
-.salary-value.overtime-link {
+.salary-value.overtime-link,
+.salary-value.leave-days-link {
   color: #3498db;
   cursor: pointer;
   text-decoration: underline;
@@ -2263,7 +3326,8 @@ const startTour = () => {
   border-radius: 4px;
 }
 
-.salary-value.overtime-link:hover {
+.salary-value.overtime-link:hover,
+.salary-value.leave-days-link:hover {
   color: #2980b9;
   text-decoration: none;
   background-color: rgba(52, 152, 219, 0.1);
@@ -2272,28 +3336,30 @@ const startTour = () => {
 
 .final-summary-card {
   background: #fff;
-  border: 2px solid #28a745;
+  border: 2px solid #3498db;
   animation: fadeInUp 0.6s ease-out;
   animation-fill-mode: both;
 }
 
 .final-summary-card:hover {
-  box-shadow: 0 6px 16px rgba(40, 167, 69, 0.2);
+  box-shadow: 0 6px 16px rgba(52, 152, 219, 0.25);
   transform: translateY(-3px);
+  border-color: #2980b9;
 }
 
 .final-summary-card .card-header {
-  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-  border-bottom: 1px solid #c3e6cb;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  border-bottom: 1px solid #2980b9;
 }
 
 .final-summary-card .card-header h6 {
-  color: #212529;
+  color: #ffffff;
   font-weight: 600;
 }
 
 .final-summary-card .card-header h6 i {
-  color: #6c757d;
+  color: #ffffff;
+  opacity: 0.9;
 }
 
 .final-summary-card .card-body {
@@ -2345,7 +3411,7 @@ const startTour = () => {
 }
 
 .summary-value.net-salary {
-  color: #28a745;
+  color: #3498db;
   font-size: 1.1rem;
   font-weight: 700;
 }
@@ -2357,16 +3423,27 @@ const startTour = () => {
 }
 
 .final-row {
-  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
   margin: 0 -1.25rem -1.25rem;
   padding: 1rem 1.25rem;
   border-radius: 0 0 6px 6px;
-  border-top: 1px solid #c3e6cb;
+  border-top: 1px solid #2980b9;
   transition: all 0.3s ease;
 }
 
 .final-row:hover {
-  background: linear-gradient(135deg, #d4edda 0%, #b8e0c0 100%);
+  background: linear-gradient(135deg, #34495e 0%, #2980b9 100%);
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+}
+
+.final-row .summary-label {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.final-row .summary-value.net-salary {
+  color: #ffffff;
+  font-weight: 700;
 }
 
 /* Responsive adjustments */

@@ -589,11 +589,9 @@ const handleClose = () => emit('close')
                 <strong>Lưu ý:</strong> Mật khẩu sẽ được tạo tự động và gửi qua email cho nhân viên.
             </div>
             <div class="d-flex justify-content-end gap-2 mt-4">
-                <button type="button" class="btn btn-outline-secondary btn-lg" @click="handleClose">
-                    <i class="fas fa-times me-1"></i> Hủy
-                </button>
-                <button type="submit" class="btn btn-primary btn-gradient btn-lg">
-                    <i class="fas fa-save me-1"></i> {{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}
+                <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
+                <button type="submit" class="btn btn-primary" :disabled="loading">
+                    {{ loading ? 'Đang xử lý...' : (props.mode === 'update' ? 'Cập nhật' : 'Tạo mới') }}
                 </button>
             </div>
         </form>

@@ -119,7 +119,14 @@ const salaryService = {
       })
       return response.data
     } catch (error) {
-      console.error('Error exporting salary to Excel:', error)
+      // Only log non-network errors (network errors will be handled by client-side fallback)
+      const isNetworkError = error?.code === 'ERR_NETWORK' || 
+                            error?.message?.includes('Network Error') ||
+                            error?.message?.includes('ERR_CONNECTION_REFUSED')
+      
+      if (!isNetworkError) {
+        console.error('Error exporting salary to Excel:', error)
+      }
       throw error
     }
   },

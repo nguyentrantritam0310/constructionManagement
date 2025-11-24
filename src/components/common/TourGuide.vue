@@ -251,8 +251,10 @@ const highlightTarget = async () => {
     // Nếu target là modal/form, tìm modal container
     if (targetSelector.includes('create-form') || 
         targetSelector.includes('import-modal') ||
+        targetSelector.includes('item-form-modal') ||
         targetSelector.includes('[data-tour="create-form"]') ||
-        targetSelector.includes('[data-tour="import-modal"]')) {
+        targetSelector.includes('[data-tour="import-modal"]') ||
+        targetSelector.includes('[data-tour="item-form-modal"]')) {
       // Tìm modal đang mở
       const openModal = document.querySelector('.modal.show, .modal-dialog.show')
       if (openModal) {

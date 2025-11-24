@@ -139,6 +139,13 @@
                   icon="fas fa-undo" 
                   title="Trả lại"
                 ></ActionButton>
+                <!-- Export contract button -->
+                <ActionButton 
+                  type="info" 
+                  @click.stop="exportContract(item)" 
+                  icon="fas fa-file-word" 
+                  title="Xuất hợp đồng"
+                ></ActionButton>
               </template>
 
               <!-- Tab: Chưa lên hợp đồng -->
@@ -383,6 +390,7 @@ import { usePermissions } from '../../composables/usePermissions.js'
 import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
 import { contractService } from '../../services/contractService'
 import { employeeService } from '../../services/employeeService'
+import { exportLaborContract } from '../../services/contractExportService'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -1181,6 +1189,39 @@ const handleTerminateEmployee = async () => {
 const closeTerminateModal = () => {
   showTerminateModal.value = false
   employeeToTerminate.value = null
+}
+
+// Export contract function
+const exportContract = async (contract) => {
+  try {
+    // Get full contract data with all details
+    let fullContract = await contractService.getContractById(contract.id)
+    
+    // Merge with existing contract data to ensure we have contractTypeName and other display fields
+    fullContract = {
+      ...fullContract,
+      contractTypeName: contract.contractTypeName || fullContract.contractTypeName,
+      employeeName: contract.employeeName || fullContract.employeeName
+    }
+    
+    // Get employee data
+    const employee = employees.value.find(emp => emp.id === contract.employeeID)
+    if (!employee) {
+      showMessage('Không tìm thấy thông tin nhân viên!', 'error')
+      return
+    }
+    
+    // Show loading message
+    showMessage('Đang tạo file hợp đồng...', 'info')
+    
+    // Export contract
+    await exportLaborContract(fullContract, employee)
+    
+    showMessage('Xuất hợp đồng thành công!', 'success')
+  } catch (error) {
+    console.error('Error exporting contract:', error)
+    showMessage(`Lỗi khi xuất hợp đồng: ${error.message}`, 'error')
+  }
 }
 
 // Tour Guide Steps
