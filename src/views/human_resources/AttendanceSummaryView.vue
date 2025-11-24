@@ -6,12 +6,18 @@ import LeaveForm from '../../components/common/leave/LeaveForm.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
 import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import { useAuth } from '../../composables/useAuth.js'
+import api from '../../api'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
 
 const showEmployeeModal = ref(false)
 const showDayModal = ref(false)
 const showLeaveFormModal = ref(false)
 const showImageModal = ref(false)
 const selectedImage = ref(null)
+
+// Location map modal
+const showLocationMapModal = ref(false)
+const mapLocation = ref({ lat: null, lng: null, name: null })
 const selectedEmployee = ref(null)
 const selectedDateIdx = ref(null)
 const selectedLeaveRequest = ref(null)
@@ -20,15 +26,227 @@ const dayModalError = ref(null)
 const showTourGuide = ref(false)
 
 
+// Function to calculate work days from attendance data (similar to loadDayModalData)
+function calculateWorkDaysFromAttendance(attendanceItem) {
+  if (!attendanceItem.checkInTime || !attendanceItem.checkOutTime) {
+    return 0
+  }
+
+  const checkInTime = new Date(`2000-01-01T${attendanceItem.checkInTime}`)
+  const checkOutTime = new Date(`2000-01-01T${attendanceItem.checkOutTime}`)
+  
+  // Get shift details
+  const workShift = workshifts.value.find(shift => shift.id === attendanceItem.workShiftID)
+  if (!workShift || !workShift.shiftDetails) {
+    // Fallback: calculate from actual time
+    const actualWorkHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+    return Math.round((actualWorkHours / 8) * 100) / 100
+  }
+
+  const workDate = new Date(attendanceItem.workDate)
+  const dayOfWeek = workDate.getDay()
+  const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+  const currentDayName = dayNames[dayOfWeek]
+  
+  const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
+  if (!dayShiftDetail || dayShiftDetail.startTime === '00:00:00' || dayShiftDetail.endTime === '00:00:00') {
+    // Fallback: calculate from actual time
+    const actualWorkHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+    return Math.round((actualWorkHours / 8) * 100) / 100
+  }
+
+  const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
+  const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
+  
+  // Calculate standard work hours (excluding lunch break)
+  let totalWorkHours = (shiftEnd - shiftStart) / (1000 * 60 * 60)
+  if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
+      dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
+    const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
+    const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
+    const breakHours = (breakEnd - breakStart) / (1000 * 60 * 60)
+    totalWorkHours -= breakHours
+  }
+  
+  // Calculate actual work hours (cap at shift end if checkout is later)
+  const effectiveCheckOutTime = checkOutTime > shiftEnd ? shiftEnd : checkOutTime
+  const totalTimeHours = (effectiveCheckOutTime - checkInTime) / (1000 * 60 * 60)
+  
+  // Subtract lunch break if it falls within work time
+  let actualWorkHours = totalTimeHours
+  if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
+      dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
+    const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
+    const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
+    if (checkInTime <= breakEnd && effectiveCheckOutTime >= breakStart) {
+      const actualBreakStart = checkInTime > breakStart ? checkInTime : breakStart
+      const actualBreakEnd = effectiveCheckOutTime < breakEnd ? effectiveCheckOutTime : breakEnd
+      const actualBreakHours = (actualBreakEnd - actualBreakStart) / (1000 * 60 * 60)
+      actualWorkHours = totalTimeHours - Math.max(0, actualBreakHours)
+    }
+  }
+  
+  // Calculate work days (8 hours = 1 day)
+  const workDays = Math.round((actualWorkHours / 8) * 100) / 100
+  return workDays
+}
+
+// Function to calculate employee summary from attendance data
+function calculateEmployeeSummary(employeeId, employeeName) {
+  const summary = {
+    totalWorkDays: 0,
+    totalPresent: 0,
+    totalPaidLeave: 0,
+    totalAbsentWithoutLeave: 0,
+    totalLateMinutes: 0,
+    totalEarlyMinutes: 0,
+    totalForgotCheckIn: 0,
+    totalForgotCheckOut: 0
+  }
+
+  // Calculate from attendanceList (actual attendance data)
+  if (attendanceList.value && attendanceList.value.length > 0) {
+    const employeeAttendance = attendanceList.value.filter(att => {
+      const attEmployeeId = att.employeeCode || att.employeeID || att.employeeId
+      return attEmployeeId === employeeId
+    })
+
+    // Calculate total present (work days) from attendance data
+    employeeAttendance.forEach(att => {
+      if (att.checkInTime && att.checkOutTime) {
+        const workDays = calculateWorkDaysFromAttendance(att)
+        summary.totalPresent += workDays
+        
+        // Calculate late and early minutes
+        if (att.workShiftID) {
+          const workShift = workshifts.value.find(shift => shift.id === att.workShiftID)
+          if (workShift && workShift.shiftDetails) {
+            const workDate = new Date(att.workDate)
+            const dayOfWeek = workDate.getDay()
+            const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+            const currentDayName = dayNames[dayOfWeek]
+            const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
+            
+            if (dayShiftDetail && dayShiftDetail.startTime !== '00:00:00' && dayShiftDetail.endTime !== '00:00:00') {
+              const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
+              const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
+              const checkInTime = new Date(`2000-01-01T${att.checkInTime}`)
+              const checkOutTime = new Date(`2000-01-01T${att.checkOutTime}`)
+              
+              if (checkInTime > shiftStart) {
+                summary.totalLateMinutes += Math.round((checkInTime - shiftStart) / (1000 * 60))
+              }
+              if (checkOutTime < shiftEnd) {
+                summary.totalEarlyMinutes += Math.round((shiftEnd - checkOutTime) / (1000 * 60))
+              }
+            }
+          }
+        }
+      } else if (att.checkOutTime && !att.checkInTime) {
+        summary.totalForgotCheckIn += 1
+      } else if (att.checkInTime && !att.checkOutTime) {
+        summary.totalForgotCheckOut += 1
+      }
+    })
+  }
+
+  // Calculate paid leave days from leave requests
+  if (leaveRequests.value && leaveRequests.value.length > 0) {
+    const monthStart = new Date(selectedYear.value, selectedMonth.value - 1, 1)
+    const monthEnd = new Date(selectedYear.value, selectedMonth.value, 0, 23, 59, 59)
+    
+    leaveRequests.value.forEach(leave => {
+      if (leave.employeeID !== employeeId) return
+      
+      const leaveStart = new Date(leave.startDateTime)
+      const leaveEnd = new Date(leave.endDateTime)
+      if (leaveStart > monthEnd || leaveEnd < monthStart) return
+      
+      const leaveTypeName = (leave.leaveTypeName || '').toLowerCase()
+      const isPaidLeave = leaveTypeName.includes('phép năm') || 
+                          leaveTypeName.includes('phép có lương') ||
+                          leaveTypeName.includes('nghỉ phép')
+      
+      if (isPaidLeave && (leave.approveStatus === 'Đã duyệt' || leave.approveStatus === 'Approved')) {
+        // Calculate work days for each day in the leave period within the month
+        const startDate = leaveStart > monthStart ? leaveStart : monthStart
+        const endDate = leaveEnd < monthEnd ? leaveEnd : monthEnd
+        
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          const workHoursInfo = calculateWorkHoursForDate(leave, d)
+          if (workHoursInfo && workHoursInfo.workHours > 0) {
+            const workDays = Math.round((workHoursInfo.workHours / 8) * 100) / 100
+            summary.totalPaidLeave += workDays
+          }
+        }
+      }
+    })
+  }
+
+  // Calculate absent without leave from attendance matrix
+  const empIdx = allEmployees.value.findIndex(e => e.id === employeeId)
+  if (empIdx !== -1 && attendanceMatrix.value && attendanceMatrix.value[empIdx]) {
+    const employeeAttendance = attendanceMatrix.value[empIdx]
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    employeeAttendance.forEach((dayData, dayIdx) => {
+      if (!dayData) return
+
+      const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, dayIdx + 1)
+      currentDate.setHours(0, 0, 0, 0)
+      
+      const hasAttendanceData = dayData.attendance && 
+                                 (dayData.attendance.checkInTime || dayData.attendance.checkOutTime)
+      
+      // Count absent without leave (vắng không phép)
+      if (currentDate < today) {
+        const hasShiftAssignment = shiftAssignments.value?.some(sa => {
+          const saDate = new Date(sa.workDate)
+          saDate.setHours(0, 0, 0, 0)
+          return sa.employeeID === employeeId && 
+                 saDate.getTime() === currentDate.getTime()
+        })
+        
+        if (hasShiftAssignment && (!dayData.status || dayData.status === '' || dayData.status === 'absent') && !hasAttendanceData) {
+          summary.totalAbsentWithoutLeave += 1
+        }
+      }
+    })
+  }
+
+  // Total work days = total present + total paid leave
+  summary.totalWorkDays = summary.totalPresent + summary.totalPaidLeave
+
+  return summary
+}
+
 function openEmployeeModal(emp) {
-  selectedEmployee.value = emp
+  // Tìm employee đầy đủ từ allEmployees để có thông tin đầy đủ
+  const fullEmployee = allEmployees.value.find(e => e.id === emp.id) || emp
+  
+  // Tính toán summary từ dữ liệu attendance
+  const summary = calculateEmployeeSummary(emp.id, emp.name || emp.employeeName)
+  
+  selectedEmployee.value = {
+    ...fullEmployee,
+    name: fullEmployee.employeeName || fullEmployee.name || `${fullEmployee.firstName || ''} ${fullEmployee.lastName || ''}`.trim() || emp.id,
+    position: fullEmployee.roleName || fullEmployee.position || fullEmployee.title || 'N/A',
+    summary: summary
+  }
   showEmployeeModal.value = true
 }
 function closeEmployeeModal() {
   showEmployeeModal.value = false
 }
 async function openDayModal(emp, dayIdx) {
-  selectedEmployee.value = emp
+  // Tìm employee đầy đủ từ allEmployees để có thông tin name và position
+  const fullEmployee = allEmployees.value.find(e => e.id === emp.id) || emp
+  selectedEmployee.value = {
+    ...fullEmployee,
+    name: fullEmployee.employeeName || fullEmployee.name || `${fullEmployee.firstName || ''} ${fullEmployee.lastName || ''}`.trim(),
+    position: fullEmployee.roleName || fullEmployee.position || fullEmployee.title || ''
+  }
   selectedDateIdx.value = dayIdx
   showDayModal.value = true
   
@@ -37,9 +255,10 @@ async function openDayModal(emp, dayIdx) {
   dayModalError.value = null
   attendanceHistory.value = []
   workHistory.value = []
+  updatingShifts.value = {} // Reset updating state
   
   // Load real data for the selected day
-  await loadDayModalData(emp, dayIdx)
+  await loadDayModalData(selectedEmployee.value, dayIdx)
 }
 function closeDayModal() {
   showDayModal.value = false
@@ -54,6 +273,16 @@ function handleImageClick(imageUrl, imageType = 'checkin') {
     type: imageType
   }
   showImageModal.value = true
+}
+
+// Function to open location map
+function openLocationMap(lat, lng, locationName) {
+  mapLocation.value = {
+    lat: lat,
+    lng: lng,
+    name: locationName || 'Vị trí chấm công'
+  }
+  showLocationMapModal.value = true
 }
 
 const openLeaveFormModal = (voucherCode) => {
@@ -95,7 +324,6 @@ const workColumns = [
 // Columns without actions for day modal
 const attendanceColumnsNoActions = [
   { key: 'stt', label: 'STT' },
-  { key: 'avatar', label: 'Ảnh' },
   { key: 'shiftName', label: 'Tên ca' },
   { key: 'refCode', label: 'Mã phiếu tham chiếu' },
   { key: 'date', label: 'Ngày đi làm' },
@@ -119,7 +347,62 @@ const filteredAttendanceHistory = computed(() => attendanceHistory.value || [])
 const filteredWorkHistory = computed(() => workHistory.value || [])
 const attendanceHistory = ref([])
 const workHistory = ref([])
-import { ref, computed, onMounted, watch } from 'vue'
+const updatingShifts = ref({}) // Track which attendance records are being updated
+
+// Computed property để lấy danh sách ca đã được phân cho nhân viên trong ngày cụ thể
+const assignedShiftsForEmployeeAndDate = computed(() => {
+  if (!selectedEmployee.value || selectedDateIdx.value === null) {
+    return []
+  }
+  
+  // Lấy ngày cụ thể từ dayHeaders
+  const selectedDateHeader = dayHeaders.value[selectedDateIdx.value]
+  if (!selectedDateHeader) {
+    return []
+  }
+  
+  // Parse ngày từ dayHeader (format: "DD/MM (T2)" hoặc tương tự)
+  const selectedDayMonth = selectedDateHeader.split(' ')[0] // Extract "DD/MM" part
+  const [day, month] = selectedDayMonth.split('/')
+  const fullDate = `${selectedYear.value}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  const targetDate = new Date(fullDate)
+  
+  // Lấy các workShiftID đã được phân cho nhân viên này trong ngày cụ thể
+  const assignedShiftIds = new Set()
+  if (shiftAssignments.value?.length) {
+    shiftAssignments.value.forEach(assignment => {
+      if (assignment.employeeID === selectedEmployee.value.id) {
+        const assignmentDate = new Date(assignment.workDate)
+        // So sánh ngày (bỏ qua giờ)
+        if (assignmentDate.toDateString() === targetDate.toDateString()) {
+          assignedShiftIds.add(assignment.workShiftID)
+        }
+      }
+    })
+  }
+  
+  // Lọc danh sách ca từ workshifts dựa trên các ID đã phân trong ngày đó
+  const assignedShifts = workshifts.value.filter(shift => assignedShiftIds.has(shift.id))
+  
+  return assignedShifts
+})
+
+// Computed property để lấy danh sách ca cho một item cụ thể (bao gồm ca hiện tại)
+const getAvailableShiftsForItem = (item) => {
+  const assignedShifts = assignedShiftsForEmployeeAndDate.value
+  
+  // Nếu item có workShiftID hiện tại, đảm bảo ca đó có trong danh sách
+  if (item.workShiftID) {
+    const currentShift = workshifts.value.find(shift => shift.id === item.workShiftID)
+    if (currentShift && !assignedShifts.find(s => s.id === currentShift.id)) {
+      // Thêm ca hiện tại vào đầu danh sách nếu chưa có
+      return [currentShift, ...assignedShifts]
+    }
+  }
+  
+  return assignedShifts
+}
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TabBar from '../../components/common/TabBar.vue'
 import TimeFilter from '../../components/common/TimeFilter.vue'
@@ -140,7 +423,8 @@ const { workshifts, fetchWorkShifts } = useWorkShift()
 const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
 const { leaveRequests, fetchLeaveRequests, loading: leaveLoading, error: leaveError } = useLeaveRequest()
 const { leaveTypes, fetchLeaveTypes } = useLeaveType()
-const { shiftAssignments, fetchAllShiftAssignments } = useShiftAssignment()
+const { shiftAssignments, fetchAllShiftAssignments, createShiftAssignment } = useShiftAssignment()
+const { showMessage } = useGlobalMessage()
 const { currentUser, isDirector, isHRManager, isHREmployee } = useAuth()
 const { canView } = usePermissions()
 
@@ -512,14 +796,153 @@ const generateAttendanceForEmployee = (employeeId, employeeName) => {
         const checkOut = getTimeString(dayAttendance.checkOutTime)
         const checkInTime = new Date(`2000-01-01T${dayAttendance.checkInTime}`)
         const checkOutTime = new Date(`2000-01-01T${dayAttendance.checkOutTime}`)
-        const workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+        
+        // Tính workHours dựa trên ca đã chọn (nếu có)
+        let workHours = 0
+        let standardWorkHours = 8 // Mặc định 8 giờ
+        
+        if (dayAttendance.workShiftID) {
+          // Tìm thông tin ca làm việc
+          const workShift = workshifts.value.find(shift => shift.id === dayAttendance.workShiftID)
+          
+          if (workShift && workShift.shiftDetails) {
+            // Lấy thông tin ca cho ngày trong tuần
+            const dayOfWeek = currentDate.getDay()
+            const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+            const currentDayName = dayNames[dayOfWeek]
+            
+            const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
+            
+            if (dayShiftDetail && dayShiftDetail.startTime !== '00:00:00' && dayShiftDetail.endTime !== '00:00:00') {
+              const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
+              const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
+              
+              // Tính giờ công chuẩn (trừ giờ nghỉ trưa)
+              let shiftWorkHours = (shiftEnd - shiftStart) / (1000 * 60 * 60)
+              
+              if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
+                  dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
+                const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
+                const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
+                const breakHours = (breakEnd - breakStart) / (1000 * 60 * 60)
+                shiftWorkHours -= breakHours
+              }
+              
+              standardWorkHours = shiftWorkHours
+              
+              // Tính giờ công thực tế: dùng giờ vào/ra của ca nếu giờ thực tế ngoài khung ca
+              // Trường hợp 1: Cả vào và ra đều sau giờ ra ca -> dùng giờ ra ca để tính
+              // Trường hợp 2: Cả vào và ra đều trước giờ vào ca -> dùng giờ vào ca để tính
+              // Trường hợp 3: Vào trước giờ vào ca -> dùng giờ vào ca
+              // Trường hợp 4: Ra sau giờ ra ca -> dùng giờ ra ca
+              let effectiveCheckInTime = checkInTime
+              let effectiveCheckOutTime = checkOutTime
+              
+              // Nếu cả vào và ra đều sau giờ ra ca, tính từ giờ ra ca (coi như làm đủ ca)
+              if (checkInTime >= shiftEnd && checkOutTime >= shiftEnd) {
+                // Trường hợp đặc biệt: cả vào và ra đều sau giờ ra ca
+                // Có thể là chọn sai ca hoặc làm thêm giờ, tính theo giờ ca
+                effectiveCheckInTime = shiftStart
+                effectiveCheckOutTime = shiftEnd
+              }
+              // Nếu cả vào và ra đều trước giờ vào ca, tính từ giờ vào ca
+              else if (checkInTime <= shiftStart && checkOutTime <= shiftStart) {
+                // Trường hợp đặc biệt: cả vào và ra đều trước giờ vào ca
+                // Có thể là chọn sai ca, tính theo giờ ca
+                effectiveCheckInTime = shiftStart
+                effectiveCheckOutTime = shiftEnd
+              }
+              // Nếu vào trước giờ vào ca, dùng giờ vào ca
+              else if (checkInTime < shiftStart) {
+                effectiveCheckInTime = shiftStart
+              }
+              // Nếu ra sau giờ ra ca, dùng giờ ra ca
+              else if (checkOutTime > shiftEnd) {
+                effectiveCheckOutTime = shiftEnd
+              }
+              
+              // Tính tổng thời gian
+              const totalTimeHours = (effectiveCheckOutTime - effectiveCheckInTime) / (1000 * 60 * 60)
+              
+              // Trừ giờ nghỉ trưa nếu có
+              let actualWorkHours = totalTimeHours
+              if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
+                  dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
+                const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
+                const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
+                
+                // Kiểm tra xem giờ nghỉ trưa có nằm trong khoảng làm việc không
+                if (effectiveCheckInTime <= breakEnd && effectiveCheckOutTime >= breakStart) {
+                  const breakHours = (breakEnd - breakStart) / (1000 * 60 * 60)
+                  // Tính phần giờ nghỉ trưa thực sự nằm trong khoảng làm việc
+                  const actualBreakStart = effectiveCheckInTime > breakStart ? effectiveCheckInTime : breakStart
+                  const actualBreakEnd = effectiveCheckOutTime < breakEnd ? effectiveCheckOutTime : breakEnd
+                  const actualBreakHours = (actualBreakEnd - actualBreakStart) / (1000 * 60 * 60)
+                  actualWorkHours = totalTimeHours - Math.max(0, actualBreakHours)
+                }
+              }
+              
+              workHours = actualWorkHours
+            } else {
+              // Không có shift details, tính theo giờ thực tế
+              workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+            }
+          } else {
+            // Không tìm thấy ca, tính theo giờ thực tế
+            workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+          }
+        } else {
+          // Không có workShiftID, tính theo giờ thực tế
+          workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+        }
+
+        // So sánh với giờ công chuẩn để quyết định status
+        // Cho phép sai số nhỏ (0.1 giờ = 6 phút) để tránh lỗi làm tròn
+        const isSufficient = workHours >= (standardWorkHours - 0.1)
+
+        // Calculate late and early minutes
+        let lateMinutes = 0
+        let earlyMinutes = 0
+        if (dayAttendance.workShiftID) {
+          const workShift = workshifts.value.find(shift => shift.id === dayAttendance.workShiftID)
+          if (workShift && workShift.shiftDetails) {
+            const dayOfWeek = currentDate.getDay()
+            const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+            const currentDayName = dayNames[dayOfWeek]
+            const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
+            
+            if (dayShiftDetail && dayShiftDetail.startTime !== '00:00:00' && dayShiftDetail.endTime !== '00:00:00') {
+              const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
+              const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
+              
+              // Calculate late minutes (check-in after shift start)
+              if (checkInTime > shiftStart) {
+                lateMinutes = Math.round((checkInTime - shiftStart) / (1000 * 60))
+              }
+              
+              // Calculate early minutes (check-out before shift end)
+              if (checkOutTime < shiftEnd) {
+                earlyMinutes = Math.round((shiftEnd - checkOutTime) / (1000 * 60))
+              }
+            }
+          }
+        }
+
+        // Determine status: if late or early, show as 'insufficient' (vàng nhạt), otherwise check if sufficient
+        let finalStatus = isSufficient ? 'work' : 'insufficient'
+        if (lateMinutes > 0 || earlyMinutes > 0) {
+          finalStatus = 'insufficient' // Đi trễ hoặc về sớm thì hiển thị vàng nhạt (bất kể đủ giờ công hay không)
+        }
 
         return {
-          status: workHours >= 8 ? 'work' : 'insufficient',
+          status: finalStatus,
           time: `${checkIn} ${checkOut}`,
           type: dayAttendance.status,
           attendance: dayAttendance,
-          leaveRequest: null
+          leaveRequest: null,
+          workDays: workHours / 8,
+          late: lateMinutes,
+          early: earlyMinutes
         }
       } else if (dayAttendance.checkInTime) {
         return {
@@ -601,8 +1024,15 @@ const statusColor = {
 const mainSummaryColumns = computed(() => [
   { key: 'id', label: 'Mã nhân viên', class: 'text-center col-id' },
   { key: 'name', label: 'Tên nhân viên', class: 'text-start col-name' },
-  { key: 'detail', label: 'Chi tiết', class: 'text-center col-detail' },
-  ...dayHeaders.value.map((day, idx) => ({ key: `day_${idx}`, label: day, class: 'text-center col-day' }))
+  ...dayHeaders.value.map((day, idx) => ({ key: `day_${idx}`, label: day, class: 'text-center col-day' })),
+  { key: 'totalStandardDays', label: 'Tổng công chuẩn', class: 'text-center col-summary' },
+  { key: 'totalWorkDays', label: 'Tổng ngày công', class: 'text-center col-summary' },
+  { key: 'totalPresent', label: 'Tổng đi làm', class: 'text-center col-summary' },
+  { key: 'totalPaidLeave', label: 'Nghỉ có lương', class: 'text-center col-summary' },
+  { key: 'totalAbsentWithoutLeave', label: 'Vắng không phép', class: 'text-center col-summary' },
+  { key: 'totalLateMinutes', label: 'Số phút đi trễ', class: 'text-center col-summary' },
+  { key: 'totalEarlyMinutes', label: 'Số phút về sớm', class: 'text-center col-summary' },
+  { key: 'totalForgotCheckInOut', label: 'Quên check In/Out', class: 'text-center col-summary' }
 ]);
 
 const mainSummaryData = computed(() => {
@@ -624,13 +1054,46 @@ const mainSummaryData = computed(() => {
     }
 
     if (hasAnyData) {
+      // Lấy tên nhân viên từ các field có thể có
+      const employeeName = emp.employeeName || emp.name || 
+                          (emp.firstName && emp.lastName ? `${emp.firstName} ${emp.lastName}` : '') ||
+                          emp.id || 'N/A';
+      
+      // Tính toán summary cho nhân viên này
+      const summary = calculateEmployeeSummary(emp.id, employeeName)
+      
+      // Tính tổng công chuẩn (số ngày trong tháng có phân ca)
+      const monthStart = new Date(selectedYear.value, selectedMonth.value - 1, 1)
+      const monthEnd = new Date(selectedYear.value, selectedMonth.value, 0)
+      let totalStandardDays = 0
+      if (shiftAssignments.value) {
+        for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+          const hasShift = shiftAssignments.value.some(sa => {
+            const saDate = new Date(sa.workDate)
+            saDate.setHours(0, 0, 0, 0)
+            const checkDate = new Date(d)
+            checkDate.setHours(0, 0, 0, 0)
+            return sa.employeeID === emp.id && saDate.getTime() === checkDate.getTime()
+          })
+          if (hasShift) totalStandardDays++
+        }
+      }
+      
       employeesWithAttendance.push({
         id: emp.id,
-        name: emp.name,
+        name: employeeName,
         detail: '',
         _idx: idx,
         ...dayData,
-        ...emp
+        ...emp,
+        totalStandardDays: totalStandardDays,
+        totalWorkDays: summary.totalWorkDays,
+        totalPresent: summary.totalPresent,
+        totalPaidLeave: summary.totalPaidLeave,
+        totalAbsentWithoutLeave: summary.totalAbsentWithoutLeave,
+        totalLateMinutes: summary.totalLateMinutes,
+        totalEarlyMinutes: summary.totalEarlyMinutes,
+        totalForgotCheckInOut: summary.totalForgotCheckIn + summary.totalForgotCheckOut
       });
     }
   });
@@ -738,7 +1201,6 @@ const overtimeColumns = computed(() => [
   { key: 'stt', label: 'STT', class: 'text-center col-stt' },
   { key: 'id', label: 'Mã NV', class: 'text-center col-id' },
   { key: 'name', label: 'Nhân viên', class: 'text-start col-name' },
-  { key: 'detail', label: 'Chi tiết', class: 'text-center col-detail' },
   ...overtimeHeaders.value.map((day, idx) => ({ key: `day_${idx}`, label: day, class: 'text-center col-day' }))
 ]);
 
@@ -826,10 +1288,15 @@ const overtimeData = computed(() => {
 
     // Chỉ thêm vào danh sách nếu có tăng ca
     if (hasOvertime) {
+      // Lấy tên nhân viên từ các field có thể có (giống như mainSummaryData)
+      const employeeName = emp.employeeName || emp.name || 
+                           (emp.firstName && emp.lastName ? `${emp.firstName} ${emp.lastName}` : null) ||
+                           emp.id || 'N/A'
+      
       const employee = {
         stt: employeesWithOvertime.length + 1,
         id: emp.id,
-        name: emp.name,
+        name: employeeName,
         avatar: emp.avatar,
         _idx: idx,
         ...dayData,
@@ -972,7 +1439,6 @@ const detailColumns = [
   { key: 'date', label: 'Ngày làm' },
   { key: 'checkInTime', label: 'Giờ vào' },
   { key: 'checkOutTime', label: 'Giờ ra' },
-  { key: 'type', label: 'Loại công' },
   { key: 'hours', label: 'Số giờ' },
   { key: 'days', label: 'Số ngày' },
   { key: 'late', label: 'Đi trễ (phút)' },
@@ -989,83 +1455,125 @@ const workShifts = ref([])
 const workShiftLoading = ref(false)
 
 // Function to calculate work hours, days, late and early minutes
-const calculateWorkDetails = (checkInTime, checkOutTime, shiftName) => {
-  if (!checkInTime || !checkOutTime) {
+// Sử dụng logic tương tự như generateAttendanceForEmployee và loadDayModalData
+const calculateWorkDetails = (item) => {
+  const checkInTimeStr = item.checkInTime
+  const checkOutTimeStr = item.checkOutTime
+  
+  if (!checkInTimeStr || !checkOutTimeStr) {
     return { hours: 0, days: 0, late: 0, early: 0 }
   }
 
-  // Find work shift data from API
-  const workShift = workShifts.value.find(shift =>
-    shift.shiftName.toLowerCase().includes(shiftName.toLowerCase()) ||
-    shiftName.toLowerCase().includes(shift.shiftName.toLowerCase())
-  )
-
-  if (!workShift || !workShift.shiftDetails || workShift.shiftDetails.length === 0) {
-    return { hours: 0, days: 0, late: 0, early: 0 }
+  const checkInTime = new Date(`2000-01-01T${checkInTimeStr}:00`)
+  const checkOutTime = new Date(`2000-01-01T${checkOutTimeStr}:00`)
+  
+  // Tính workHours dựa trên ca đã chọn (nếu có)
+  let workHours = 0
+  let standardWorkHours = 8 // Mặc định 8 giờ
+  let lateMinutes = 0
+  let earlyMinutes = 0
+  
+  if (item.workShiftID) {
+    // Tìm thông tin ca làm việc
+    const workShift = workshifts.value.find(shift => shift.id === item.workShiftID)
+    
+    if (workShift && workShift.shiftDetails) {
+      // Lấy thông tin ca cho ngày trong tuần
+      const workDate = new Date(item.workDate)
+      const dayOfWeek = workDate.getDay()
+      const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+      const currentDayName = dayNames[dayOfWeek]
+      
+      const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
+      
+      if (dayShiftDetail && dayShiftDetail.startTime !== '00:00:00' && dayShiftDetail.endTime !== '00:00:00') {
+        const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
+        const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
+        
+        // Tính giờ công chuẩn (trừ giờ nghỉ trưa)
+        let shiftWorkHours = (shiftEnd - shiftStart) / (1000 * 60 * 60)
+        
+        if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
+            dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
+          const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
+          const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
+          const breakHours = (breakEnd - breakStart) / (1000 * 60 * 60)
+          shiftWorkHours -= breakHours
+        }
+        
+        standardWorkHours = shiftWorkHours
+        
+        // Tính giờ công thực tế: dùng giờ vào/ra của ca nếu giờ thực tế ngoài khung ca
+        let effectiveCheckInTime = checkInTime
+        let effectiveCheckOutTime = checkOutTime
+        
+        // Nếu cả vào và ra đều sau giờ ra ca, tính từ giờ ra ca (coi như làm đủ ca)
+        if (checkInTime >= shiftEnd && checkOutTime >= shiftEnd) {
+          effectiveCheckInTime = shiftStart
+          effectiveCheckOutTime = shiftEnd
+        }
+        // Nếu cả vào và ra đều trước giờ vào ca, tính từ giờ vào ca
+        else if (checkInTime <= shiftStart && checkOutTime <= shiftStart) {
+          effectiveCheckInTime = shiftStart
+          effectiveCheckOutTime = shiftEnd
+        }
+        // Nếu vào trước giờ vào ca, dùng giờ vào ca
+        else if (checkInTime < shiftStart) {
+          effectiveCheckInTime = shiftStart
+        }
+        // Nếu ra sau giờ ra ca, dùng giờ ra ca
+        else if (checkOutTime > shiftEnd) {
+          effectiveCheckOutTime = shiftEnd
+        }
+        
+        // Tính tổng thời gian
+        const totalTimeHours = (effectiveCheckOutTime - effectiveCheckInTime) / (1000 * 60 * 60)
+        
+        // Trừ giờ nghỉ trưa nếu có
+        let actualWorkHours = totalTimeHours
+        if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
+            dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
+          const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
+          const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
+          
+          // Kiểm tra xem giờ nghỉ trưa có nằm trong khoảng làm việc không
+          if (effectiveCheckInTime <= breakEnd && effectiveCheckOutTime >= breakStart) {
+            const actualBreakStart = effectiveCheckInTime > breakStart ? effectiveCheckInTime : breakStart
+            const actualBreakEnd = effectiveCheckOutTime < breakEnd ? effectiveCheckOutTime : breakEnd
+            const actualBreakHours = (actualBreakEnd - actualBreakStart) / (1000 * 60 * 60)
+            actualWorkHours = totalTimeHours - Math.max(0, actualBreakHours)
+          }
+        }
+        
+        workHours = actualWorkHours
+        
+        // Calculate late minutes (check-in after shift start)
+        if (checkInTime > shiftStart) {
+          lateMinutes = Math.round((checkInTime - shiftStart) / (1000 * 60))
+        }
+        
+        // Calculate early minutes (check-out before shift end)
+        if (checkOutTime < shiftEnd) {
+          earlyMinutes = Math.round((shiftEnd - checkOutTime) / (1000 * 60))
+        }
+      } else {
+        // Không có shift details, tính theo giờ thực tế
+        workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+      }
+    } else {
+      // Không tìm thấy ca, tính theo giờ thực tế
+      workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
+    }
+  } else {
+    // Không có workShiftID, tính theo giờ thực tế
+    workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
   }
-
-  const shiftStartTime = shiftMatch[1] // e.g., "08:30"
-  const shiftEndTime = shiftMatch[2]   // e.g., "17:30"
-
-  // Convert time strings to minutes since midnight
-  const timeToMinutes = (timeStr) => {
-    const [hours, minutes] = timeStr.split(':').map(Number)
-    return hours * 60 + minutes
-  }
-
-  const checkInMinutes = timeToMinutes(checkInTime)
-  const checkOutMinutes = timeToMinutes(checkOutTime)
-  const shiftStartMinutes = timeToMinutes(shiftStartTime)
-  const shiftEndMinutes = timeToMinutes(shiftEndTime)
-
-  // Calculate total time from check-in to check-out
-  const totalMinutes = checkOutMinutes - checkInMinutes
-
-  // Calculate break time (lunch break)
-  // Default break time: 12:00-13:00 (60 minutes)
-  // This can be customized based on shift type
-  let breakStartTime = '12:00'
-  let breakEndTime = '13:00'
-
-  // Customize break time based on shift type
-  if (shiftName.includes('hành chính') || shiftName.includes('08:30')) {
-    // Office hours: 12:00-13:00
-    breakStartTime = '12:00'
-    breakEndTime = '13:00'
-  } else if (shiftName.includes('ca đêm') || shiftName.includes('night')) {
-    // Night shift: no lunch break or different break time
-    breakStartTime = '00:00'
-    breakEndTime = '00:00'
-  } else if (shiftName.includes('ca sáng') || shiftName.includes('morning')) {
-    // Morning shift: 11:30-12:30
-    breakStartTime = '11:30'
-    breakEndTime = '12:30'
-  }
-
-  // Check if break time overlaps with work time
-  const breakStartMinutes = timeToMinutes(breakStartTime)
-  const breakEndMinutes = timeToMinutes(breakEndTime)
-
-  // Calculate actual break time that overlaps with work time
-  const breakOverlapStart = Math.max(checkInMinutes, breakStartMinutes)
-  const breakOverlapEnd = Math.min(checkOutMinutes, breakEndMinutes)
-  const actualBreakMinutes = Math.max(0, breakOverlapEnd - breakOverlapStart)
-
-  // Calculate actual work hours (total time minus break time)
-  const workMinutes = totalMinutes - actualBreakMinutes
-  const workHours = Math.round((workMinutes / 60) * 100) / 100
 
   // Calculate work days (assuming 8 hours = 1 day)
   const workDays = Math.round((workHours / 8) * 100) / 100
 
-  // Calculate late minutes (if check-in is after shift start)
-  const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes)
-
-  // Calculate early minutes (if check-out is before shift end)
-  const earlyMinutes = Math.max(0, shiftEndMinutes - checkOutMinutes)
-
   return {
-    hours: workHours,
+    hours: Math.round(workHours * 100) / 100,
     days: workDays,
     late: lateMinutes,
     early: earlyMinutes
@@ -1075,7 +1583,7 @@ const calculateWorkDetails = (checkInTime, checkOutTime, shiftName) => {
 // Process detail data to include calculated values
 const processedDetailData = computed(() => {
   return detailData.value.map(item => {
-    const calculated = calculateWorkDetails(item.checkInTime, item.checkOutTime, item.shift)
+    const calculated = calculateWorkDetails(item)
     return {
       ...item,
       hours: calculated.hours,
@@ -1087,14 +1595,12 @@ const processedDetailData = computed(() => {
 })
 const attendanceDataColumns = [
   { key: 'stt', label: 'STT' },
-  { key: 'avatar', label: 'Ảnh chấm công' },
   { key: 'id', label: 'Mã nhân viên' },
   { key: 'name', label: 'Tên nhân viên' },
   { key: 'shift', label: 'Ca làm việc' },
   { key: 'date', label: 'Ngày làm' },
   { key: 'scanTime', label: 'Giờ quét' },
-  { key: 'machine', label: 'Máy chấm công' },
-  { key: 'location', label: 'Vị trí' },
+  { key: 'location', label: 'Máy chấm công' },
   { key: 'type', label: 'Loại công' }
 ];
 
@@ -1134,36 +1640,59 @@ const loadAttendanceData = async () => {
 
     // Transform data to match the expected format
     const transformedData = []
+    let sttCounter = 1 // Đếm STT từ 1 cho mỗi dòng trong transformedData
 
     data.forEach(item => {
+      // Parse location để lấy latitude/longitude nếu có
+      const parseLocation = (locationStr) => {
+        if (!locationStr) return { lat: null, lng: null, name: null };
+        
+        // Kiểm tra xem có phải là coordinates không (format: "lat,lng" hoặc "lat, lng")
+        const coordMatch = locationStr.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+        if (coordMatch) {
+          return {
+            lat: parseFloat(coordMatch[1]),
+            lng: parseFloat(coordMatch[2]),
+            name: locationStr
+          };
+        }
+        
+        // Nếu không phải coordinates, trả về như tên địa điểm
+        return { lat: null, lng: null, name: locationStr };
+      };
+
       // Tạo dòng cho giờ vào nếu có
       if (item.checkInTime) {
+        const locationInfo = parseLocation(item.location || item.checkInLocation);
         transformedData.push({
-          stt: item.stt,
-          avatar: item.imageCheckIn || 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
+          stt: sttCounter++,
           id: item.employeeCode,
           name: item.employeeName,
           shift: item.shiftName,
           date: new Date(item.workDate).toLocaleDateString('vi-VN'),
           scanTime: item.checkInTime.toString().substring(0, 5),
-          machine: item.machineName,
-          location: item.location,
+          machine: item.machineName || '-',
+          location: item.location || item.checkInLocation || '-',
+          locationLat: locationInfo.lat,
+          locationLng: locationInfo.lng,
           type: 'Vào'
         })
       }
 
       // Tạo dòng cho giờ ra nếu có
       if (item.checkOutTime) {
+        const locationInfo = parseLocation(item.location || item.checkOutLocation);
         transformedData.push({
-          stt: item.stt,
-          avatar: item.imageCheckOut || 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
+          stt: sttCounter++,
           id: item.employeeCode,
           name: item.employeeName,
           shift: item.shiftName,
           date: new Date(item.workDate).toLocaleDateString('vi-VN'),
           scanTime: item.checkOutTime.toString().substring(0, 5),
-          machine: item.machineName,
-          location: item.location,
+          machine: item.machineName || '-',
+          location: item.location || item.checkOutLocation || '-',
+          locationLat: locationInfo.lat,
+          locationLng: locationInfo.lng,
           type: 'Ra'
         })
       }
@@ -1342,19 +1871,21 @@ const loadDetailData = async () => {
 
     // Transform data to match the expected format for detail view
     const transformedData = []
+    let sttCounter = 1
 
-    data.forEach((item, index) => {
+    data.forEach((item) => {
       // Only include records that have both check-in and check-out times
       if (item.checkInTime && item.checkOutTime) {
         transformedData.push({
-          stt: index + 1,
+          stt: sttCounter++,
           id: item.employeeCode,
           name: item.employeeName,
           shift: item.shiftName,
+          workShiftID: item.workShiftID, // Lưu workShiftID để tính toán
           date: new Date(item.workDate).toLocaleDateString('vi-VN'),
+          workDate: item.workDate, // Lưu workDate để tính toán
           checkInTime: item.checkInTime.toString().substring(0, 5),
-          checkOutTime: item.checkOutTime.toString().substring(0, 5),
-          type: getAttendanceType(item.status)
+          checkOutTime: item.checkOutTime.toString().substring(0, 5)
         })
       }
     })
@@ -1443,11 +1974,15 @@ const loadDayModalData = async (employee, dayIdx) => {
             stt: sttCounter++,
             avatar: item.imageCheckIn || 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
             shiftName: item.shiftName,
-            refCode: item.refCode || `MP${index + 1}`,
+            workShiftID: item.workShiftID, // Lưu workShiftID để có thể update
+            refCode: null, // Không có mã phiếu tham chiếu cho chấm công, chỉ có cho nghỉ phép
+            attendanceId: item.id || null, // Sử dụng ID trực tiếp từ backend
             date: new Date(item.workDate).toLocaleDateString('vi-VN'),
             scanTime: item.checkInTime.toString().substring(0, 5),
             type: 'Vào',
-            location: item.machineName || 'Máy quét: Importfile'
+            location: item.machineName || '-',
+            employeeId: employee.id, // Lưu employeeId để tạo ShiftAssignment mới nếu cần
+            workDate: item.workDate // Lưu workDate để tạo ShiftAssignment mới nếu cần
           });
         }
         
@@ -1457,11 +1992,15 @@ const loadDayModalData = async (employee, dayIdx) => {
             stt: sttCounter++,
             avatar: item.imageCheckOut || 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
             shiftName: item.shiftName,
-            refCode: item.refCode || `MP${index + 1}`,
+            workShiftID: item.workShiftID, // Lưu workShiftID để có thể update
+            refCode: null, // Không có mã phiếu tham chiếu cho chấm công, chỉ có cho nghỉ phép
+            attendanceId: item.id || null, // Sử dụng ID trực tiếp từ backend
             date: new Date(item.workDate).toLocaleDateString('vi-VN'),
             scanTime: item.checkOutTime.toString().substring(0, 5),
             type: 'Ra',
-            location: item.machineName || 'Máy quét: Importfile'
+            location: item.machineName || '-',
+            employeeId: employee.id, // Lưu employeeId để tạo ShiftAssignment mới nếu cần
+            workDate: item.workDate // Lưu workDate để tạo ShiftAssignment mới nếu cần
           });
         }
       });
@@ -1740,10 +2279,25 @@ const loadDayModalData = async (employee, dayIdx) => {
           const checkOutTime = new Date(`2000-01-01T${item.checkOutTime}`);
           
           // Get shift details to calculate proper work hours and lunch break
-          const shiftDetails = workShiftInfo?.shiftDetails || [];
+          // Sử dụng workShiftID từ item (có thể đã được update) để tìm shift info
+          const itemWorkShiftID = item.workShiftID;
+          let shiftDetails = [];
           let totalWorkHours = 0;
           let shiftStart = null;
           let shiftEnd = null;
+          
+          // Tìm work shift info từ workShiftID của item (có thể đã được update)
+          if (itemWorkShiftID) {
+            const itemWorkShift = workshifts.value.find(shift => shift.id === itemWorkShiftID);
+            if (itemWorkShift) {
+              shiftDetails = itemWorkShift.shiftDetails || [];
+            }
+          }
+          
+          // Fallback to workShiftInfo nếu không tìm thấy
+          if (shiftDetails.length === 0 && workShiftInfo) {
+            shiftDetails = workShiftInfo.shiftDetails || [];
+          }
           
           // Get the day of week for the selected date
           const selectedDate = new Date(fullDate);
@@ -1752,6 +2306,7 @@ const loadDayModalData = async (employee, dayIdx) => {
           const currentDayName = dayNames[dayOfWeek];
           
           console.log('Selected date:', fullDate, 'Day of week:', dayOfWeek, 'Day name:', currentDayName);
+          console.log('Item workShiftID:', itemWorkShiftID);
           
           // Find shift details for the specific day
           const dayShiftDetail = shiftDetails.find(detail => detail.dayOfWeek === currentDayName);
@@ -1796,7 +2351,9 @@ const loadDayModalData = async (employee, dayIdx) => {
           }
           
           // Calculate actual work hours (total time minus lunch break)
-          const totalTimeHours = (checkOutTime - checkInTime) / (1000 * 60 * 60);
+          // Nếu giờ ra thực tế > giờ ra của ca, dùng giờ ra của ca để tính
+          const effectiveCheckOutTime = checkOutTime > shiftEnd ? shiftEnd : checkOutTime;
+          const totalTimeHours = (effectiveCheckOutTime - checkInTime) / (1000 * 60 * 60);
           const lunchBreakHours = totalTimeHours - totalWorkHours;
           const actualWorkHours = Math.max(0, totalTimeHours - Math.max(0, lunchBreakHours));
           const workDays = Math.round((actualWorkHours / 8) * 100) / 100;
@@ -1837,6 +2394,7 @@ const loadDayModalData = async (employee, dayIdx) => {
           transformedWorkData.push({
             stt: workSttCounter++,
             shiftName: item.shiftName,
+            workShiftID: itemWorkShiftID, // Lưu workShiftID để kiểm tra sau
             standard: `${totalWorkHours.toFixed(2)}/${(totalWorkHours / 8).toFixed(2)}`,
             scanInOut: `Vào: ${item.checkInTime.toString().substring(0, 5)}, Ra: ${item.checkOutTime.toString().substring(0, 5)}`,
             lateEarly: `Đi trễ: ${Math.round(lateMinutes)} phút, Về sớm: ${Math.round(earlyMinutes)} phút`,
@@ -2042,20 +2600,67 @@ const loadDayModalData = async (employee, dayIdx) => {
     
     dayShiftAssignments.forEach(assignment => {
       // Kiểm tra xem đã có attendance cho ca này chưa
-      const hasAttendance = attendanceData && attendanceData.some(att => 
+      // Kiểm tra cả trong attendanceData (từ API) và transformedWorkData (đã được thêm vào workHistory)
+      const hasAttendanceInAPI = attendanceData && attendanceData.some(att => 
         att.workShiftID === assignment.workShiftID
       );
       
-      if (!hasAttendance) {
-        const workShift = workShifts.value.find(ws => ws.id === assignment.workShiftID);
-        transformedWorkData.push({
-          stt: workSttCounter++,
-          shiftName: workShift ? workShift.shiftName : 'Ca chưa xác định',
-          standard: '8.00/1.00',
-          scanInOut: 'Vào: --:--, Ra: --:--',
-          lateEarly: 'Chưa chấm công',
-          workHour: '0.00/0.00'
-        });
+      // Kiểm tra xem đã có trong transformedWorkData chưa (từ attendance có chấm công)
+      // So sánh bằng workShiftID để chính xác hơn
+      const hasAttendanceInWorkData = transformedWorkData.some(work => 
+        work.workShiftID === assignment.workShiftID
+      );
+      
+      // Chỉ hiển thị trong "Lịch làm việc" nếu chưa có attendance cho ca này
+      if (!hasAttendanceInAPI && !hasAttendanceInWorkData) {
+        // Sửa: dùng workshifts từ composable thay vì workShifts
+        const workShift = workshifts.value.find(ws => ws.id === assignment.workShiftID);
+        
+        if (workShift) {
+          // Lấy thông tin ca làm việc để tính công chuẩn
+          const selectedDate = new Date(fullDate);
+          const dayOfWeek = selectedDate.getDay();
+          const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+          const currentDayName = dayNames[dayOfWeek];
+          
+          // Tìm shift details cho ngày này
+          const dayShiftDetail = workShift.shiftDetails?.find(detail => detail.dayOfWeek === currentDayName);
+          
+          let standardHours = 8.00;
+          let standardDays = 1.00;
+          // Luôn hiển thị --:-- khi chưa có dữ liệu chấm công
+          let scanInOut = 'Vào: --:--, Ra: --:--';
+          
+          if (dayShiftDetail && dayShiftDetail.startTime !== '00:00:00' && dayShiftDetail.endTime !== '00:00:00') {
+            const startTime = new Date(`2000-01-01T${dayShiftDetail.startTime}`);
+            const endTime = new Date(`2000-01-01T${dayShiftDetail.endTime}`);
+            
+            // Tính giờ công chuẩn (trừ giờ nghỉ trưa)
+            let workHours = (endTime - startTime) / (1000 * 60 * 60);
+            
+            if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
+                dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
+              const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`);
+              const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`);
+              const breakHours = (breakEnd - breakStart) / (1000 * 60 * 60);
+              workHours -= breakHours;
+            }
+            
+            standardHours = workHours;
+            standardDays = Math.round((workHours / 8) * 100) / 100;
+            // Không hiển thị giờ vào/ra từ shift detail khi chưa có dữ liệu chấm công
+            // scanInOut vẫn là 'Vào: --:--, Ra: --:--'
+          }
+          
+          transformedWorkData.push({
+            stt: workSttCounter++,
+            shiftName: workShift.shiftName,
+            standard: `${standardHours.toFixed(2)}/${standardDays.toFixed(2)}`,
+            scanInOut: scanInOut,
+            lateEarly: 'Chưa chấm công',
+            workHour: '0.00/0.00'
+          });
+        }
       }
     });
     
@@ -2098,6 +2703,94 @@ const loadDayModalData = async (employee, dayIdx) => {
     workHistory.value = [];
   } finally {
     dayModalLoading.value = false;
+  }
+}
+
+// Hàm xử lý đổi ca làm việc cho attendance
+const handleShiftChange = async (item, newShiftId) => {
+  if (!item.attendanceId || !newShiftId || item.workShiftID === parseInt(newShiftId)) {
+    return;
+  }
+
+  try {
+    // Set loading state
+    updatingShifts.value[item.attendanceId] = true;
+
+    // Gọi API để update attendance shift
+    await updateAttendanceShift(item.attendanceId, parseInt(newShiftId), item.employeeId, item.workDate);
+
+    // Tìm ca mới để cập nhật tên ca
+    const newShift = workshifts.value.find(shift => shift.id === parseInt(newShiftId));
+    
+    // Cập nhật lại attendanceHistory
+    const attendanceIndex = attendanceHistory.value.findIndex(att => att.attendanceId === item.attendanceId);
+    if (attendanceIndex !== -1) {
+      attendanceHistory.value[attendanceIndex].workShiftID = parseInt(newShiftId);
+      attendanceHistory.value[attendanceIndex].shiftName = newShift ? newShift.shiftName : item.shiftName;
+    }
+
+    // Cập nhật tất cả các record có cùng attendanceId (check-in và check-out)
+    attendanceHistory.value.forEach(att => {
+      if (att.attendanceId === item.attendanceId) {
+        att.workShiftID = parseInt(newShiftId);
+        att.shiftName = newShift ? newShift.shiftName : att.shiftName;
+      }
+    });
+
+    // Reload lại dữ liệu modal để cập nhật workHistory
+    await loadDayModalData(selectedEmployee.value, selectedDateIdx.value);
+    
+    // Reload lại dữ liệu attendance để cập nhật màu sắc trong bảng tổng hợp
+    await loadAttendanceDataForSummary();
+
+    showMessage('Đổi ca thành công!', 'success');
+  } catch (error) {
+    console.error('Error updating attendance shift:', error);
+    showMessage('Có lỗi xảy ra khi đổi ca: ' + (error.response?.data?.message || error.message), 'error');
+  } finally {
+    updatingShifts.value[item.attendanceId] = false;
+  }
+}
+
+// Hàm gọi API để update attendance shift
+const updateAttendanceShift = async (attendanceId, newWorkShiftID, employeeId, workDate) => {
+  try {
+    // Tìm hoặc tạo ShiftAssignment mới cho ca mới
+    const workDateObj = new Date(workDate);
+    const workDateStr = `${workDateObj.getFullYear()}-${String(workDateObj.getMonth() + 1).padStart(2, '0')}-${String(workDateObj.getDate()).padStart(2, '0')}`;
+    
+    // Kiểm tra xem đã có ShiftAssignment cho ca mới chưa
+    let shiftAssignment = shiftAssignments.value.find(sa => 
+      sa.employeeID === employeeId && 
+      sa.workShiftID === newWorkShiftID &&
+      new Date(sa.workDate).toDateString() === workDateObj.toDateString()
+    );
+
+    let shiftAssignmentId = null;
+
+    if (!shiftAssignment) {
+      // Tạo ShiftAssignment mới
+      const newAssignment = await createShiftAssignment({
+        employeeID: employeeId,
+        workShiftID: newWorkShiftID,
+        workDate: workDateStr
+      });
+      shiftAssignmentId = newAssignment.id;
+      // Refresh shift assignments
+      await fetchAllShiftAssignments();
+    } else {
+      shiftAssignmentId = shiftAssignment.id;
+    }
+
+    // Update attendance với ShiftAssignmentID mới
+    const response = await api.put(`/Attendance/${attendanceId}/shift`, {
+      shiftAssignmentID: shiftAssignmentId
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error in updateAttendanceShift:', error);
+    throw error;
   }
 }
 
@@ -2156,6 +2849,64 @@ const handleCloseAllSheets = async () => {
 }
 
 // Load attendance data on component mount
+// Watch for location map modal to initialize map
+let locationMap = null
+watch(showLocationMapModal, async (isOpen) => {
+  if (isOpen && mapLocation.value.lat && mapLocation.value.lng) {
+    await nextTick()
+    // Load Leaflet dynamically
+    if (typeof window !== 'undefined' && !window.L) {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      document.head.appendChild(link)
+      
+      const script = document.createElement('script')
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+      script.onload = initLocationMap
+      document.head.appendChild(script)
+    } else if (window.L) {
+      initLocationMap()
+    }
+  } else if (!isOpen && locationMap) {
+    // Clean up map when modal closes
+    if (locationMap) {
+      locationMap.remove()
+      locationMap = null
+    }
+  }
+})
+
+function initLocationMap() {
+  if (!window.L) return
+  
+  const mapContainer = document.getElementById('location-map')
+  if (!mapContainer) return
+  
+  // Remove existing map if any
+  if (locationMap) {
+    locationMap.remove()
+  }
+  
+  // Initialize map
+  locationMap = window.L.map('location-map', {
+    zoomControl: true,
+    scrollWheelZoom: true
+  }).setView([mapLocation.value.lat, mapLocation.value.lng], 18)
+  
+  // Add tile layer
+  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(locationMap)
+  
+  // Add marker
+  window.L.marker([mapLocation.value.lat, mapLocation.value.lng])
+    .addTo(locationMap)
+    .bindPopup(mapLocation.value.name)
+    .openPopup()
+}
+
 onMounted(async () => {
   console.log('=== MOUNTING COMPONENT ===');
   // Sync tab from URL query
@@ -3004,23 +3755,49 @@ const tourSteps = computed(() => {
               </div>
             </div>
           </div>
-          <div class="attendance-summary-table" data-tour="summary-table">
+          <div class="attendance-summary-table-enhanced" data-tour="summary-table">
             <DataTable :columns="mainSummaryColumns" :data="paginatedMainSummaryData">
-              <template #detail="{ item }">
-                <button class="btn btn-sm btn-outline-primary" @click.stop="openEmployeeModal(item)" data-tour="detail-btn"><i
-                    class="fa-solid fa-eye"></i></button>
-              </template>
               <template #id="{ item }">
-                <span class="emp-id fw-bold text-primary">{{ item.id }}</span>
+                <div class="emp-id-enhanced">
+                  <i class="fas fa-id-card me-2 text-primary"></i>
+                  <span class="emp-id-text fw-bold text-primary">{{ item.id }}</span>
+                </div>
               </template>
               <template #name="{ item }">
-                <span class="fw-bold">{{ item.name }}</span>
+                <div class="emp-name-row">
+                  <i class="fas fa-user me-2 text-muted"></i>
+                  <span class="emp-name-text fw-bold">{{ item.name || 'N/A' }}</span>
+                </div>
               </template>
               <template v-for="(day, idx) in dayHeaders" v-slot:[`day_${idx}`]="{ item }">
-                <div class="schedule-cell-modern" :class="getCellClass(item._idx, idx)"
-                  :title="getCellTitle(item._idx, idx)" @click.stop="openDayModal(item, idx)" style="cursor:pointer;" data-tour="day-cell">
+                <div class="schedule-cell-enhanced" :class="getCellClass(item._idx, idx)"
+                  :title="getCellTitle(item._idx, idx)" @click.stop="openDayModal(item, idx)" data-tour="day-cell">
                   <span class="cell-time">{{ item[`day_${idx}`]?.time }}</span>
                 </div>
+              </template>
+              <template #totalStandardDays="{ item }">
+                <span class="summary-value">{{ item.totalStandardDays || 0 }}</span>
+              </template>
+              <template #totalWorkDays="{ item }">
+                <span class="summary-value">{{ item.totalWorkDays || 0 }}</span>
+              </template>
+              <template #totalPresent="{ item }">
+                <span class="summary-value">{{ item.totalPresent || 0 }}</span>
+              </template>
+              <template #totalPaidLeave="{ item }">
+                <span class="summary-value">{{ item.totalPaidLeave || 0 }}</span>
+              </template>
+              <template #totalAbsentWithoutLeave="{ item }">
+                <span class="summary-value text-warning">{{ item.totalAbsentWithoutLeave || 0 }}</span>
+              </template>
+              <template #totalLateMinutes="{ item }">
+                <span class="summary-value text-danger">{{ item.totalLateMinutes || 0 }}</span>
+              </template>
+              <template #totalEarlyMinutes="{ item }">
+                <span class="summary-value text-danger">{{ item.totalEarlyMinutes || 0 }}</span>
+              </template>
+              <template #totalForgotCheckInOut="{ item }">
+                <span class="summary-value text-danger">{{ item.totalForgotCheckInOut || 0 }}</span>
               </template>
             </DataTable>
 
@@ -3066,73 +3843,121 @@ const tourSteps = computed(() => {
 
             <ModalDialog :show="showEmployeeModal" title="Chi tiết tổng hợp công nhân viên" size="xl" scrollable
               @update:show="showEmployeeModal = $event" data-tour="employee-modal">
-              <div class="modal-emp-header">
-                <div class="modal-emp-avatar">
-                  <img v-if="selectedEmployee?.avatar" :src="selectedEmployee.avatar" alt="avatar" />
-                  <div v-else class="avatar-placeholder"><i class="fas fa-user"></i></div>
+              <div class="modal-emp-header-enhanced">
+                <div class="modal-emp-avatar-wrapper">
+                  <div class="modal-emp-avatar-enhanced">
+                    <img v-if="selectedEmployee?.avatar" :src="selectedEmployee.avatar" alt="avatar" />
+                    <div v-else class="avatar-placeholder-enhanced">
+                      <i class="fas fa-user"></i>
+                    </div>
+                  </div>
                 </div>
-                <div class="modal-emp-info">
-                  <div class="emp-name fw-bold">{{ selectedEmployee?.name }}</div>
-                  <div class="emp-id text-muted">Mã NV: {{ selectedEmployee?.id }}</div>
-                  <div class="emp-pos text-muted">Chức vụ: {{ selectedEmployee?.position }}</div>
+                <div class="modal-emp-info-enhanced">
+                  <div class="emp-name-enhanced">
+                    <i class="fas fa-user-tie me-2 text-primary"></i>
+                    {{ selectedEmployee?.name || 'N/A' }}
+                  </div>
+                  <div class="emp-details-row">
+                    <div class="emp-detail-item">
+                      <span class="detail-label">Mã NV:</span>
+                      <span class="detail-value">{{ selectedEmployee?.id || 'N/A' }}</span>
+                    </div>
+                    <div class="emp-detail-item">
+                      <span class="detail-label">Chức vụ:</span>
+                      <span class="detail-value">{{ selectedEmployee?.position || 'N/A' }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div v-if="selectedEmployee && selectedEmployee.summary" class="summary-dashboard mt-4">
+              <div v-if="selectedEmployee && selectedEmployee.summary" class="summary-dashboard-enhanced mt-4">
                 <div class="row g-3">
                   <div class="col-lg-3 col-md-6">
-                    <div class="stat-card-summary primary">
-                      <div class="stat-icon-summary"><i class="fas fa-calendar-check"></i></div>
-                      <div class="stat-info-summary">
+                    <div class="stat-card-enhanced primary-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-calendar-check"></i>
+                      </div>
+                      <div class="stat-content">
                         <div class="stat-value">{{ selectedEmployee.summary.totalWorkDays }}</div>
                         <div class="stat-label">Tổng ngày công</div>
                       </div>
                     </div>
                   </div>
                   <div class="col-lg-3 col-md-6">
-                    <div class="stat-card-summary success">
-                      <div class="stat-icon-summary"><i class="fas fa-user-check"></i></div>
-                      <div class="stat-info-summary">
+                    <div class="stat-card-enhanced success-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-user-check"></i>
+                      </div>
+                      <div class="stat-content">
                         <div class="stat-value">{{ selectedEmployee.summary.totalPresent }}</div>
                         <div class="stat-label">Tổng đi làm</div>
                       </div>
                     </div>
                   </div>
                   <div class="col-lg-3 col-md-6">
-                    <div class="stat-card-summary info">
-                      <div class="stat-icon-summary"><i class="fas fa-plane-departure"></i></div>
-                      <div class="stat-info-summary">
-                        <div class="stat-value">{{ selectedEmployee.summary.businessTrip }}</div>
-                        <div class="stat-label">Công tác</div>
+                    <div class="stat-card-enhanced info-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-calendar-day"></i>
                       </div>
-                    </div>
-                  </div>
-                  <div class="col-lg-3 col-md-6">
-                    <div class="stat-card-summary secondary">
-                      <div class="stat-icon-summary"><i class="fas fa-calendar-day"></i></div>
-                      <div class="stat-info-summary">
+                      <div class="stat-content">
                         <div class="stat-value">{{ selectedEmployee.summary.totalPaidLeave }}</div>
                         <div class="stat-label">Nghỉ có lương</div>
                       </div>
                     </div>
                   </div>
-                </div>
-                <hr class="my-4">
-                <div class="row g-3">
-                  <div class="col-md-6">
-                    <div class="stat-card-summary warning">
-                      <div class="stat-icon-summary"><i class="fas fa-clock"></i></div>
-                      <div class="stat-info-summary">
-                        <div class="stat-value">{{ selectedEmployee.summary.totalCompensatoryOt }} giờ</div>
-                        <div class="stat-label">Tăng ca nghỉ bù</div>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced warning-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-exclamation-triangle"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedEmployee.summary.totalAbsentWithoutLeave }}</div>
+                        <div class="stat-label">Vắng không phép</div>
                       </div>
                     </div>
                   </div>
-                  <div class="col-md-6">
-                    <div class="stat-card-summary success-alt">
-                      <div class="stat-icon-summary"><i class="fas fa-money-bill-wave"></i></div>
-                      <div class="stat-info-summary">
-                        <div class="stat-value">{{ selectedEmployee.summary.totalPaidOt }} giờ</div>
-                        <div class="stat-label">Tăng ca tính lương</div>
+                </div>
+                <div class="row g-3 mt-3">
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced late-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-clock"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedEmployee.summary.totalLateMinutes }}</div>
+                        <div class="stat-label">Số phút đi trễ</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced early-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-hourglass-half"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedEmployee.summary.totalEarlyMinutes }}</div>
+                        <div class="stat-label">Số phút về sớm</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced danger-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-sign-in-alt"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedEmployee.summary.totalForgotCheckIn }}</div>
+                        <div class="stat-label">Số ngày quên check-in</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced danger-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-sign-out-alt"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedEmployee.summary.totalForgotCheckOut }}</div>
+                        <div class="stat-label">Số ngày quên check-out</div>
                       </div>
                     </div>
                   </div>
@@ -3146,39 +3971,63 @@ const tourSteps = computed(() => {
 
             <ModalDialog :show="showDayModal" title="Chi tiết chấm công từng ngày" size="xl" scrollable
               @update:show="showDayModal = $event" data-tour="day-modal">
-              <div class="modal-emp-header">
-                <div class="modal-emp-avatar">
-                  <img v-if="selectedEmployee?.avatar" :src="selectedEmployee.avatar" alt="avatar" />
-                  <div v-else class="avatar-placeholder"><i class="fas fa-user"></i></div>
+              <div class="modal-emp-header-enhanced">
+                <div class="modal-emp-avatar-wrapper">
+                  <div class="modal-emp-avatar-enhanced">
+                    <img v-if="selectedEmployee?.avatar" :src="selectedEmployee.avatar" alt="avatar" />
+                    <div v-else class="avatar-placeholder-enhanced">
+                      <i class="fas fa-user"></i>
+                    </div>
+                  </div>
                 </div>
-                <div class="modal-emp-info">
-                  <div class="emp-name fw-bold">{{ selectedEmployee?.name }}</div>
-                  <div class="emp-id text-muted">Mã NV: {{ selectedEmployee?.id }}</div>
-                  <div class="emp-pos text-muted">Chức vụ: {{ selectedEmployee?.position }}</div>
+                <div class="modal-emp-info-enhanced">
+                  <div class="emp-name-enhanced">
+                    <i class="fas fa-user-tie me-2 text-primary"></i>
+                    {{ selectedEmployee?.name || 'N/A' }}
+                  </div>
+                  <div class="emp-details-row">
+                    <div class="emp-detail-item">
+                      <i class="fas fa-id-card me-1 text-muted"></i>
+                      <span class="detail-label">Mã NV:</span>
+                      <span class="detail-value">{{ selectedEmployee?.id || 'N/A' }}</span>
+                    </div>
+                    <div class="emp-detail-item">
+                      <i class="fas fa-briefcase me-1 text-muted"></i>
+                      <span class="detail-label">Chức vụ:</span>
+                      <span class="detail-value">{{ selectedEmployee?.position || 'Chưa có' }}</span>
+                    </div>
+                  </div>
                 </div>
-                <div class="modal-emp-date">
-                  <span class="fw-bold">Ngày đi làm: </span>
-                  <span>{{ selectedDateIdx !== null ? dayHeaders[selectedDateIdx] : '' }}</span>
+                <div class="modal-emp-date-enhanced">
+                  <div class="date-badge">
+                    <i class="fas fa-calendar-day me-2"></i>
+                    <div>
+                      <div class="date-label">Ngày đi làm</div>
+                      <div class="date-value">{{ selectedDateIdx !== null ? dayHeaders[selectedDateIdx] : '' }}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <!-- Loading State -->
-              <div v-if="dayModalLoading" class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                  <span class="visually-hidden">Đang tải...</span>
+              <div v-if="dayModalLoading" class="loading-state-enhanced">
+                <div class="loading-spinner-wrapper">
+                  <div class="spinner-enhanced"></div>
+                  <div class="spinner-ring"></div>
                 </div>
-                <p class="mt-2">Đang tải dữ liệu chi tiết...</p>
+                <p class="loading-text">Đang tải dữ liệu chi tiết...</p>
               </div>
 
               <!-- Error State -->
-              <div v-else-if="dayModalError" class="alert alert-danger">
-                <div class="d-flex align-items-center justify-content-between">
-                  <div>
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    {{ dayModalError }}
-                  </div>
-                  <button class="btn btn-outline-danger btn-sm" @click="openDayModal(selectedEmployee, selectedDateIdx)" :disabled="dayModalLoading">
-                    <i class="fas fa-redo me-1"></i>
+              <div v-else-if="dayModalError" class="error-state-enhanced">
+                <div class="error-icon-wrapper">
+                  <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="error-content">
+                  <h5 class="error-title">Có lỗi xảy ra</h5>
+                  <p class="error-message">{{ dayModalError }}</p>
+                  <button class="btn-retry" @click="openDayModal(selectedEmployee, selectedDateIdx)" :disabled="dayModalLoading">
+                    <i class="fas fa-redo me-2"></i>
                     Thử lại
                   </button>
                 </div>
@@ -3186,42 +4035,73 @@ const tourSteps = computed(() => {
 
               <!-- Data Content -->
               <div v-else>
-                <div class="modal-section">
-                  <div class="section-title"><i class="fas fa-fingerprint"></i> Dữ liệu chấm công</div>
+                <div class="modal-section-enhanced">
+                  <div class="section-title-enhanced">
+                    <div class="section-icon-wrapper">
+                      <i class="fas fa-fingerprint"></i>
+                    </div>
+                    <span>Dữ liệu chấm công</span>
+                  </div>
                   <div v-if="filteredAttendanceHistory.length > 0" data-tour="attendance-history">
                     <DataTable :columns="attendanceColumnsNoActions" :data="filteredAttendanceHistory">
-                      <template #avatar="{ item }">
-                        <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar clickable-image" 
-                             @click="handleImageClick(item.avatar, 'checkin')" />
+                      <template #shiftName="{ item }">
+                        <!-- Chỉ cho phép đổi ca nếu không phải nghỉ phép và có attendanceId -->
+                        <select 
+                          v-if="item.attendanceId && !item.shiftName?.includes('Nghỉ phép') && !item.shiftName?.includes('Phép năm') && !item.shiftName?.includes('Nghỉ bù')"
+                          class="form-select-enhanced form-select-sm"
+                          :value="item.workShiftID || ''"
+                          @change="handleShiftChange(item, $event.target.value)"
+                          :disabled="updatingShifts[item.attendanceId]"
+                          style="min-width: 150px;"
+                        >
+                          <option value="">-- Chọn ca --</option>
+                          <option 
+                            v-for="shift in getAvailableShiftsForItem(item)" 
+                            :key="shift.id" 
+                            :value="shift.id"
+                          >
+                            {{ shift.shiftName }}
+                          </option>
+                        </select>
+                        <span v-else>{{ item.shiftName }}</span>
+                        <span v-if="updatingShifts[item.attendanceId]" class="ms-2">
+                          <i class="fas fa-spinner fa-spin text-primary"></i>
+                        </span>
                       </template>
                       <template #refCode="{ item }">
                         <!-- Debug info -->
 
                         
+                        <!-- Chỉ hiển thị mã phiếu tham chiếu cho nghỉ phép -->
                         <span 
                           v-if="item.refCode && (item.location === 'Nghỉ phép' || item.shiftName?.includes('Nghỉ phép') || item.shiftName?.includes('Phép năm') || item.shiftName?.includes('Nghỉ bù'))" 
-                          class="voucher-code-link text-primary cursor-pointer"
+                          class="voucher-code-link-enhanced"
                           @click="openLeaveFormModal(item.refCode)"
                           :title="'Click để xem chi tiết phiếu nghỉ phép'"
                           data-tour="voucher-code-link"
                         >
-                          <i class="fas fa-file-alt me-1"></i>
+                          <i class="fas fa-file-alt me-2"></i>
                           {{ item.refCode }}
                         </span>
-                        <span v-else-if="item.refCode" class="text-muted">
-                          {{ item.refCode }}
-                        </span>
-                        <span v-else class="text-muted">--</span>
+                        <!-- Dữ liệu chấm công không có mã phiếu tham chiếu, hiển thị dấu - -->
+                        <span v-else class="text-muted">-</span>
                       </template>
                     </DataTable>
                   </div>
-                  <div v-else class="text-center py-3 text-muted">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Không có dữ liệu chấm công cho ngày này
+                  <div v-else class="empty-state-enhanced">
+                    <div class="empty-icon-wrapper">
+                      <i class="fas fa-inbox"></i>
+                    </div>
+                    <p class="empty-text">Không có dữ liệu chấm công cho ngày này</p>
                   </div>
                 </div>
-                <div class="modal-section">
-                  <div class="section-title"><i class="fas fa-calendar-alt"></i> Lịch làm việc</div>
+                <div class="modal-section-enhanced">
+                  <div class="section-title-enhanced">
+                    <div class="section-icon-wrapper">
+                      <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <span>Lịch làm việc</span>
+                  </div>
                   <div v-if="filteredWorkHistory.length > 0" data-tour="work-history">
                     <DataTable :columns="workColumnsNoActions" :data="filteredWorkHistory">
                       <template #scanInOut="{ item }">
@@ -3234,9 +4114,11 @@ const tourSteps = computed(() => {
                       </template>
                     </DataTable>
                   </div>
-                  <div v-else class="text-center py-3 text-muted">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Không có dữ liệu lịch làm việc cho ngày này
+                  <div v-else class="empty-state-enhanced">
+                    <div class="empty-icon-wrapper">
+                      <i class="fas fa-calendar-times"></i>
+                    </div>
+                    <p class="empty-text">Không có dữ liệu lịch làm việc cho ngày này</p>
                   </div>
                 </div>
               </div>
@@ -3656,20 +4538,22 @@ const tourSteps = computed(() => {
           <div v-else>
             <!-- Show table if there are employees with overtime -->
             <div v-if="overtimeData.length > 0">
-              <div class="attendance-summary-table" data-tour="overtime-table">
+              <div class="attendance-summary-table-enhanced" data-tour="overtime-table">
                 <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData">
-                  <template #detail="{ item }">
-                    <button class="btn btn-sm btn-outline-primary" @click.stop="openOvertimeModal(item)" data-tour="overtime-detail-btn"><i
-                        class="fa-solid fa-eye"></i></button>
-                  </template>
                   <template #id="{ item }">
-                    <span class="emp-id fw-bold text-primary">{{ item.id }}</span>
+                    <div class="emp-id-enhanced">
+                      <i class="fas fa-id-card me-2 text-primary"></i>
+                      <span class="emp-id-text fw-bold text-primary">{{ item.id }}</span>
+                    </div>
                   </template>
                   <template #name="{ item }">
-                    <span class="fw-bold">{{ item.name }}</span>
+                    <div class="emp-name-row">
+                      <i class="fas fa-user me-2 text-muted"></i>
+                      <span class="emp-name-text fw-bold">{{ item.name || 'N/A' }}</span>
+                    </div>
                   </template>
                   <template v-for="(day, idx) in overtimeHeaders" v-slot:[`day_${idx}`]="{ item }">
-                    <div class="schedule-cell-modern" :class="getOvertimeCellClass(item[`day_${idx}`]?.type)"
+                    <div class="schedule-cell-enhanced" :class="getOvertimeCellClass(item[`day_${idx}`]?.type)"
                       @click.stop="openOvertimeModal(item, idx)" style="cursor:pointer;">
                       <span v-if="item[`day_${idx}`]?.hours > 0">{{ item[`day_${idx}`]?.hours }}</span>
                     </div>
@@ -3727,104 +4611,177 @@ const tourSteps = computed(() => {
               </div>
             </div>
           </div>
-          <ModalDialog :show="showOvertimeModal" title="Chi tiết tăng ca" size="md" scrollable
+          <ModalDialog :show="showOvertimeModal" title="Chi tiết tăng ca" size="lg" scrollable
             @update:show="showOvertimeModal = $event" data-tour="overtime-modal">
-            <div class="modal-emp-header">
-              <div class="modal-emp-avatar">
-                <img v-if="selectedOvertimeEmployee?.avatar" :src="selectedOvertimeEmployee.avatar" alt="avatar" />
-                <div v-else class="avatar-placeholder"><i class="fas fa-user"></i></div>
+            <div class="modal-emp-header-enhanced">
+              <div class="modal-emp-avatar-wrapper">
+                <div class="modal-emp-avatar-enhanced">
+                  <img v-if="selectedOvertimeEmployee?.avatar" :src="selectedOvertimeEmployee.avatar" alt="avatar" />
+                  <div v-else class="avatar-placeholder-enhanced">
+                    <i class="fas fa-user"></i>
+                  </div>
+                </div>
               </div>
-              <div class="modal-emp-info">
-                <div class="emp-name fw-bold">{{ selectedOvertimeEmployee?.name }}</div>
-                <div class="emp-id text-muted">Mã NV: {{ selectedOvertimeEmployee?.id }}</div>
-                <div class="emp-pos text-muted">Chức vụ: {{ selectedOvertimeEmployee?.position }}</div>
+              <div class="modal-emp-info-enhanced">
+                <div class="emp-name-enhanced">
+                  <i class="fas fa-user-tie me-2 text-primary"></i>
+                  {{ selectedOvertimeEmployee?.name || 'N/A' }}
+                </div>
+                <div class="emp-details-row">
+                  <div class="emp-detail-item">
+                    <i class="fas fa-id-card me-1 text-muted"></i>
+                    <span class="detail-label">Mã NV:</span>
+                    <span class="detail-value">{{ selectedOvertimeEmployee?.id || 'N/A' }}</span>
+                  </div>
+                  <div class="emp-detail-item">
+                    <i class="fas fa-briefcase me-1 text-muted"></i>
+                    <span class="detail-label">Chức vụ:</span>
+                    <span class="detail-value">{{ selectedOvertimeEmployee?.position || 'Chưa có' }}</span>
+                  </div>
+                </div>
               </div>
-              <div class="modal-emp-date" v-if="selectedOvertimeDayIdx !== null">
-                <span class="fw-bold">Ngày: </span>
-                <span>{{ overtimeHeaders[selectedOvertimeDayIdx] }}</span>
+              <div class="modal-emp-date-enhanced" v-if="selectedOvertimeDayIdx !== null">
+                <div class="date-badge">
+                  <i class="fas fa-calendar-day me-2"></i>
+                  <div>
+                    <div class="date-label">Ngày tăng ca</div>
+                    <div class="date-value">{{ overtimeHeaders[selectedOvertimeDayIdx] }}</div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="modal-summary-table mt-3">
-              <!-- Specific day details -->
-              <div
-                v-if="selectedOvertimeDayIdx !== null && selectedOvertimeEmployee[`day_${selectedOvertimeDayIdx}`]?.hours > 0"
-                class="overtime-summary-card">
-                <h6 class="fw-bold mb-3">Chi tiết tăng ca ngày</h6>
-                <div class="row g-3">
-                  <div class="col-md-6">
-                    <div class="summary-item">
-                      <span class="summary-label">Số giờ tăng ca:</span>
-                      <span class="summary-value">{{ getDayOvertimeHours(selectedOvertimeEmployee,
-                        selectedOvertimeDayIdx) }}
-                        giờ</span>
+
+            <!-- Specific day details -->
+            <div v-if="selectedOvertimeDayIdx !== null && selectedOvertimeEmployee[`day_${selectedOvertimeDayIdx}`]?.hours > 0">
+              <div class="modal-section-enhanced">
+                <div class="section-title-enhanced">
+                  <div class="section-icon-wrapper">
+                    <i class="fas fa-clock"></i>
+                  </div>
+                  <span>Chi tiết tăng ca ngày</span>
+                </div>
+                <div class="row g-2">
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-overtime">
+                      <div class="stat-icon-overtime">
+                        <i class="fas fa-clock"></i>
+                      </div>
+                      <div class="stat-content-overtime">
+                        <div class="stat-value-overtime">{{ getDayOvertimeHours(selectedOvertimeEmployee, selectedOvertimeDayIdx) }}</div>
+                        <div class="stat-label-overtime">Số giờ tăng ca</div>
+                      </div>
                     </div>
                   </div>
-                  <div class="col-md-6">
-                    <div class="summary-item">
-                      <span class="summary-label">Số ngày tăng ca:</span>
-                      <span class="summary-value">{{ getDayOvertimeDays(selectedOvertimeEmployee,
-                        selectedOvertimeDayIdx) }}
-                        ngày</span>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-overtime">
+                      <div class="stat-icon-overtime">
+                        <i class="fas fa-calendar-day"></i>
+                      </div>
+                      <div class="stat-content-overtime">
+                        <div class="stat-value-overtime">{{ getDayOvertimeDays(selectedOvertimeEmployee, selectedOvertimeDayIdx) }}</div>
+                        <div class="stat-label-overtime">Số ngày tăng ca</div>
+                      </div>
                     </div>
                   </div>
-                  <div class="col-md-6">
-                    <div class="summary-item">
-                      <span class="summary-label">Giờ có hệ số:</span>
-                      <span class="summary-value">{{ getDayOvertimeHoursWithCoefficient(selectedOvertimeEmployee,
-                        selectedOvertimeDayIdx) }} giờ</span>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-overtime">
+                      <div class="stat-icon-overtime">
+                        <i class="fas fa-calculator"></i>
+                      </div>
+                      <div class="stat-content-overtime">
+                        <div class="stat-value-overtime">{{ getDayOvertimeHoursWithCoefficient(selectedOvertimeEmployee, selectedOvertimeDayIdx) }}</div>
+                        <div class="stat-label-overtime">Giờ có hệ số</div>
+                      </div>
                     </div>
                   </div>
-                  <div class="col-md-6">
-                    <div class="summary-item">
-                      <span class="summary-label">Ngày có hệ số:</span>
-                      <span class="summary-value">{{ getDayOvertimeDaysWithCoefficient(selectedOvertimeEmployee,
-                        selectedOvertimeDayIdx) }} ngày</span>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-overtime">
+                      <div class="stat-icon-overtime">
+                        <i class="fas fa-calendar-check"></i>
+                      </div>
+                      <div class="stat-content-overtime">
+                        <div class="stat-value-overtime">{{ getDayOvertimeDaysWithCoefficient(selectedOvertimeEmployee, selectedOvertimeDayIdx) }}</div>
+                        <div class="stat-label-overtime">Ngày có hệ số</div>
+                      </div>
                     </div>
                   </div>
                   <div class="col-12" v-if="selectedOvertimeEmployee[`day_${selectedOvertimeDayIdx}`]?.request">
-                    <div class="summary-item">
-                      <span class="summary-label">Hệ số:</span>
-                      <span class="summary-value">{{
-                        selectedOvertimeEmployee[`day_${selectedOvertimeDayIdx}`]?.request?.coefficient }}</span>
+                    <div class="stat-card-overtime stat-card-overtime-full">
+                      <div class="stat-icon-overtime">
+                        <i class="fas fa-percent"></i>
+                      </div>
+                      <div class="stat-content-overtime">
+                        <div class="stat-value-overtime">{{ selectedOvertimeEmployee[`day_${selectedOvertimeDayIdx}`]?.request?.coefficient || 'N/A' }}</div>
+                        <div class="stat-label-overtime">Hệ số</div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              <!-- No overtime for this day -->
-              <div v-else-if="selectedOvertimeDayIdx !== null" class="text-center p-4 text-muted">
-                <i class="fas fa-calendar-times fa-3x mb-3"></i>
-                <p>Không có tăng ca trong ngày này</p>
+            <!-- No overtime for this day -->
+            <div v-else-if="selectedOvertimeDayIdx !== null" class="modal-section-enhanced">
+              <div class="empty-state-enhanced">
+                <div class="empty-icon-wrapper">
+                  <i class="fas fa-calendar-times"></i>
+                </div>
+                <p class="empty-text">Không có tăng ca trong ngày này</p>
               </div>
+            </div>
 
-              <!-- Monthly summary -->
-              <div v-else class="overtime-summary-card">
-                <h6 class="fw-bold mb-3">Tổng hợp tăng ca tháng</h6>
+            <!-- Monthly summary -->
+            <div v-else>
+              <div class="modal-section-enhanced">
+                <div class="section-title-enhanced">
+                  <div class="section-icon-wrapper">
+                    <i class="fas fa-chart-bar"></i>
+                  </div>
+                  <span>Tổng hợp tăng ca tháng</span>
+                </div>
                 <div class="row g-3">
-                  <div class="col-md-6">
-                    <div class="summary-item">
-                      <span class="summary-label">Tổng giờ tăng ca:</span>
-                      <span class="summary-value">{{ selectedOvertimeEmployee?.totalOvertimeHours ?? 0 }} giờ</span>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced primary-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-clock"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedOvertimeEmployee?.totalOvertimeHours ?? 0 }}</div>
+                        <div class="stat-label">Tổng giờ tăng ca</div>
+                      </div>
                     </div>
                   </div>
-                  <div class="col-md-6">
-                    <div class="summary-item">
-                      <span class="summary-label">Số ngày tăng ca:</span>
-                      <span class="summary-value">{{ selectedOvertimeEmployee?.totalOvertimeDays ?? 0 }} ngày</span>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced success-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-calendar-day"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedOvertimeEmployee?.totalOvertimeDays ?? 0 }}</div>
+                        <div class="stat-label">Số ngày tăng ca</div>
+                      </div>
                     </div>
                   </div>
-                  <div class="col-md-6">
-                    <div class="summary-item">
-                      <span class="summary-label">Tổng giờ có hệ số:</span>
-                      <span class="summary-value">{{ selectedOvertimeEmployee?.totalOvertimeHoursWithCoeff ?? 0 }}
-                        giờ</span>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced info-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-calculator"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedOvertimeEmployee?.totalOvertimeHoursWithCoeff ?? 0 }}</div>
+                        <div class="stat-label">Tổng giờ có hệ số</div>
+                      </div>
                     </div>
                   </div>
-                  <div class="col-md-6">
-                    <div class="summary-item">
-                      <span class="summary-label">Số ngày có hệ số:</span>
-                      <span class="summary-value">{{ selectedOvertimeEmployee?.totalOvertimeDaysWithCoeff ?? 0 }}
-                        ngày</span>
+                  <div class="col-lg-3 col-md-6">
+                    <div class="stat-card-enhanced warning-gradient">
+                      <div class="stat-icon-wrapper">
+                        <i class="fas fa-calendar-check"></i>
+                      </div>
+                      <div class="stat-content">
+                        <div class="stat-value">{{ selectedOvertimeEmployee?.totalOvertimeDaysWithCoeff ?? 0 }}</div>
+                        <div class="stat-label">Số ngày có hệ số</div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3908,15 +4865,6 @@ const tourSteps = computed(() => {
           <!-- Data Table -->
           <div v-else class="attendance-summary-table" data-tour="detail-table">
             <DataTable :columns="detailColumns" :data="paginatedDetailData">
-              <template #type="{ item }">
-                <span :class="{
-                  'cell-work': item.type === 'Đi làm',
-                  'cell-leave': item.type === 'Nghỉ phép',
-                  'cell-remote': item.type === 'Làm việc từ xa'
-                }">
-                  {{ item.type }}
-                </span>
-              </template>
               <template #late="{ item }">
                 <span v-if="item.late > 0" class="text-warning fw-bold">
                   {{ item.late }} phút
@@ -4039,9 +4987,21 @@ const tourSteps = computed(() => {
             </div>
             
             <DataTable :columns="attendanceDataColumns" :data="paginatedAttendanceData">
-              <template #avatar="{ item }">
-                <img v-if="item.avatar" :src="item.avatar" alt="avatar" class="table-avatar clickable-image" 
-                     @click="handleImageClick(item.avatar, 'checkin')" data-tour="attendance-image" />
+              <template #machine="{ item }">
+                <span>{{ item.machine || '-' }}</span>
+              </template>
+              <template #location="{ item }">
+                <div class="d-flex align-items-center gap-2">
+                  <span>{{ item.location || '-' }}</span>
+                  <button 
+                    v-if="item.locationLat && item.locationLng" 
+                    class="btn btn-sm btn-link p-0 text-primary"
+                    @click="openLocationMap(item.locationLat, item.locationLng, item.location)"
+                    title="Xem vị trí trên bản đồ"
+                  >
+                    <i class="fas fa-map-marker-alt"></i>
+                  </button>
+                </div>
               </template>
               <template #type="{ item }">
                 <span :class="{
@@ -4070,6 +5030,22 @@ const tourSteps = computed(() => {
     </div>
 
   </div>
+
+  <!-- Modal Bản Đồ Vị Trí -->
+  <ModalDialog 
+    :show="showLocationMapModal" 
+    @update:show="showLocationMapModal = $event"
+    title="Vị Trí Chấm Công" 
+    size="xl"
+  >
+    <div v-if="mapLocation.lat && mapLocation.lng" class="location-map-container" style="height: 500px; position: relative;">
+      <div id="location-map" style="width: 100%; height: 100%;"></div>
+    </div>
+    <div v-else class="text-center py-4">
+      <i class="fas fa-exclamation-triangle text-warning fa-2x mb-3"></i>
+      <p class="text-muted">Không có thông tin tọa độ để hiển thị bản đồ</p>
+    </div>
+  </ModalDialog>
 
   <!-- Modal Zoom Ảnh -->
   <ModalDialog v-if="selectedImage" :show="showImageModal" @update:show="showImageModal = $event"
@@ -4102,16 +5078,18 @@ const tourSteps = computed(() => {
 
 <style scoped>
 /* Màu cho ô tăng ca */
-.cell-overtime-compensatory {
-  background: #e3f2fd;
-  color: #2196f3;
-  border: 1px solid #90caf9;
+.schedule-cell-enhanced.cell-overtime-compensatory {
+  background: linear-gradient(135deg, #cce5ff, #b3d9ff);
+  border-color: #2196f3;
+  color: #0d47a1;
+  font-weight: 600;
 }
 
-.cell-overtime-paid {
-  background: #eafbe7;
-  color: #28a745;
-  border: 1px solid #b6e6b0;
+.schedule-cell-enhanced.cell-overtime-paid {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border-color: #28a745;
+  color: #155724;
+  font-weight: 600;
 }
 
 /* Căn chỉnh UI bảng công tổng */
@@ -4186,7 +5164,649 @@ const tourSteps = computed(() => {
   cursor: pointer;
 }
 
+/* Enhanced Summary Table */
+.attendance-summary-table-enhanced {
+  background: #ffffff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e9ecef;
+}
+
+.emp-id-enhanced {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.emp-id-text {
+  font-size: 0.9rem;
+  letter-spacing: 0.5px;
+}
+
+.emp-name-row {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.emp-name-row:hover {
+  background: linear-gradient(135deg, rgba(52, 152, 219, 0.05) 0%, rgba(52, 152, 219, 0.02) 100%);
+  transform: translateX(4px);
+}
+
+.emp-name-row .small-icon {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  font-size: 0.75rem;
+}
+
+.emp-name-row:hover .small-icon {
+  opacity: 1;
+}
+
+.emp-name-text {
+  font-size: 0.95rem;
+  color: #2c3e50;
+  flex: 1;
+}
+
+.summary-value {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.col-summary {
+  min-width: 120px;
+}
+
+.schedule-cell-enhanced {
+  min-height: 50px;
+  padding: 10px 6px;
+  text-align: center;
+  border: 1px solid #e9ecef;
+  background: #fff;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.schedule-cell-enhanced::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(52, 152, 219, 0.1), rgba(52, 152, 219, 0.05));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.schedule-cell-enhanced:hover::before {
+  opacity: 1;
+}
+
+.schedule-cell-enhanced:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 1;
+}
+
+.schedule-cell-enhanced.cell-work {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border-color: #28a745;
+  color: #155724;
+  font-weight: 600;
+}
+
+.schedule-cell-enhanced.cell-leave {
+  background: linear-gradient(135deg, #cce5ff, #b3d9ff);
+  border-color: #007bff;
+  color: #004085;
+  font-weight: 600;
+}
+
+.schedule-cell-enhanced.cell-insufficient {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border-color: #ffc107;
+  color: #856404;
+  font-weight: 600;
+}
+
+.schedule-cell-enhanced.cell-incomplete {
+  background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+  border-color: #dc3545;
+  color: #721c24;
+  font-weight: 600;
+}
+
+.schedule-cell-enhanced.cell-late {
+  background: linear-gradient(135deg, #ffeaa7, #fdcb6e);
+  border-color: #f39c12;
+  color: #d68910;
+  font-weight: 600;
+}
+
 /* Modal cải thiện UI */
+/* Enhanced Modal Employee Header */
+.modal-emp-header-enhanced {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 24px;
+  background: linear-gradient(135deg, #f5f6fa 0%, #ffffff 100%);
+  border-radius: 16px;
+  border: 1px solid #e9ecef;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  animation: fadeInUp 0.5s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.modal-emp-header-enhanced::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(52, 152, 219, 0.05), transparent);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.modal-emp-avatar-wrapper {
+  flex-shrink: 0;
+}
+
+.modal-emp-avatar-enhanced {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(44, 62, 80, 0.3);
+  border: 4px solid #fff;
+  position: relative;
+  animation: scaleIn 0.5s ease;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+
+.modal-emp-avatar-enhanced::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  padding: 2px;
+  background: linear-gradient(135deg, #2c3e50, #3498db);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.modal-emp-avatar-enhanced img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.avatar-placeholder-enhanced {
+  font-size: 2.5rem;
+  color: #fff;
+}
+
+.modal-emp-info-enhanced {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.emp-name-enhanced {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2c3e50;
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.emp-name-enhanced i {
+  color: #3498db;
+}
+
+.emp-details-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.emp-detail-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.95rem;
+  color: #6c757d;
+}
+
+.detail-label {
+  font-weight: 500;
+  margin-right: 6px;
+}
+
+.detail-value {
+  font-weight: 600;
+  color: #495057;
+}
+
+.modal-emp-date-enhanced {
+  flex-shrink: 0;
+}
+
+.date-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: #fff;
+  padding: 14px 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(44, 62, 80, 0.3);
+  font-weight: 500;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+
+.date-badge i {
+  font-size: 1.5rem;
+}
+
+.date-label {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  margin-bottom: 2px;
+}
+
+.date-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* Enhanced Modal Section */
+.modal-section-enhanced {
+  margin-bottom: 28px;
+  padding: 24px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e9ecef;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  animation: fadeInUp 0.5s ease;
+  animation-fill-mode: both;
+}
+
+.modal-section-enhanced:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.modal-section-enhanced:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+
+.section-title-enhanced {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e9ecef;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.section-title-enhanced::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #2c3e50, #3498db);
+  transition: width 0.3s ease;
+}
+
+.section-title-enhanced:hover::after {
+  width: 100px;
+}
+
+.section-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 12px rgba(44, 62, 80, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.section-icon-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.section-title-enhanced:hover .section-icon-wrapper::before {
+  width: 200px;
+  height: 200px;
+}
+
+.section-title-enhanced:hover .section-icon-wrapper {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(44, 62, 80, 0.4);
+}
+
+/* Enhanced Form Select */
+.form-select-enhanced {
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 0.375rem 2rem 0.375rem 0.75rem;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 16px 12px;
+  transition: all 0.3s ease;
+  font-size: 0.875rem;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.form-select-enhanced:hover:not(:disabled) {
+  border-color: #3498db;
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.1);
+}
+
+.form-select-enhanced:focus {
+  border-color: #3498db;
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+.form-select-enhanced:disabled {
+  background-color: #e9ecef;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Loading State Enhanced */
+.loading-state-enhanced {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  min-height: 300px;
+}
+
+.loading-spinner-wrapper {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin-bottom: 24px;
+}
+
+.spinner-enhanced {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(52, 152, 219, 0.1);
+  border-top-color: #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.spinner-ring {
+  width: 80px;
+  height: 80px;
+  border: 3px solid rgba(44, 62, 80, 0.1);
+  border-top-color: #2c3e50;
+  border-radius: 50%;
+  animation: spin 1.5s linear infinite reverse;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes spin {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.loading-text {
+  color: #6c757d;
+  font-size: 1rem;
+  font-weight: 500;
+  margin-top: 16px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Error State Enhanced */
+.error-state-enhanced {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%);
+  border-radius: 16px;
+  border: 2px solid #fecaca;
+  margin: 20px 0;
+  animation: slideInDown 0.4s ease;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.error-icon-wrapper {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.5rem;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  animation: bounce 0.6s ease;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.error-content {
+  text-align: center;
+}
+
+.error-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #dc2626;
+  margin-bottom: 8px;
+}
+
+.error-message {
+  color: #6c757d;
+  font-size: 0.95rem;
+  margin-bottom: 20px;
+}
+
+.btn-retry {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.625rem 1.5rem;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(44, 62, 80, 0.2);
+}
+
+.btn-retry:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(44, 62, 80, 0.3);
+}
+
+.btn-retry:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-retry:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Empty State Enhanced */
+.empty-state-enhanced {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-icon-wrapper {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f5f6fa 0%, #e9ecef 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #adb5bd;
+  font-size: 2rem;
+  margin-bottom: 20px;
+  border: 2px dashed #dee2e6;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.empty-text {
+  color: #6c757d;
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+/* Legacy styles for backward compatibility */
 .modal-emp-header {
   display: flex;
   align-items: center;
@@ -4697,7 +6317,143 @@ const tourSteps = computed(() => {
 
 .stat-card-summary:hover {
   transform: translateY(-5px);
+}
+
+/* Enhanced Summary Dashboard */
+.summary-dashboard-enhanced {
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f5f6fa 0%, #ffffff 100%);
+  border-radius: 16px;
+}
+
+.stat-card-enhanced {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card-enhanced::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #2c3e50, #3498db);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.stat-card-enhanced:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transform: translateY(-4px);
+}
+
+.stat-card-enhanced:hover::before {
+  opacity: 1;
+}
+
+.stat-icon-wrapper {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: white;
+  flex-shrink: 0;
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+/* Gradient backgrounds for different stat types */
+.primary-gradient .stat-icon-wrapper {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+}
+
+.primary-gradient .stat-value {
+  color: #2c3e50;
+}
+
+.success-gradient .stat-icon-wrapper {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+}
+
+.success-gradient .stat-value {
+  color: #27ae60;
+}
+
+.info-gradient .stat-icon-wrapper {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+}
+
+.info-gradient .stat-value {
+  color: #3498db;
+}
+
+.warning-gradient .stat-icon-wrapper {
+  background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+}
+
+.warning-gradient .stat-value {
+  color: #f39c12;
+}
+
+.late-gradient .stat-icon-wrapper {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+}
+
+.late-gradient .stat-value {
+  color: #e74c3c;
+}
+
+.early-gradient .stat-icon-wrapper {
+  background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+}
+
+.early-gradient .stat-value {
+  color: #9b59b6;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.danger-gradient .stat-icon-wrapper {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+}
+
+.danger-gradient .stat-value {
+  color: #e74c3c;
+}
+
+.secondary-gradient .stat-icon-wrapper {
+  background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+}
+
+.secondary-gradient .stat-value {
+  color: #6c757d;
 }
 
 .stat-card-summary.primary {
@@ -5626,6 +7382,61 @@ const tourSteps = computed(() => {
   transform: translateY(-1px);
 }
 
+/* Enhanced Voucher Code Link */
+.voucher-code-link-enhanced {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  background: linear-gradient(135deg, rgba(52, 152, 219, 0.1) 0%, rgba(52, 152, 219, 0.05) 100%);
+  color: #3498db;
+  border: 1px solid rgba(52, 152, 219, 0.2);
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.voucher-code-link-enhanced::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(52, 152, 219, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.voucher-code-link-enhanced:hover::before {
+  left: 100%;
+}
+
+.voucher-code-link-enhanced:hover {
+  background: linear-gradient(135deg, rgba(52, 152, 219, 0.15) 0%, rgba(52, 152, 219, 0.1) 100%);
+  border-color: #3498db;
+  color: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+  text-decoration: none;
+}
+
+.voucher-code-link-enhanced:active {
+  transform: translateY(0);
+}
+
+.voucher-code-link-enhanced i {
+  font-size: 0.875rem;
+  transition: transform 0.3s ease;
+}
+
+.voucher-code-link-enhanced:hover i {
+  transform: scale(1.1) rotate(5deg);
+}
+
 .voucher-code-link:active {
   transform: translateY(0);
 }
@@ -6220,5 +8031,64 @@ const tourSteps = computed(() => {
   transform: none;
   box-shadow: none;
   opacity: 0.6;
+}
+
+/* Overtime Stat Cards - Professional and Clean */
+.stat-card-overtime {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.2s ease;
+  border: 1px solid #e9ecef;
+  height: 100%;
+}
+
+.stat-card-overtime:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #dee2e6;
+  transform: translateY(-2px);
+}
+
+.stat-card-overtime-full {
+  max-width: 300px;
+  margin-top: 0.5rem;
+}
+
+.stat-icon-overtime {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(44, 62, 80, 0.2);
+}
+
+.stat-content-overtime {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value-overtime {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 0.25rem;
+  color: #2c3e50;
+}
+
+.stat-label-overtime {
+  font-size: 0.85rem;
+  color: #6c757d;
+  font-weight: 500;
+  line-height: 1.2;
 }
 </style>
