@@ -7,7 +7,7 @@ import api from '../../../api'
 // PROPS & EMITS
 // ============================================================================
 const props = defineProps({
-  mode: { type: String, required: true, validator: v => ['create', 'update'].includes(v) },
+  mode: { type: String, required: true, validator: v => ['create', 'update', 'detail'].includes(v) },
   adjustment: { type: Object, default: () => ({}) }
 })
 const emit = defineEmits(['close', 'submit'])
@@ -573,6 +573,8 @@ onMounted(async () => {
           v-model="formData.voucherNo"
           @blur="validateField('voucherNo')"
           @input="validateField('voucherNo')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           maxlength="50"
           placeholder="VD: PC-2024-001"
         />
@@ -587,6 +589,8 @@ onMounted(async () => {
           v-model="formData.decisionDate"
           @blur="validateField('decisionDate')"
           @change="validateField('decisionDate')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           :max="new Date().toISOString().split('T')[0]"
         />
         <div class="invalid-feedback">{{ errors.decisionDate }}</div>
@@ -600,6 +604,8 @@ onMounted(async () => {
           v-model.number="formData.month"
           @blur="validateField('month')"
           @input="validateField('month')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           min="1" 
           max="12" 
           placeholder="1-12"
@@ -632,6 +638,7 @@ onMounted(async () => {
           :class="{ 'is-invalid': errors.adjustmentTypeID }"
           v-model="formData.adjustmentTypeID" 
           @change="handleAdjustmentTypeChange"
+          :disabled="props.mode === 'detail'"
         >
           <option value="">Chọn khoản cộng trừ</option>
           <option v-for="type in adjustmentTypes" :key="type.id" :value="type.id">
@@ -647,6 +654,7 @@ onMounted(async () => {
           :class="{ 'is-invalid': errors.adjustmentItemID }"
           v-model="formData.adjustmentItemID"
           @change="validateField('adjustmentItemID')"
+          :disabled="props.mode === 'detail'"
         >
           <option value="">Chọn hạng mục</option>
           <option v-for="item in adjustmentItems" :key="item.id" :value="item.id">
@@ -667,6 +675,8 @@ onMounted(async () => {
           v-model="formData.reason" 
           @blur="validateField('reason')"
           @input="validateField('reason')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           rows="3"
           maxlength="500"
           placeholder="Nhập lý do (tối đa 500 ký tự)..."
@@ -680,7 +690,7 @@ onMounted(async () => {
     <div class="mb-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0">Danh sách nhân viên <span class="text-danger">*</span></h5>
-        <button type="button" class="btn btn-sm btn-outline-primary" @click="addEmployeeRow">
+        <button v-if="props.mode !== 'detail'" type="button" class="btn btn-sm btn-outline-primary" @click="addEmployeeRow">
           <i class="fas fa-plus me-1"></i>Thêm nhân viên
         </button>
       </div>
@@ -706,6 +716,7 @@ onMounted(async () => {
                   :class="{ 'is-invalid': errors.employees && !employee.employeeID && (employee.value || employee.value === 0) }"
                   v-model="employee.employeeID"
                   @change="handleEmployeeChange(index)"
+                  :disabled="props.mode === 'detail'"
                 >
                   <option value="">Chọn nhân viên</option>
                   <option 
@@ -725,12 +736,15 @@ onMounted(async () => {
                   v-model.number="employee.value" 
                   @blur="validateField('employees')"
                   @input="validateField('employees')"
+                  :disabled="props.mode === 'detail'"
+                  :readonly="props.mode === 'detail'"
                   step="0.01"
                   placeholder="0.00"
                 />
               </td>
               <td>
                 <button 
+                  v-if="props.mode !== 'detail'"
                   type="button" 
                   class="btn btn-sm btn-outline-danger"
                   @click="removeEmployeeRow(index); validateField('employees')"
@@ -749,9 +763,12 @@ onMounted(async () => {
     </div>
 
     <!-- Actions -->
-    <div class="mt-4 d-flex justify-content-end gap-2">
+    <div v-if="props.mode !== 'detail'" class="mt-4 d-flex justify-content-end gap-2">
       <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
       <button type="submit" class="btn btn-primary">{{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}</button>
+    </div>
+    <div v-else class="mt-4 d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-outline-secondary" @click="handleClose">Đóng</button>
     </div>
   </form>
 </template>

@@ -6,7 +6,7 @@ import { useOvertimeType } from '../../../composables/useOvertimeType.js'
 import { useOvertimeForm } from '../../../composables/useOvertimeForm.js'
 
 const props = defineProps({
-  mode: { type: String, required: true, validator: v => ['create', 'update'].includes(v) },
+  mode: { type: String, required: true, validator: v => ['create', 'update', 'detail'].includes(v) },
   overtime: { type: Object, default: () => ({}) }
 })
 
@@ -394,6 +394,8 @@ watch(() => props.overtime, (newOvertime) => {
           v-model="formData.voucherCode"
           @blur="validateField('voucherCode')"
           @input="validateField('voucherCode')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           maxlength="50"
           placeholder="VD: TC-2024-001"
         />
@@ -406,6 +408,7 @@ watch(() => props.overtime, (newOvertime) => {
           v-model="formData.employeeID" 
           :class="{ 'is-invalid': errors.employeeID }"
           @change="validateField('employeeID')"
+          :disabled="props.mode === 'detail'"
         >
           <option value="">Chọn nhân viên</option>
           <option v-for="emp in employees" :key="emp.id" :value="emp.id">
@@ -423,6 +426,7 @@ watch(() => props.overtime, (newOvertime) => {
           v-model="formData.overtimeTypeID" 
           :class="{ 'is-invalid': errors.overtimeTypeID }"
           @change="validateField('overtimeTypeID')"
+          :disabled="props.mode === 'detail'"
         >
           <option value="">Chọn loại tăng ca</option>
           <option v-for="type in overtimeTypes" :key="type.id" :value="type.id">
@@ -438,6 +442,7 @@ watch(() => props.overtime, (newOvertime) => {
           v-model="formData.overtimeFormID" 
           :class="{ 'is-invalid': errors.overtimeFormID }"
           @change="validateField('overtimeFormID')"
+          :disabled="props.mode === 'detail'"
         >
           <option value="">Chọn hình thức tăng ca</option>
           <option v-for="form in overtimeForms" :key="form.id" :value="form.id">
@@ -455,7 +460,8 @@ watch(() => props.overtime, (newOvertime) => {
           v-model.number="formData.coefficient"
           @blur="validateField('coefficient')"
           @input="validateField('coefficient')"
-          :disabled="!!formData.overtimeTypeID"
+          :disabled="props.mode === 'detail' || !!formData.overtimeTypeID"
+          :readonly="props.mode === 'detail'"
           step="0.01"
           min="0.01"
           max="10"
@@ -477,6 +483,8 @@ watch(() => props.overtime, (newOvertime) => {
           v-model="formData.startDateTime"
           @blur="validateField('startDateTime')"
           @change="validateField('startDateTime')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
         />
         <div class="invalid-feedback">{{ errors.startDateTime }}</div>
       </div>
@@ -489,6 +497,8 @@ watch(() => props.overtime, (newOvertime) => {
           v-model="formData.endDateTime"
           @blur="validateField('endDateTime')"
           @change="validateField('endDateTime')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
         />
         <div class="invalid-feedback">{{ errors.endDateTime }}</div>
       </div>
@@ -502,6 +512,8 @@ watch(() => props.overtime, (newOvertime) => {
           v-model="formData.reason"
           @blur="validateField('reason')"
           @input="validateField('reason')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           rows="3"
           maxlength="500"
           placeholder="Nhập lý do tăng ca (tối đa 500 ký tự)..."
@@ -510,7 +522,7 @@ watch(() => props.overtime, (newOvertime) => {
         <small class="form-text text-muted">{{ (formData.reason || '').length }}/500 ký tự</small>
       </div>
     </div>
-    <div class="mt-4 d-flex justify-content-end gap-2">
+    <div v-if="props.mode !== 'detail'" class="mt-4 d-flex justify-content-end gap-2">
       <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
       <button type="submit" class="btn btn-primary" :disabled="loading">
         {{ loading ? 'Đang xử lý...' : (props.mode === 'update' ? 'Cập nhật' : 'Tạo mới') }}
@@ -525,6 +537,9 @@ watch(() => props.overtime, (newOvertime) => {
       >
         {{ loading ? 'Đang xử lý...' : 'Gửi duyệt' }}
       </button>
+    </div>
+    <div v-else class="mt-4 d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-outline-secondary" @click="handleClose">Đóng</button>
     </div>
   </form>
 </template>

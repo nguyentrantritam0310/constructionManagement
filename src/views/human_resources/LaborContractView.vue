@@ -88,7 +88,13 @@
     
     <div class="card shadow-sm">
       <div class="card-body p-0">
-        <DataTable :columns="columnsByTab" :data="paginatedContracts" @cell-click="handleCellClick" data-tour="table">
+        <DataTable 
+          :columns="columnsByTab" 
+          :data="paginatedContracts" 
+          @cell-click="handleCellClick"
+          @row-click="handleRowClick"
+          data-tour="table"
+        >
           <template #actions="{ item }">
             <div class="d-flex justify-content-start gap-2">
               <!-- Tab: Tất cả hợp đồng -->
@@ -212,6 +218,16 @@
         <ContractForm :mode="contractFormMode" :contract="selectedContractForm" :employees="employees"
           @submit="handleContractSubmit" @close="closeContractModal" />
       </div>
+    </ModalDialog>
+
+    <!-- Detail Form Modal -->
+    <ModalDialog :show="showDetailForm" title="Chi tiết hợp đồng lao động" size="xl" @update:show="closeDetailForm">
+      <ContractForm 
+        mode="detail" 
+        :contract="selectedDetailItem" 
+        :employees="employees"
+        @close="closeDetailForm" 
+      />
     </ModalDialog>
 
     <!-- Delete Confirmation Modal -->
@@ -717,6 +733,32 @@ const handleCellClick = (item, column) => {
   }
 }
 
+// Handle row click to show detail form
+const handleRowClick = (item) => {
+  // Only show detail form for allContracts and expired tabs
+  if (activeTab.value === 'allContracts') {
+    // Find the contract from contracts.value
+    const contract = contracts.value.find(c => c.id === item.id)
+    if (contract) {
+      selectedDetailItem.value = contract
+      showDetailForm.value = true
+    }
+  } else if (activeTab.value === 'expired') {
+    // For expired tab, find the contract from contracts.value
+    const contract = contracts.value.find(c => c.id === item.id || c.contractNumber === item.contractNumber)
+    if (contract) {
+      selectedDetailItem.value = contract
+      showDetailForm.value = true
+    }
+  }
+  // notCreated tab: no action on row click
+}
+
+const closeDetailForm = () => {
+  showDetailForm.value = false
+  selectedDetailItem.value = null
+}
+
 const applyHeaderStyle = (row) => {
   row.eachCell(cell => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
@@ -804,6 +846,8 @@ const exportToExcel = async () => {
 const showContractModal = ref(false)
 const selectedContractForm = ref(null)
 const contractFormMode = ref('create')
+const showDetailForm = ref(false)
+const selectedDetailItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
 const showTourGuide = ref(false)

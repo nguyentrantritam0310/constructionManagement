@@ -3,7 +3,7 @@ import { reactive, watch, toRefs } from 'vue'
 import FormField from '@/components/common/FormField.vue'
 
 const props = defineProps({
-  mode: { type: String, required: true, validator: v => ['create', 'update'].includes(v) },
+  mode: { type: String, required: true, validator: v => ['create', 'update', 'detail'].includes(v) },
   workshift: { type: Object, default: () => ({}) },
   employees: { type: Array, default: () => [] }, // danh sách nhân viên
   departments: { type: Array, default: () => [] } // danh sách phòng ban
@@ -119,7 +119,14 @@ const handleClose = () => emit('close')
   <form @submit.prevent="handleSubmit" class="p-4 bg-white rounded shadow-sm">
     <div class="row g-3 mb-4">
       <div class="col-md-12">
-        <FormField label="Tên ca" type="text" v-model="formData.shiftName" required />
+        <FormField 
+          label="Tên ca" 
+          type="text" 
+          v-model="formData.shiftName" 
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
+          required 
+        />
       </div>
       <div class="col-md-6" v-if="formData.assignedType === 'department'">
         <FormField label="Chọn phòng ban" type="select" v-model="formData.assignedId" required>
@@ -146,31 +153,32 @@ const handleClose = () => emit('close')
             <td class="day-name">{{ day.day }}</td>
             <td class="text-center">
               <label class="switch">
-                <input type="checkbox" v-model="day.active">
+                <input type="checkbox" v-model="day.active" :disabled="props.mode === 'detail'">
                 <span class="slider round"></span>
               </label>
             </td>
             <td>
               <div class="time-range-input">
                 <input type="time" v-model="day.startTime" class="form-control form-control-sm"
-                  :disabled="!day.active" />
+                  :disabled="props.mode === 'detail' || !day.active" :readonly="props.mode === 'detail'" />
                 <span>-</span>
-                <input type="time" v-model="day.endTime" class="form-control form-control-sm" :disabled="!day.active" />
+                <input type="time" v-model="day.endTime" class="form-control form-control-sm" 
+                  :disabled="props.mode === 'detail' || !day.active" :readonly="props.mode === 'detail'" />
               </div>
             </td>
             <td>
               <div class="time-range-input">
                 <input type="time" v-model="day.breakStart" class="form-control form-control-sm"
-                  :disabled="!day.active" />
+                  :disabled="props.mode === 'detail' || !day.active" :readonly="props.mode === 'detail'" />
                 <span>-</span>
                 <input type="time" v-model="day.breakEnd" class="form-control form-control-sm"
-                  :disabled="!day.active" />
+                  :disabled="props.mode === 'detail' || !day.active" :readonly="props.mode === 'detail'" />
               </div>
             </td>
             <td class="text-center work-hours">{{ day.workHours }}</td>
             <td class="text-center work-hours">{{ day.workDate }}</td>
             <td class="text-center">
-              <button type="button" @click="copyToAll(day)" class="btn-copy" title="Áp dụng cho tất cả"
+              <button v-if="props.mode !== 'detail'" type="button" @click="copyToAll(day)" class="btn-copy" title="Áp dụng cho tất cả"
                 :disabled="!day.active">
                 <i class="fas fa-copy"></i>
               </button>
@@ -188,10 +196,13 @@ const handleClose = () => emit('close')
       </table>
     </div>
 
-    <div class="mt-4 d-flex justify-content-end gap-2">
+    <div v-if="props.mode !== 'detail'" class="mt-4 d-flex justify-content-end gap-2">
       <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
       <button type="submit" class="btn btn-primary btn-gradient">{{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới'
         }}</button>
+    </div>
+    <div v-else class="mt-4 d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-outline-secondary" @click="handleClose">Đóng</button>
     </div>
   </form>
 </template>

@@ -63,6 +63,7 @@ const overtimeColumns = [
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
+const showDetailForm = ref(false)
 const selectedItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
@@ -177,6 +178,11 @@ const handleDelete = async (voucherCode) => {
 const openUpdateForm = (voucherCode) => {
   selectedItem.value = overtimeRequests.value.find(item => item.voucherCode === voucherCode)
   showUpdateForm.value = true
+}
+
+const openDetailForm = (item) => {
+  selectedItem.value = item
+  showDetailForm.value = true
 }
 
 const getStatusText = (status) => {
@@ -611,7 +617,7 @@ const startTour = () => {
     </transition>
     
     <div class="table-responsive adjustment-table" data-tour="table">
-      <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData">
+      <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData" @row-click="openDetailForm">
         <template #actions="{ item }">
           <div data-tour="actions">
           <div class="d-flex justify-content-start gap-2">
@@ -706,6 +712,15 @@ const startTour = () => {
       @submit="handleUpdate" 
       @close="showUpdateForm = false"
       @submit-for-approval="handleSubmitForApproval"
+    />
+  </ModalDialog>
+
+  <!-- Detail Form Modal -->
+  <ModalDialog v-model:show="showDetailForm" title="Chi tiết đơn tăng ca" size="lg">
+    <OvertimeForm 
+      mode="detail" 
+      :overtime="selectedItem"
+      @close="showDetailForm = false"
     />
   </ModalDialog>
 

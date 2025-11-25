@@ -55,7 +55,9 @@ const adjustmentColumns = [
 
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
+const showDetailForm = ref(false)
 const selectedItem = ref(null)
+const selectedDetailItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
 const showTourGuide = ref(false)
@@ -261,6 +263,22 @@ const openUpdateForm = (voucherNo) => {
     selectedItem.value = { ...originalData }
   }
   showUpdateForm.value = true
+}
+
+const openDetailForm = (item) => {
+  // Lấy dữ liệu gốc từ payrollAdjustments thay vì adjustmentData để có decisionDate ở định dạng gốc
+  const originalData = payrollAdjustments.value.find(adj => adj.voucherNo === item.voucherNo)
+  if (originalData) {
+    selectedDetailItem.value = { ...originalData }
+  } else {
+    selectedDetailItem.value = item
+  }
+  showDetailForm.value = true
+}
+
+const closeDetailForm = () => {
+  showDetailForm.value = false
+  selectedDetailItem.value = null
 }
 
 const currentPage = ref(1)
@@ -695,8 +713,21 @@ const startTour = () => {
       <AdjustmentForm mode="update" :adjustment="selectedItem" @submit="handleUpdate" @close="showUpdateForm = false" />
     </ModalDialog>
     
+    <!-- Detail Form Modal -->
+    <ModalDialog v-model:show="showDetailForm" title="Chi tiết khoản cộng trừ" size="lg" @update:show="closeDetailForm">
+      <AdjustmentForm 
+        mode="detail" 
+        :adjustment="selectedDetailItem" 
+        @close="closeDetailForm" 
+      />
+    </ModalDialog>
+    
     <div class="table-responsive adjustment-table" data-tour="table">
-      <DataTable :columns="adjustmentColumns" :data="paginatedAdjustmentData">
+      <DataTable 
+        :columns="adjustmentColumns" 
+        :data="paginatedAdjustmentData"
+        @row-click="openDetailForm"
+      >
         <template #actions="{ item }">
           <div data-tour="actions">
           <div class="d-flex justify-content-start gap-2">

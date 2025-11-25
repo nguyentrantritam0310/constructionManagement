@@ -9,7 +9,7 @@ const props = defineProps({
   mode: {
     type: String,
     required: true,
-    validator: (value) => ['create', 'update'].includes(value)
+    validator: (value) => ['create', 'update', 'detail'].includes(value)
   },
   contract: {
     type: Object,
@@ -772,6 +772,8 @@ watch(() => props.mode, (newMode) => {
               v-model="formData.contractNumber" 
               @blur="validateField('contractNumber')"
               @input="validateField('contractNumber')"
+              :disabled="props.mode === 'detail'"
+              :readonly="props.mode === 'detail'"
               maxlength="50"
               placeholder="VD: HD-2024-001"
             />
@@ -784,6 +786,7 @@ watch(() => props.mode, (newMode) => {
               :class="{ 'is-invalid': errors.employeeID }"
               v-model="formData.employeeID"
               @change="validateField('employeeID')"
+              :disabled="props.mode === 'detail'"
             >
               <option value="">Chọn nhân viên</option>
               <option v-for="employee in employees" :key="employee.id" :value="employee.id">
@@ -799,7 +802,7 @@ watch(() => props.mode, (newMode) => {
               :class="{ 'is-invalid': errors.contractTypeID }"
               v-model="formData.contractTypeID"
               @change="validateField('contractTypeID')"
-              :disabled="loading"
+              :disabled="props.mode === 'detail' || loading"
             >
               <option value="">{{ loading ? 'Đang tải...' : 'Chọn loại hợp đồng' }}</option>
               <option v-for="type in contractTypes" :key="type.id" :value="type.id">
@@ -827,6 +830,8 @@ watch(() => props.mode, (newMode) => {
               v-model="formData.startDate" 
               @blur="validateField('startDate')"
               @change="validateField('startDate')"
+              :disabled="props.mode === 'detail'"
+              :readonly="props.mode === 'detail'"
             />
             <div class="invalid-feedback">{{ errors.startDate }}</div>
           </div>
@@ -843,9 +848,9 @@ watch(() => props.mode, (newMode) => {
               v-model="formData.endDate" 
               @blur="validateField('endDate')"
               @change="validateField('endDate')"
-              :readonly="isProbationContract || isIndeterminateTermContract"
+              :readonly="props.mode === 'detail' || isProbationContract || isIndeterminateTermContract"
               :required="isDeterminedTermContract"
-              :disabled="isProbationContract || isIndeterminateTermContract"
+              :disabled="props.mode === 'detail' || isProbationContract || isIndeterminateTermContract"
             />
             <div class="invalid-feedback">{{ errors.endDate }}</div>
             <small v-if="isProbationContract" class="form-text text-muted">
@@ -880,6 +885,8 @@ watch(() => props.mode, (newMode) => {
               v-model.number="formData.contractSalary"
               @blur="validateField('contractSalary')"
               @input="validateField('contractSalary')"
+              :disabled="props.mode === 'detail'"
+              :readonly="props.mode === 'detail'"
               step="0.01"
               min="0.01"
               placeholder="VD: 10000000"
@@ -895,6 +902,8 @@ watch(() => props.mode, (newMode) => {
               v-model.number="formData.insuranceSalary"
               @blur="validateField('insuranceSalary')"
               @input="validateField('insuranceSalary')"
+              :disabled="props.mode === 'detail'"
+              :readonly="props.mode === 'detail'"
               step="0.01"
               min="0.01"
               placeholder="VD: 8000000"
@@ -911,7 +920,7 @@ watch(() => props.mode, (newMode) => {
             <i class="fas fa-plus-circle me-2"></i>
             Phụ cấp
           </h6>
-          <button type="button" class="btn btn-sm btn-outline-primary" @click="addAllowance">
+          <button v-if="props.mode !== 'detail'" type="button" class="btn btn-sm btn-outline-primary" @click="addAllowance">
             <i class="fas fa-plus me-1"></i> Thêm phụ cấp
           </button>
         </div>
@@ -936,7 +945,7 @@ watch(() => props.mode, (newMode) => {
                     :class="{ 'is-invalid': errors.allowances && !allowance.allowanceID && (allowance.value || allowance.value === 0) }"
                     v-model="allowance.allowanceID"
                     @change="validateField('allowances')"
-                    :disabled="loading"
+                    :disabled="props.mode === 'detail' || loading"
                   >
                     <option value="">{{ loading ? 'Đang tải...' : 'Chọn phụ cấp' }}</option>
                     <!-- Show available allowances (excluding already selected ones, but including current one) -->
@@ -962,6 +971,8 @@ watch(() => props.mode, (newMode) => {
                       v-model.number="allowance.value"
                       @blur="validateField('allowances')"
                       @input="validateField('allowances')"
+                      :disabled="props.mode === 'detail'"
+                      :readonly="props.mode === 'detail'"
                       step="0.01"
                       min="0"
                       placeholder="0.00"
@@ -971,6 +982,7 @@ watch(() => props.mode, (newMode) => {
                 
                 <div class="allowance-action">
                   <button 
+                    v-if="props.mode !== 'detail'"
                     type="button" 
                     class="btn btn-outline-danger btn-remove"
                     @click="removeAllowance(index); validateField('allowances')"
@@ -991,11 +1003,14 @@ watch(() => props.mode, (newMode) => {
         </div>
       </div>
 
-      <div class="d-flex justify-content-end gap-2 mt-4">
+      <div v-if="props.mode !== 'detail'" class="d-flex justify-content-end gap-2 mt-4">
         <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
         <button type="submit" class="btn btn-primary" :disabled="loading">
           {{ loading ? 'Đang xử lý...' : (props.mode === 'update' ? 'Cập nhật' : 'Tạo mới') }}
         </button>
+      </div>
+      <div v-else class="d-flex justify-content-end gap-2 mt-4">
+        <button type="button" class="btn btn-outline-secondary" @click="handleClose">Đóng</button>
       </div>
     </form>
   </div>

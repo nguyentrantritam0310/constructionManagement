@@ -35,7 +35,10 @@ const showCreateForm = ref(false)
 const showCreateFormAttendanceMachine = ref(false)
 const showUpdateForm = ref(false)
 const showUpdateFormAttendanceMachine = ref(false)
+const showDetailForm = ref(false)
+const showDetailFormAttendanceMachine = ref(false)
 const selectedItem = ref(null)
+const selectedDetailItem = ref(null)
 const showImportModal = ref(false)
 const showFilter = ref(false)
 const showTourGuide = ref(false)
@@ -440,6 +443,33 @@ const handleDeleteClick = async (item) => {
   }
 }
 
+// Handle row click to show detail form
+const handleShiftRowClick = (item) => {
+  const shift = workshifts.value.find(s => s.id === item.code || s.ID === item.code)
+  if (shift) {
+    selectedDetailItem.value = shift
+    showDetailForm.value = true
+  }
+}
+
+const handleMachineRowClick = (item) => {
+  const machine = attendanceMachines.value.find(m => m.id === item.id || m.ID === item.id)
+  if (machine) {
+    selectedDetailItem.value = machine
+    showDetailFormAttendanceMachine.value = true
+  }
+}
+
+const closeDetailForm = () => {
+  showDetailForm.value = false
+  selectedDetailItem.value = null
+}
+
+const closeDetailFormAttendanceMachine = () => {
+  showDetailFormAttendanceMachine.value = false
+  selectedDetailItem.value = null
+}
+
 // Tour Guide Steps
 const shiftTourSteps = [
   {
@@ -664,7 +694,12 @@ const startTour = () => {
     </transition>
     
     <div v-if="activeTab === 'shift'">
-      <DataTable :columns="shiftColumns" :data="paginatedShiftData" data-tour="table-shift">
+      <DataTable 
+        :columns="shiftColumns" 
+        :data="paginatedShiftData" 
+        @row-click="handleShiftRowClick"
+        data-tour="table-shift"
+      >
         <template #code="{ item }">
           <span class="emp-count">
             CA-{{ item.code < 10 ? '0' + item.code : item.code }} </span>
@@ -685,7 +720,12 @@ const startTour = () => {
       </div>
     </div>
     <div v-else-if="activeTab === 'machine'">
-      <DataTable :columns="machineColumns" :data="paginatedMachineData" data-tour="table-machine">
+      <DataTable 
+        :columns="machineColumns" 
+        :data="paginatedMachineData" 
+        @row-click="handleMachineRowClick"
+        data-tour="table-machine"
+      >
         <template #id="{ item }">
           <span class="emp-count">
             MCC-{{ item.id < 10 ? '0' + item.id : item.id }} </span>
@@ -716,6 +756,24 @@ const startTour = () => {
     </ModalDialog>
     <ModalDialog v-model:show="showUpdateFormAttendanceMachine" title="Cập nhật máy chấm công" size="lg">
       <AttendanceMachineForm  :key="selectedItem?.id" mode="update" :attendancemachine="selectedItem" @submit="handleUpdateMachine" @close="showUpdateFormAttendanceMachine = false" />
+    </ModalDialog>
+    
+    <!-- Detail Form Modal for Shift -->
+    <ModalDialog v-model:show="showDetailForm" title="Chi tiết ca làm việc" size="xl" @update:show="closeDetailForm">
+      <WorkShiftForm 
+        mode="detail" 
+        :workshift="selectedDetailItem" 
+        @close="closeDetailForm" 
+      />
+    </ModalDialog>
+    
+    <!-- Detail Form Modal for Machine -->
+    <ModalDialog v-model:show="showDetailFormAttendanceMachine" title="Chi tiết máy chấm công" size="lg" @update:show="closeDetailFormAttendanceMachine">
+      <AttendanceMachineForm 
+        mode="detail" 
+        :attendancemachine="selectedDetailItem" 
+        @close="closeDetailFormAttendanceMachine" 
+      />
     </ModalDialog>
     <ModalDialog v-model:show="showImportModal" title="Nhập máy chấm công từ Excel" size="lg" data-tour="import-modal-machine">
       <div class="p-4">

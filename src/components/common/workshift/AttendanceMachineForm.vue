@@ -14,7 +14,7 @@ L.Icon.Default.mergeOptions({
 });
 
 const props = defineProps({
-  mode: { type: String, required: true, validator: v => ['create', 'update'].includes(v) },
+  mode: { type: String, required: true, validator: v => ['create', 'update', 'detail'].includes(v) },
   attendancemachine: { type: Object, default: () => ({}) },
 })
 
@@ -313,6 +313,8 @@ const handleClose = () => emit('close')
           v-model="formData.attendanceMachineName"
           @blur="validateField('attendanceMachineName')"
           @input="validateField('attendanceMachineName')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           maxlength="100"
           placeholder="VD: Máy chấm công 01"
         />
@@ -327,6 +329,8 @@ const handleClose = () => emit('close')
           v-model="formData.longitude"
           @blur="validateField('longitude')"
           @input="validateField('longitude')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           placeholder="VD: 105.804817"
           step="0.000001"
         />
@@ -342,6 +346,8 @@ const handleClose = () => emit('close')
           v-model="formData.latitude"
           @blur="validateField('latitude')"
           @input="validateField('latitude')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           placeholder="VD: 21.028511"
           step="0.000001"
         />
@@ -357,6 +363,8 @@ const handleClose = () => emit('close')
           v-model="formData.allowedRadius"
           @blur="validateField('allowedRadius')"
           @input="validateField('allowedRadius')"
+          :disabled="props.mode === 'detail'"
+          :readonly="props.mode === 'detail'"
           placeholder="VD: 100"
         />
         <div class="invalid-feedback">{{ errors.allowedRadius }}</div>
@@ -364,7 +372,7 @@ const handleClose = () => emit('close')
       </div>
       <div class="col-md-6">
         <label class="form-label d-block">&nbsp;</label>
-        <button type="button" class="btn btn-outline-primary w-100 location-btn" @click="getCurrentLocation">
+        <button v-if="props.mode !== 'detail'" type="button" class="btn btn-outline-primary w-100 location-btn" @click="getCurrentLocation">
           <i class="fas fa-map-marker-alt me-2"></i> Lấy vị trí hiện tại
         </button>
       </div>
@@ -373,7 +381,7 @@ const handleClose = () => emit('close')
     <div class="map-container mt-4">
       <h6 class="mb-2 text-muted">Hoặc chọn vị trí trên bản đồ</h6>
       <div style="height: 400px; width: 100%; border-radius: 8px; overflow: hidden;">
-        <l-map ref="map" :zoom="zoom" :center="mapCenter" @click="handleMapClick">
+        <l-map ref="map" :zoom="zoom" :center="mapCenter" @click="props.mode !== 'detail' ? handleMapClick : null">
           <l-tile-layer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" layer-type="base"
             name="OpenStreetMap" attribution="&copy; <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a>">
           </l-tile-layer>
@@ -384,10 +392,13 @@ const handleClose = () => emit('close')
       </div>
     </div>
 
-    <div class="mt-4 d-flex justify-content-end gap-2">
+    <div v-if="props.mode !== 'detail'" class="mt-4 d-flex justify-content-end gap-2">
       <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
       <button type="submit" class="btn btn-primary btn-gradient">{{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới'
       }}</button>
+    </div>
+    <div v-else class="mt-4 d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-outline-secondary" @click="handleClose">Đóng</button>
     </div>
   </form>
 </template>

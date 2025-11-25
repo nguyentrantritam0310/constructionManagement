@@ -66,6 +66,7 @@ const leaveColumns = [
 // Form states
 const showCreateForm = ref(false)
 const showUpdateForm = ref(false)
+const showDetailForm = ref(false)
 const showDeleteDialog = ref(false)
 const selectedItem = ref(null)
 const showFilter = ref(false)
@@ -260,6 +261,11 @@ const handleDelete = async (voucherCode) => {
 const openUpdateForm = (voucherCode) => {
   selectedItem.value = leaveRequests.value.find(item => item.voucherCode === voucherCode)
   showUpdateForm.value = true
+}
+
+const openDetailForm = (item) => {
+  selectedItem.value = item
+  showDetailForm.value = true
 }
 
 const openDeleteDialog = (voucherCode) => {
@@ -659,7 +665,7 @@ defineExpose({
     
     <!-- Data table -->
     <div v-else class="table-responsive adjustment-table" data-tour="table">
-      <DataTable :columns="leaveColumns" :data="paginatedLeaveData">
+      <DataTable :columns="leaveColumns" :data="paginatedLeaveData" @row-click="openDetailForm">
         <template #actions="{ item }">
           <div class="d-flex justify-content-start gap-2" data-tour="actions">
             <!-- Edit button based on centralized permissions -->
@@ -773,6 +779,15 @@ defineExpose({
       @submit="handleUpdate" 
       @close="showUpdateForm = false"
       @submit-for-approval="handleSubmitForApproval"
+    />
+  </ModalDialog>
+  
+  <!-- Detail Form Modal -->
+  <ModalDialog v-model:show="showDetailForm" title="Chi tiết đơn nghỉ phép" size="lg">
+    <LeaveForm 
+      mode="detail" 
+      :leave="selectedItem"
+      @close="showDetailForm = false"
     />
   </ModalDialog>
   
