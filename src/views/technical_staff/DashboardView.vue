@@ -577,10 +577,43 @@ const startTour = () => {
 </template>
 
 <style scoped>
+/* Keyframes animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .dashboard {
   padding: 1.5rem;
   background-color: #f8f9fa;
   min-height: 100vh;
+  animation: fadeIn 0.5s ease-out;
 }
 
 .dashboard-header {
@@ -592,6 +625,7 @@ const startTour = () => {
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  animation: fadeInUp 0.6s ease-out;
 }
 
 .welcome-section {
@@ -655,6 +689,7 @@ const startTour = () => {
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  animation: fadeInUp 0.7s ease-out;
 }
 
 .section-title {
@@ -664,6 +699,7 @@ const startTour = () => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  animation: fadeIn 0.5s ease-out;
 }
 
 .stats-grid {
@@ -689,6 +725,31 @@ const startTour = () => {
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   position: relative;
   overflow: hidden;
+  animation: fadeInUp 0.6s ease-out backwards;
+}
+
+.stats-grid .stats-card:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.stats-grid .stats-card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.stats-grid .stats-card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.stats-grid .stats-card:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+.stats-grid .stats-card:nth-child(5) {
+  animation-delay: 0.5s;
+}
+
+.stats-grid .stats-card:nth-child(6) {
+  animation-delay: 0.6s;
 }
 
 .stats-card:hover {
@@ -773,6 +834,7 @@ const startTour = () => {
   grid-template-columns: 3fr 2fr;
   gap: 1.5rem;
   margin-top: 2rem;
+  animation: fadeInUp 0.8s ease-out;
 }
 
 .upcoming-deadlines,
@@ -781,6 +843,7 @@ const startTour = () => {
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  animation: fadeInUp 0.9s ease-out;
 }
 
 .deadline-item {
@@ -788,6 +851,27 @@ const startTour = () => {
   border-bottom: 1px solid #eee;
   transition: transform 0.2s ease;
   cursor: pointer;
+  animation: slideInLeft 0.5s ease-out backwards;
+}
+
+.deadline-item:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.deadline-item:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.deadline-item:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.deadline-item:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+.deadline-item:nth-child(5) {
+  animation-delay: 0.5s;
 }
 
 .deadline-item:last-child {
@@ -876,6 +960,23 @@ const startTour = () => {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s ease;
   cursor: pointer;
+  animation: fadeInUp 0.5s ease-out backwards;
+}
+
+.type-card:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.type-card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.type-card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.type-card:nth-child(4) {
+  animation-delay: 0.4s;
 }
 
 .type-card:hover {
@@ -919,6 +1020,19 @@ const startTour = () => {
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1rem;
+  animation: fadeInUp 0.6s ease-out backwards;
+}
+
+.report-category:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.report-category:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.report-category:nth-child(3) {
+  animation-delay: 0.3s;
 }
 
 .category-title {

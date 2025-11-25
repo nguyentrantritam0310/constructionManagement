@@ -137,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import Breadcrumb from './Breadcrumb.vue'
 import ChangePasswordModal from '../common/ChangePasswordModal.vue'
@@ -147,7 +147,19 @@ const { currentUser, logout } = useAuth()
 const router = useRouter()
 const route = useRoute()
 
-const isSidebarOpen = ref(true)
+// Restore sidebar state immediately to prevent flickering
+const savedSidebarState = sessionStorage.getItem('sidebarOpen')
+let initialSidebarState = true
+if (savedSidebarState !== null) {
+  try {
+    initialSidebarState = JSON.parse(savedSidebarState)
+  } catch (e) {
+    console.error('Error parsing sidebar state:', e)
+    initialSidebarState = true
+  }
+}
+
+const isSidebarOpen = ref(initialSidebarState)
 const isSubsystemSelectorOpen = ref(false)
 const selectedModule = ref(null)
 const searchQuery = ref('')
@@ -354,8 +366,67 @@ const filteredSubsystems = computed(() => {
     )
 })
 
+// Save state to sessionStorage
+const saveState = () => {
+  sessionStorage.setItem('sidebarOpen', JSON.stringify(isSidebarOpen.value))
+  if (selectedModule.value) {
+    sessionStorage.setItem('selectedModule', JSON.stringify({
+      name: selectedModule.value.name,
+      icon: selectedModule.value.icon,
+      subsystemKey: getSubsystemKeyForModule(selectedModule.value)
+    }))
+  }
+  sessionStorage.setItem('currentRoute', route.path + (route.query ? '?' + new URLSearchParams(route.query).toString() : ''))
+}
+
+// Restore state from sessionStorage
+const restoreState = () => {
+  // Restore sidebar state
+  const savedSidebarState = sessionStorage.getItem('sidebarOpen')
+  if (savedSidebarState !== null) {
+    try {
+      isSidebarOpen.value = JSON.parse(savedSidebarState)
+    } catch (e) {
+      console.error('Error restoring sidebar state:', e)
+    }
+  }
+
+  // Restore selected module (only if subsystems are available)
+  if (subsystems.value && subsystems.value.length > 0) {
+    const savedModule = sessionStorage.getItem('selectedModule')
+    if (savedModule) {
+      try {
+        const moduleData = JSON.parse(savedModule)
+        // Find the module in current subsystems
+        const subsystem = subsystems.value.find(s => s.key === moduleData.subsystemKey)
+        if (subsystem) {
+          const module = subsystem.modules.find(m => m.name === moduleData.name && m.icon === moduleData.icon)
+          if (module) {
+            selectedModule.value = module
+            return true // Indicate successful restoration
+          }
+        }
+      } catch (e) {
+        console.error('Error restoring module state:', e)
+      }
+    }
+  }
+  return false // Indicate no restoration happened
+}
+
+// Helper function to get subsystem key for a module
+const getSubsystemKeyForModule = (module) => {
+  for (const subsystem of subsystems.value) {
+    if (subsystem.modules.some(m => m.name === module.name && m.icon === module.icon)) {
+      return subsystem.key
+    }
+  }
+  return null
+}
+
 const toggleSidebar = () => {
   isSidebarOpen.value = !isSidebarOpen.value
+  saveState()
 }
 
 const toggleSubsystemSelector = () => {
@@ -370,6 +441,7 @@ const selectModule = (module) => {
   selectedModule.value = module
   isSidebarOpen.value = true
   isSubsystemSelectorOpen.value = false // Close the subsystem selector
+  saveState()
 
   // Navigate to the first child functionality of the selected module
   if (module.children && module.children.length > 0) {
@@ -397,7 +469,14 @@ const handlePasswordChangeSuccess = () => {
 
 // Action buttons functions
 const refreshPage = () => {
-  window.location.reload()
+  // Only reload the content, not the entire page
+  // Navigate to the same route to trigger component reload while keeping MainLayout
+  const currentRoute = route.path
+  const currentQuery = route.query
+  router.replace({ path: currentRoute, query: currentQuery }).then(() => {
+    // Trigger a small delay to ensure component reloads
+    window.dispatchEvent(new Event('content-refresh'))
+  })
 }
 
 const toggleFullscreen = () => {
@@ -412,21 +491,47 @@ const toggleFullscreen = () => {
   }
 }
 
+// Save state when route changes
+let routeWatcher = null
+
 // Set default module to "Công trình" on component load
-onMounted(() => {
-  if (subsystems.value && subsystems.value.length > 0) {
+onMounted(async () => {
+  // Wait for subsystems to be ready
+  await nextTick()
+  
+  // Restore state first
+  const restored = restoreState()
+  
+  // Only set default module if no module was restored
+  if (!restored && !selectedModule.value && subsystems.value && subsystems.value.length > 0) {
     const defaultModule = subsystems.value.find((subsystem) => subsystem.key === 'construction')?.modules?.[0]
     if (defaultModule) {
-      selectModule(defaultModule)
+      selectedModule.value = defaultModule
+      saveState()
     }
   }
   
+  // Save state when route changes
+  routeWatcher = router.afterEach(() => {
+    saveState()
+  })
+  
   // Close dropdown when clicking outside
-  document.addEventListener('click', (event) => {
+  const handleClickOutside = (event) => {
     const userDropdown = document.querySelector('.user-dropdown')
     if (userDropdown && !userDropdown.contains(event.target)) {
       isUserDropdownOpen.value = false
     }
+  }
+  
+  document.addEventListener('click', handleClickOutside)
+  
+  // Cleanup on unmount
+  onUnmounted(() => {
+    if (routeWatcher) {
+      routeWatcher()
+    }
+    document.removeEventListener('click', handleClickOutside)
   })
 })
 </script>

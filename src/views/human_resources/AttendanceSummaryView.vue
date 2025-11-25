@@ -4248,65 +4248,61 @@ const tourSteps = computed(() => {
           <!-- Header Section -->
           <div class="summary-header mb-4">
             <div class="row g-3 align-items-center">
-              <!-- Cột trái: Bộ lọc tháng + Chú thích màu sắc -->
-              <div class="col-md-8">
-                <div class="d-flex align-items-center gap-4">
-                  <!-- Bộ lọc tháng -->
-                  <div class="time-filter-compact" data-tour="month-filter">
-                    <div class="d-flex align-items-center gap-2">
-                      <button 
-                        class="btn btn-outline-light btn-sm" 
-                        @click="goToPreviousMonth"
-                        title="Tháng trước"
-                      >
-                        <i class="fas fa-chevron-left"></i>
-                      </button>
-                      <div class="text-center px-2">
-                        <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
-                      </div>
-                      <button 
-                        class="btn btn-outline-light btn-sm" 
-                        @click="goToNextMonth"
-                        title="Tháng sau"
-                      >
-                        <i class="fas fa-chevron-right"></i>
-                      </button>
-                      <button 
-                        class="btn btn-outline-light btn-sm" 
-                        @click="goToCurrentMonth"
-                        title="Tháng hiện tại"
-                      >
-                        <i class="fas fa-calendar-day"></i>
-                      </button>
+              <!-- Cột trái: Bộ lọc tháng -->
+              <div class="col-md-6">
+                <div class="time-filter-compact" data-tour="month-filter">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
                     </div>
-                  </div>
-                  
-                  <!-- Chú thích màu sắc -->
-                  <div class="legend-compact d-flex gap-2 align-items-center">
-                    <div class="legend-item-compact">
-                      <span class="legend-color" style="background:#28a745"></span>
-                      <span class="legend-text">Đi làm</span>
-                    </div>
-                    <div class="legend-item-compact">
-                      <span class="legend-color" style="background:#007bff"></span>
-                      <span class="legend-text">Nghỉ phép</span>
-                    </div>
-                    <div class="legend-item-compact">
-                      <span class="legend-color" style="background:#ffc107"></span>
-                      <span class="legend-text">Chưa đủ giờ công</span>
-                    </div>
-                    <div class="legend-item-compact">
-                      <span class="legend-color" style="background:#dc3545"></span>
-                      <span class="legend-text">Quên checkin/checkout</span>
-                    </div>
-                    <div class="legend-item-compact">
-                      <span class="legend-color" style="background:#6c757d"></span>
-                      <span class="legend-text">Vắng không phép</span>
-                    </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToCurrentMonth"
+                      title="Tháng hiện tại"
+                    >
+                      <i class="fas fa-calendar-day"></i>
+                    </button>
                   </div>
                 </div>
               </div>
-              <div class="col-md-4 text-end">
+              <!-- Cột phải: Chú thích màu sắc -->
+              <div class="col-md-6">
+                <div class="legend-compact d-flex flex-nowrap gap-2 align-items-center justify-content-end">
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#28a745"></span>
+                    <span class="legend-text">Đi làm</span>
+                  </div>
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#007bff"></span>
+                    <span class="legend-text">Nghỉ phép</span>
+                  </div>
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#ffc107"></span>
+                    <span class="legend-text">Chưa đủ giờ công</span>
+                  </div>
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#dc3545"></span>
+                    <span class="legend-text">Quên checkin/checkout</span>
+                  </div>
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#6c757d"></span>
+                    <span class="legend-text">Vắng không phép</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -4533,7 +4529,7 @@ const tourSteps = computed(() => {
                 </div>
               </div>
               <div class="col-md-6">
-                <div class="legend-compact d-flex flex-wrap gap-3 align-items-center justify-content-end">
+                <div class="legend-compact d-flex flex-nowrap gap-2 align-items-center justify-content-end">
                   <div class="legend-item-compact">
                     <span class="legend-color" style="background:#28a745"></span>
                     <span class="legend-text">Đi làm</span>
@@ -4694,7 +4690,7 @@ const tourSteps = computed(() => {
                 </div>
               </div>
               <div class="col-md-6">
-                <div class="legend-compact d-flex flex-wrap gap-3 align-items-center justify-content-end">
+                <div class="legend-compact d-flex flex-nowrap gap-2 align-items-center justify-content-end">
                   <div class="legend-item-compact">
                     <span class="legend-color" style="background:#28a745"></span>
                     <span class="legend-text">Tăng ca nghỉ bù</span>
@@ -4817,53 +4813,49 @@ const tourSteps = computed(() => {
           <!-- Header Section -->
           <div class="overtime-header mb-4">
             <div class="row g-3 align-items-center">
-              <!-- Cột trái: Bộ lọc tháng + Chú thích màu sắc -->
-              <div class="col-md-8">
-                <div class="d-flex align-items-center gap-4">
-                  <!-- Bộ lọc tháng -->
-                  <div class="time-filter-compact" data-tour="month-filter-overtime">
-                    <div class="d-flex align-items-center gap-2">
-                      <button 
-                        class="btn btn-outline-light btn-sm" 
-                        @click="goToPreviousMonth"
-                        title="Tháng trước"
-                      >
-                        <i class="fas fa-chevron-left"></i>
-                      </button>
-                      <div class="text-center px-2">
-                        <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
-                      </div>
-                      <button 
-                        class="btn btn-outline-light btn-sm" 
-                        @click="goToNextMonth"
-                        title="Tháng sau"
-                      >
-                        <i class="fas fa-chevron-right"></i>
-                      </button>
-                      <button 
-                        class="btn btn-outline-light btn-sm" 
-                        @click="goToCurrentMonth"
-                        title="Tháng hiện tại"
-                      >
-                        <i class="fas fa-calendar-day"></i>
-                      </button>
+              <!-- Cột trái: Bộ lọc tháng -->
+              <div class="col-md-6">
+                <div class="time-filter-compact" data-tour="month-filter-overtime">
+                  <div class="d-flex align-items-center gap-3">
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToPreviousMonth"
+                      title="Tháng trước"
+                    >
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="text-center px-3">
+                      <h6 class="mb-0 fw-semibold text-white">Tháng {{ selectedMonth }}/{{ selectedYear }}</h6>
                     </div>
-                  </div>
-                  
-                  <!-- Chú thích màu sắc -->
-                  <div class="legend-compact d-flex gap-2 align-items-center">
-                    <div class="legend-item-compact">
-                      <span class="legend-color" style="background:#2196f3"></span>
-                      <span class="legend-text">Tăng ca nghỉ bù</span>
-                    </div>
-                    <div class="legend-item-compact">
-                      <span class="legend-color" style="background:#28a745"></span>
-                      <span class="legend-text">Tăng ca tính lương</span>
-                    </div>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToNextMonth"
+                      title="Tháng sau"
+                    >
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button 
+                      class="btn btn-outline-light btn-sm" 
+                      @click="goToCurrentMonth"
+                      title="Tháng hiện tại"
+                    >
+                      <i class="fas fa-calendar-day"></i>
+                    </button>
                   </div>
                 </div>
               </div>
-              <div class="col-md-4 text-end">
+              <!-- Cột phải: Chú thích màu sắc -->
+              <div class="col-md-6">
+                <div class="legend-compact d-flex flex-nowrap gap-2 align-items-center justify-content-end">
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#2196f3"></span>
+                    <span class="legend-text">Tăng ca nghỉ bù</span>
+                  </div>
+                  <div class="legend-item-compact">
+                    <span class="legend-color" style="background:#28a745"></span>
+                    <span class="legend-text">Tăng ca tính lương</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -7833,18 +7825,21 @@ const tourSteps = computed(() => {
 .legend-compact {
   gap: 0.5rem;
   flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .legend-item-compact {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.8rem;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
+  flex-shrink: 0;
 }
 
 .legend-item-compact:hover {
@@ -7861,7 +7856,7 @@ const tourSteps = computed(() => {
 }
 
 .legend-item-compact .legend-text {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: white;
   white-space: nowrap;
