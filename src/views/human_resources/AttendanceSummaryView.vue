@@ -5630,6 +5630,38 @@ const tourSteps = computed(() => {
 
 
 <style scoped>
+/* Keyframes animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* Màu cho ô tăng ca */
 .schedule-cell-enhanced.cell-overtime-compensatory {
   background: linear-gradient(135deg, #cce5ff, #b3d9ff);
@@ -5730,6 +5762,8 @@ const tourSteps = computed(() => {
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   border: 1px solid #e9ecef;
+  animation: fadeInUp 0.7s ease-out backwards;
+  animation-delay: 0.2s;
 }
 
 .emp-id-enhanced {
@@ -6598,6 +6632,31 @@ const tourSteps = computed(() => {
 .card {
   border-radius: 0.75rem;
   border: none;
+  animation: fadeInUp 0.6s ease-out backwards;
+}
+
+.card:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.card:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+.card:nth-child(5) {
+  animation-delay: 0.5s;
+}
+
+.card:nth-child(6) {
+  animation-delay: 0.6s;
 }
 
 .card-body {
@@ -6609,18 +6668,20 @@ const tourSteps = computed(() => {
   /* Ensure the table fits within the viewport */
   overflow-y: auto;
   /* Enable vertical scrolling for the table content */
-  padding: 16px;
-  /* Add padding around the table */
-  margin: 16px;
-  /* Add margin around the table container */
-  border-radius: 16px;
-  /* Rounded corners for the table container */
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  /* Subtle shadow for the table container */
-  background: #fff;
-  /* White background for the table container */
-  border: 1px solid #e9ecef;
-  /* Add a border to the table container */
+  padding: 0;
+  /* Remove padding around the table */
+  margin: 0;
+  /* Remove margin around the table container */
+  border-radius: 0;
+  /* Remove rounded corners */
+  box-shadow: none;
+  /* Remove shadow */
+  background: transparent;
+  /* Transparent background */
+  border: none;
+  /* Remove border */
+  animation: fadeInUp 0.7s ease-out backwards;
+  animation-delay: 0.2s;
 }
 
 .attendance-summary-table .modern-table {
@@ -6628,6 +6689,8 @@ const tourSteps = computed(() => {
   border-spacing: 0;
   width: 100%;
   /* Ensure the table takes up the full width of the container */
+  animation: fadeIn 0.6s ease-out backwards;
+  animation-delay: 0.3s;
 }
 
 .attendance-summary-table th {
@@ -6832,6 +6895,34 @@ const tourSteps = computed(() => {
 }
 
 /* Enhanced row styling based on type badge */
+.attendance-summary-table tbody tr {
+  animation: slideInLeft 0.4s ease-out backwards;
+}
+
+.attendance-summary-table tbody tr:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.attendance-summary-table tbody tr:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.attendance-summary-table tbody tr:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.attendance-summary-table tbody tr:nth-child(4) {
+  animation-delay: 0.25s;
+}
+
+.attendance-summary-table tbody tr:nth-child(5) {
+  animation-delay: 0.3s;
+}
+
+.attendance-summary-table tbody tr:nth-child(n+6) {
+  animation-delay: 0.35s;
+}
+
 .attendance-summary-table tbody tr:has(.type-badge-in) {
   background-color: #f5f9ff;
   border-left: 4px solid #2196F3;
@@ -7274,6 +7365,8 @@ const tourSteps = computed(() => {
   box-shadow: 0 2px 12px rgba(13, 110, 253, 0.07);
   overflow: hidden;
   border: 1px solid #e9ecef;
+  animation: fadeInUp 0.8s ease-out backwards;
+  animation-delay: 0.3s;
 }
 
 .calendar-header {
@@ -7309,6 +7402,31 @@ const tourSteps = computed(() => {
   min-height: 80px;
   border-right: 1px solid #e9ecef;
   position: relative;
+  animation: fadeIn 0.5s ease-out backwards;
+}
+
+.calendar-week:nth-child(1) .calendar-day {
+  animation-delay: 0.1s;
+}
+
+.calendar-week:nth-child(2) .calendar-day {
+  animation-delay: 0.2s;
+}
+
+.calendar-week:nth-child(3) .calendar-day {
+  animation-delay: 0.3s;
+}
+
+.calendar-week:nth-child(4) .calendar-day {
+  animation-delay: 0.4s;
+}
+
+.calendar-week:nth-child(5) .calendar-day {
+  animation-delay: 0.5s;
+}
+
+.calendar-week:nth-child(6) .calendar-day {
+  animation-delay: 0.6s;
 }
 
 .calendar-day:last-child {
@@ -7775,6 +7893,7 @@ const tourSteps = computed(() => {
   padding: 1rem;
   border-radius: 12px;
   box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
+  animation: fadeInUp 0.6s ease-out;
 }
 
 .closing-history-header {
@@ -7840,6 +7959,27 @@ const tourSteps = computed(() => {
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
   flex-shrink: 0;
+  animation: fadeInUp 0.5s ease-out backwards;
+}
+
+.legend-item-compact:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.legend-item-compact:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.legend-item-compact:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.legend-item-compact:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+.legend-item-compact:nth-child(5) {
+  animation-delay: 0.5s;
 }
 
 .legend-item-compact:hover {
@@ -8555,6 +8695,8 @@ const tourSteps = computed(() => {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   border-left: 3px solid #17a2b8;
+  animation: fadeInUp 0.5s ease-out backwards;
+  animation-delay: 0.1s;
 }
 
 .closing-details .alert {

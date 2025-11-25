@@ -469,14 +469,17 @@ const handlePasswordChangeSuccess = () => {
 
 // Action buttons functions
 const refreshPage = () => {
-  // Only reload the content, not the entire page
-  // Navigate to the same route to trigger component reload while keeping MainLayout
-  const currentRoute = route.path
-  const currentQuery = route.query
-  router.replace({ path: currentRoute, query: currentQuery }).then(() => {
-    // Trigger a small delay to ensure component reloads
-    window.dispatchEvent(new Event('content-refresh'))
-  })
+  // Save current state before reload
+  saveState()
+  
+  // Dispatch a global event for components to listen and reload their data
+  window.dispatchEvent(new CustomEvent('page-refresh', { 
+    detail: { timestamp: Date.now() } 
+  }))
+  
+  // Reload the page - state is saved in sessionStorage so it will be restored automatically
+  // This ensures the page content is fully reloaded while maintaining layout state
+  window.location.reload()
 }
 
 const toggleFullscreen = () => {

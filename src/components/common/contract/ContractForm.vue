@@ -99,6 +99,22 @@ const isProbationContract = computed(() => {
   return contractType?.contractTypeName?.toLowerCase().includes('thử việc') || false
 })
 
+// Get available allowances for a specific index (excluding already selected ones)
+const getAvailableAllowances = (currentIndex) => {
+  // Get all selected allowance IDs except the current one
+  const selectedAllowanceIDs = formData.value.allowances
+    .map((allowance, index) => index !== currentIndex && allowance.allowanceID ? allowance.allowanceID : null)
+    .filter(id => id !== null)
+  
+  // Get current allowance ID (if any)
+  const currentAllowanceID = formData.value.allowances[currentIndex]?.allowanceID
+  
+  // Filter allowances to exclude already selected ones, but include the current one if selected
+  return allowances.value.filter(allowance => 
+    !selectedAllowanceIDs.includes(allowance.id) || allowance.id == currentAllowanceID
+  )
+}
+
 // Watch for changes in contract prop
 watch(() => props.contract, (newContract) => {
   if (newContract) {
@@ -137,7 +153,9 @@ watch(() => props.contract, (newContract) => {
       contractTypeID: newContract.contractTypeID ?? '',
       employeeID: newContract.employeeID ?? '',
       startDate: formatDateForInput(newContract.startDate),
-      endDate: formatDateForInput(newContract.endDate),
+      endDate: (newContract.endDate === null || newContract.endDate === undefined) 
+        ? '' 
+        : formatDateForInput(newContract.endDate),
       contractSalary: newContract.contractSalary ?? '',
       insuranceSalary: newContract.insuranceSalary ?? '',
       approveStatus: approveStatusValue,
@@ -150,8 +168,13 @@ watch(() => props.contract, (newContract) => {
 }, { deep: true, immediate: true })
 
 function formatDateForInput(dateString) {
-  if (!dateString) return ''
+  if (!dateString || dateString === null || dateString === undefined || dateString === '') return ''
   const date = new Date(dateString)
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid date string:', dateString)
+    return ''
+  }
   return date.toISOString().split('T')[0]
 }
 
@@ -159,6 +182,11 @@ function formatDateForInput(dateString) {
 const calculateEndDate = (startDate, months) => {
   if (!startDate) return ''
   const date = new Date(startDate)
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid start date for calculation:', startDate)
+    return ''
+  }
   date.setMonth(date.getMonth() + parseInt(months))
   return date.toISOString().split('T')[0]
 }
@@ -167,7 +195,11 @@ const calculateEndDate = (startDate, months) => {
 watch(() => formData.value.startDate, (newStartDate) => {
   // For probation contracts, always use 2 months
   if (isProbationContract.value && newStartDate) {
-    formData.value.endDate = calculateEndDate(newStartDate, 2)
+    // Validate date before calculating
+    const date = new Date(newStartDate)
+    if (!isNaN(date.getTime())) {
+      formData.value.endDate = calculateEndDate(newStartDate, 2)
+    }
   }
 })
 
@@ -180,7 +212,11 @@ watch(() => formData.value.contractTypeID, (newContractTypeID) => {
   
   // Auto-calculate end date for probation contracts if start date is set
   if (isProbationContract.value && formData.value.startDate) {
-    formData.value.endDate = calculateEndDate(formData.value.startDate, 2)
+    // Validate date before calculating
+    const date = new Date(formData.value.startDate)
+    if (!isNaN(date.getTime())) {
+      formData.value.endDate = calculateEndDate(formData.value.startDate, 2)
+    }
   }
 })
 
@@ -241,7 +277,7 @@ const validateStartDate = () => {
   }
   
   // Validate end date when start date changes
-  if (formData.value.endDate && !isIndeterminateTermContract.value) {
+  if (formData.value.endDate && formData.value.endDate.trim() !== '' && !isIndeterminateTermContract.value) {
     const endDate = new Date(formData.value.endDate)
     if (!isNaN(endDate.getTime()) && startDate >= endDate) {
       errors.value.startDate = 'Ngày bắt đầu phải trước ngày kết thúc'
@@ -279,7 +315,7 @@ const validateEndDate = () => {
     return false
   }
   
-  if (value) {
+  if (value && value.trim() !== '') {
     const endDate = new Date(value)
     if (isNaN(endDate.getTime())) {
       errors.value.endDate = 'Ngày kết thúc không hợp lệ'
@@ -287,7 +323,7 @@ const validateEndDate = () => {
     }
     
     // Validate end date is after start date
-    if (formData.value.startDate) {
+    if (formData.value.startDate && formData.value.startDate.trim() !== '') {
       const startDate = new Date(formData.value.startDate)
       if (!isNaN(startDate.getTime()) && startDate >= endDate) {
         errors.value.endDate = 'Ngày kết thúc phải sau ngày bắt đầu'
@@ -336,12 +372,22 @@ const checkContractOverlap = () => {
   }
 
   const newStartDate = new Date(formData.value.startDate)
+  // Check if start date is valid
+  if (isNaN(newStartDate.getTime())) {
+    errors.value.contractOverlap = ''
+    return true // Skip overlap check if date is invalid (validation will catch it)
+  }
   newStartDate.setHours(0, 0, 0, 0)
   
   // For contracts with endDate, use it; for indeterminate, use a far future date for comparison
   let newEndDate
   if (formData.value.endDate) {
     newEndDate = new Date(formData.value.endDate)
+    // Check if end date is valid
+    if (isNaN(newEndDate.getTime())) {
+      errors.value.contractOverlap = ''
+      return true // Skip overlap check if date is invalid
+    }
     newEndDate.setHours(23, 59, 59, 999)
   } else if (isIndeterminateTermContract.value) {
     // For indeterminate term, treat as infinite (use far future date)
@@ -362,12 +408,27 @@ const checkContractOverlap = () => {
 
   // Check for overlap with each existing contract
   for (const existingContract of existingContracts) {
+    // Skip if existing contract doesn't have valid start date
+    if (!existingContract.startDate) {
+      continue
+    }
+    
     const existingStartDate = new Date(existingContract.startDate)
+    // Skip if date is invalid
+    if (isNaN(existingStartDate.getTime())) {
+      console.warn('Invalid start date in existing contract:', existingContract.startDate)
+      continue
+    }
     existingStartDate.setHours(0, 0, 0, 0)
     
     let existingEndDate
     if (existingContract.endDate) {
       existingEndDate = new Date(existingContract.endDate)
+      // Check if end date is valid
+      if (isNaN(existingEndDate.getTime())) {
+        console.warn('Invalid end date in existing contract:', existingContract.endDate)
+        continue
+      }
       existingEndDate.setHours(23, 59, 59, 999)
     } else {
       // Indeterminate term contract - treat as infinite
@@ -602,6 +663,10 @@ const handleSubmit = () => {
     contractNumber: formData.value.contractNumber.trim(),
     contractSalary: parseFloat(formData.value.contractSalary),
     insuranceSalary: parseFloat(formData.value.insuranceSalary),
+    // For indeterminate term contracts, set endDate to null instead of empty string
+    endDate: (isIndeterminateTermContract.value || !formData.value.endDate) 
+      ? null 
+      : formData.value.endDate,
     allowances: formData.value.allowances
       .filter(a => a.allowanceID && (a.value !== null && a.value !== undefined && a.value !== ''))
       .map(a => ({
@@ -799,14 +864,14 @@ watch(() => props.mode, (newMode) => {
         
       </div>
 
-      <!-- Thông tin lương và trạng thái -->
+      <!-- Thông tin lương -->
       <div class="form-group">
         <h6 class="group-title">
           <i class="fas fa-money-bill-wave me-2"></i>
-          Thông tin lương và trạng thái
+          Thông tin lương
         </h6>
         <div class="row g-4">
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label">Lương hợp đồng <span class="text-danger">*</span></label>
             <input 
               type="number" 
@@ -821,7 +886,7 @@ watch(() => props.mode, (newMode) => {
             />
             <div class="invalid-feedback">{{ errors.contractSalary }}</div>
           </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label">Lương bảo hiểm <span class="text-danger">*</span></label>
             <input 
               type="number" 
@@ -835,14 +900,6 @@ watch(() => props.mode, (newMode) => {
               placeholder="VD: 8000000"
             />
             <div class="invalid-feedback">{{ errors.insuranceSalary }}</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Trạng thái duyệt</label>
-            <select class="form-select" v-model="formData.approveStatus">
-              <option v-for="status in approveStatusOptions" :key="status.value" :value="status.value">
-                {{ status.text }}
-              </option>
-            </select>
           </div>
         </div>
       </div>
@@ -882,7 +939,12 @@ watch(() => props.mode, (newMode) => {
                     :disabled="loading"
                   >
                     <option value="">{{ loading ? 'Đang tải...' : 'Chọn phụ cấp' }}</option>
-                    <option v-for="allow in allowances" :key="allow.id" :value="allow.id">
+                    <!-- Show available allowances (excluding already selected ones, but including current one) -->
+                    <option 
+                      v-for="allow in getAvailableAllowances(index)" 
+                      :key="allow.id" 
+                      :value="allow.id"
+                    >
                       {{ allow.allowanceName }}
                     </option>
                   </select>

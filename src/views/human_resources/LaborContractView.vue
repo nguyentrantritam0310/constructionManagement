@@ -679,7 +679,7 @@ const expiredColumns = [
 ]
 
 const currentPage = ref(1)
-const itemsPerPage = 20
+const itemsPerPage = 8
 
 const paginatedContracts = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage

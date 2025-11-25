@@ -1884,13 +1884,13 @@ const startTour = () => {
             <span class="overtime-days-coeff">{{ item.otDaysWithCoeff }} ngày</span>
           </template>
         </DataTable>
-        <Pagination
-          :totalItems="salaryTableData.length"
-          :itemsPerPage="salaryItemsPerPage"
-          :currentPage="salaryCurrentPage"
-          @update:currentPage="salaryCurrentPage = $event"
-        />
       </div>
+      <Pagination
+        :totalItems="salaryTableData.length"
+        :itemsPerPage="salaryItemsPerPage"
+        :currentPage="salaryCurrentPage"
+        @update:currentPage="salaryCurrentPage = $event"
+      />
     </div>
     
     <!-- Personal Salary Tab -->
@@ -2337,16 +2337,14 @@ const startTour = () => {
           </table>
         </div>
         
-        <!-- Pagination -->
-        <div class="insurance-pagination mt-3">
-          <Pagination
-            :totalItems="insuranceTableData.length"
-            :itemsPerPage="insuranceItemsPerPage"
-            :currentPage="insuranceCurrentPage"
-            @update:currentPage="insuranceCurrentPage = $event"
-          />
-        </div>
       </div>
+      <!-- Pagination -->
+        <Pagination
+          :totalItems="insuranceTableData.length"
+          :itemsPerPage="insuranceItemsPerPage"
+          :currentPage="insuranceCurrentPage"
+          @update:currentPage="insuranceCurrentPage = $event"
+        />
     </div>
     <!-- Tax Tab -->
     <div v-else-if="activeTab === 'tax'">
@@ -2588,15 +2586,14 @@ const startTour = () => {
         </div>
         
         <!-- Pagination -->
-        <div class="tax-pagination mt-3">
-          <Pagination
-            :totalItems="taxFinalizationTableData.length"
-            :itemsPerPage="taxFinalizationItemsPerPage"
-            :currentPage="taxFinalizationCurrentPage"
-            @update:currentPage="taxFinalizationCurrentPage = $event"
-          />
-        </div>
+
       </div>
+      <Pagination
+        :totalItems="taxFinalizationTableData.length"
+        :itemsPerPage="taxFinalizationItemsPerPage"
+        :currentPage="taxFinalizationCurrentPage"
+        @update:currentPage="taxFinalizationCurrentPage = $event"
+      />
     </div>
   </div>
 
