@@ -151,7 +151,7 @@ const leaveData = computed(() => {
 })
 
 const annualCurrentPage = ref(1)
-const annualItemsPerPage = ref(10)
+const annualItemsPerPage = ref(8)
 const paginatedLeaveData = computed(() => {
   if (!leaveData.value || leaveData.value.length === 0) {
     return []
@@ -265,7 +265,7 @@ const otLeaveData = computed(() => {
 })
 
 const otCurrentPage = ref(1)
-const otItemsPerPage = ref(10)
+const otItemsPerPage = ref(8)
 const paginatedOtLeaveData = computed(() => {
   if (!otLeaveData.value || otLeaveData.value.length === 0) {
     return []
@@ -612,9 +612,6 @@ const startTour = () => {
             {{ year }}
           </option>
         </select>
-        <button class="btn btn-sm btn-outline-success" @click="reloadData">
-          <i class="fas fa-sync me-1"></i> Reload
-        </button>
       </div>
       <div class="text-muted">
         <i class="fas fa-calendar-alt me-2"></i>
@@ -685,15 +682,15 @@ const startTour = () => {
             <span class="seniority-date">{{ item?.seniorityDate || '' }}</span>
           </template>
         </DataTable>
-        <Pagination
-          v-if="!loading && !error && leaveData && leaveData.length > 0"
-          :totalItems="leaveData.length"
-          :itemsPerPage="annualItemsPerPage"
-          :currentPage="annualCurrentPage"
-          @update:currentPage="annualCurrentPage = $event"
-          data-tour="pagination-annual"
-        />
       </div>
+      <Pagination
+        v-if="!loading && !error && leaveData && leaveData.length > 0"
+        :totalItems="leaveData.length"
+        :itemsPerPage="annualItemsPerPage"
+        :currentPage="annualCurrentPage"
+        @update:currentPage="annualCurrentPage = $event"
+        data-tour="pagination-annual"
+      />
       
       <!-- No Data State -->
       <div v-else class="text-center py-4">
@@ -754,15 +751,15 @@ const startTour = () => {
             <span class="ot-leave-remain">{{ item?.otLeaveRemain || 0 }}</span>
           </template>
         </DataTable>
-        <Pagination
-          v-if="!loading && !error && otLeaveData && otLeaveData.length > 0"
-          :totalItems="otLeaveData.length"
-          :itemsPerPage="otItemsPerPage"
-          :currentPage="otCurrentPage"
-          @update:currentPage="otCurrentPage = $event"
-          data-tour="pagination-otLeave"
-        />
       </div>
+      <Pagination
+        v-if="!loading && !error && otLeaveData && otLeaveData.length > 0"
+        :totalItems="otLeaveData.length"
+        :itemsPerPage="otItemsPerPage"
+        :currentPage="otCurrentPage"
+        @update:currentPage="otCurrentPage = $event"
+        data-tour="pagination-otLeave"
+      />
       
       <!-- No Data State -->
       <div v-else class="text-center py-4">

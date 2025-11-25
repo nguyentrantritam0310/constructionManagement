@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import TimeFilter from '../../components/common/TimeFilter.vue'
@@ -79,6 +79,41 @@ const getWorkShiftId = (shift) => {
   return shift.code || shift.id || shift.workShiftID || shift.ID
 }
 
+// Kiểm tra xem nhân viên đã được phân ca này chưa và lấy thông tin ngày
+const getEmployeeShiftAssignmentInfo = (employee, shiftId) => {
+  if (!employee || !shiftId || !selectedShiftForBulk) {
+    return null
+  }
+  
+  const employeeId = getEmployeeId(employee)
+  // Chuẩn hóa shiftId để so sánh (có thể là số hoặc chuỗi)
+  const normalizedShiftId = typeof shiftId === 'string' ? parseInt(shiftId) : shiftId
+  
+  const assignments = shiftAssignments.value.filter(assignment => {
+    const assignmentEmployeeId = assignment.employeeID
+    const assignmentShiftId = typeof assignment.workShiftID === 'string' 
+      ? parseInt(assignment.workShiftID) 
+      : assignment.workShiftID
+    return assignmentEmployeeId === employeeId && assignmentShiftId === normalizedShiftId
+  })
+  
+  if (assignments.length === 0) {
+    return null
+  }
+  
+  // Sắp xếp theo ngày và lấy ngày đầu và cuối
+  const sortedDates = assignments
+    .map(a => new Date(a.workDate))
+    .sort((a, b) => a - b)
+  
+  return {
+    hasAssignment: true,
+    startDate: sortedDates[0],
+    endDate: sortedDates[sortedDates.length - 1],
+    totalDays: sortedDates.length
+  }
+}
+
 onMounted(async () => {
   await fetchWorkShifts()
   await fetchAllShiftAssignments()
@@ -121,6 +156,12 @@ const newEndDate = ref('')
 const newShiftId = ref('')
 const changeShiftLoading = ref(false)
 const showTourGuide = ref(false)
+
+// Search filters for each tab
+const scheduleSearchTerm = ref('')
+const historySearchTerm = ref('')
+const unassignedSearchTerm = ref('')
+
 const initCurrentWeekStart = () => {
   const today = new Date()
   const monday = new Date(today)
@@ -214,6 +255,33 @@ const getDateFromDayIndex = (dayIndex) => {
   targetDate.setDate(monday.getDate() + (dayIndex - 1))
   return targetDate
 }
+
+// Computed property để lọc các ca làm việc chưa được phân cho nhân viên trong ngày
+const availableShiftsForQuickAdd = computed(() => {
+  if (!quickAddEmployee.value || !quickAddDate.value) {
+    return workshifts.value || []
+  }
+  
+  const employeeId = quickAddEmployee.value.empId
+  const workDate = formatDateForAPI(quickAddDate.value)
+  const workDateNormalized = normalizeDate(new Date(workDate))
+  
+  // Lấy danh sách các ca đã được phân cho nhân viên trong ngày đó
+  const assignedShiftIds = shiftAssignments.value
+    .filter(assignment => {
+      const assignmentEmployeeId = assignment.employeeID
+      const assignmentDate = normalizeDate(new Date(assignment.workDate))
+      return assignmentEmployeeId === employeeId && 
+             assignmentDate.getTime() === workDateNormalized.getTime()
+    })
+    .map(assignment => assignment.workShiftID)
+  
+  // Lọc các ca chưa được phân
+  return (workshifts.value || []).filter(shift => {
+    const shiftId = shift.id || shift.code
+    return !assignedShiftIds.includes(shiftId)
+  })
+})
 
 const openViewDetailsModal = (shift) => {
   selectedShiftDetails.value = shift
@@ -338,7 +406,7 @@ const openChangeShiftModal = (historyItem) => {
   // Điền sẵn thời gian hiện tại
   newStartDate.value = historyItem.startDate ? convertDisplayDateToInput(historyItem.startDate) : ''
   newEndDate.value = historyItem.endDate ? convertDisplayDateToInput(historyItem.endDate) : ''
-  newShiftId.value = historyItem.workShiftID || ''
+  // Không cần set newShiftId vì không cho đổi ca làm việc
   showChangeShiftModal.value = true
 }
 
@@ -367,17 +435,15 @@ const handleChangeShift = async () => {
     return
   }
 
-  if (!newShiftId.value) {
-    showMessage('Vui lòng chọn ca làm việc', 'warning')
-    return
-  }
-
   try {
     changeShiftLoading.value = true
 
+    // Sử dụng ca làm việc hiện tại từ selectedHistoryItem, không cho đổi ca
+    const currentWorkShiftID = selectedHistoryItem.value.workShiftID
+
     const oldAssignments = shiftAssignments.value.filter(assignment => 
       assignment.employeeID === selectedHistoryItem.value.employeeID &&
-      assignment.workShiftID === selectedHistoryItem.value.workShiftID
+      assignment.workShiftID === currentWorkShiftID
     )
 
     await Promise.all(oldAssignments.map(assignment => deleteShiftAssignment(assignment.id)))
@@ -394,7 +460,7 @@ const handleChangeShift = async () => {
 
     const newAssignments = dates.map(date => ({
       employeeID: selectedHistoryItem.value.employeeID,
-      workShiftID: newShiftId.value,
+      workShiftID: currentWorkShiftID,
       workDate: formatDateForAPI(date)
     }))
 
@@ -402,9 +468,9 @@ const handleChangeShift = async () => {
     await fetchAllShiftAssignments()
 
     closeChangeShiftModal()
-    showMessage('Đổi phân ca thành công!', 'success')
+    showMessage('Cập nhật khoảng thời gian thành công!', 'success')
   } catch (error) {
-    showMessage('Có lỗi xảy ra khi đổi phân ca', 'error')
+    showMessage('Có lỗi xảy ra khi cập nhật khoảng thời gian', 'error')
   } finally {
     changeShiftLoading.value = false
   }
@@ -613,7 +679,7 @@ const handleBulkAssign = async () => {
 }
 // Tab Ca làm việc
 const shiftCurrentPage = ref(1)
-const shiftItemsPerPage = ref(5)
+const shiftItemsPerPage = ref(8)
 const shiftColumns = [
   { key: 'stt', label: 'STT' },
   { key: 'code', label: 'Mã ca' },
@@ -667,7 +733,7 @@ const paginatedShiftData = computed(() => {
 
 // Tab Lịch sử phân ca
 const historyCurrentPage = ref(1)
-const historyItemsPerPage = ref(5)
+const historyItemsPerPage = ref(8)
 const historyColumns = [
   { key: 'stt', label: 'STT' },
   { key: 'empId', label: 'Mã Nhân viên' },
@@ -724,14 +790,27 @@ const historyData = computed(() => {
     }
   })
 })
+// Filter history data by search term
+const filteredHistoryData = computed(() => {
+  if (!historySearchTerm.value.trim()) {
+    return historyData.value
+  }
+  const searchLower = historySearchTerm.value.toLowerCase().trim()
+  return historyData.value.filter(item => {
+    const empId = (item.empId || '').toLowerCase()
+    const empName = (item.empName || '').toLowerCase()
+    return empId.includes(searchLower) || empName.includes(searchLower)
+  })
+})
+
 const paginatedHistoryData = computed(() => {
   const start = (historyCurrentPage.value - 1) * historyItemsPerPage.value
-  return historyData.value.slice(start, start + historyItemsPerPage.value)
+  return filteredHistoryData.value.slice(start, start + historyItemsPerPage.value)
 })
 
 // Tab Nhân viên chưa phân ca
 const unassignedCurrentPage = ref(1)
-const unassignedItemsPerPage = ref(5)
+const unassignedItemsPerPage = ref(8)
 const unassignedColumns = [
   { key: 'stt', label: 'STT' },
   { key: 'empId', label: 'Mã Nhân viên' },
@@ -751,13 +830,26 @@ const unassignedData = computed(() => {
       empId: employee.employeeCode || getEmployeeId(employee) || 'N/A',
       empName: employee.employeeName || 'N/A',
       dept: employee.roleName || employee.department || 'N/A',
-      title: employee.position || employee.jobTitle || employee.title || 'N/A',
+      title: employee.roleName || 'N/A', // Chức danh là roleName
       joinDate: formatDateForDisplay(employee.joinDate) || 'N/A'
     }))
 })
+// Filter unassigned data by search term
+const filteredUnassignedData = computed(() => {
+  if (!unassignedSearchTerm.value.trim()) {
+    return unassignedData.value
+  }
+  const searchLower = unassignedSearchTerm.value.toLowerCase().trim()
+  return unassignedData.value.filter(item => {
+    const empId = (item.empId || '').toLowerCase()
+    const empName = (item.empName || '').toLowerCase()
+    return empId.includes(searchLower) || empName.includes(searchLower)
+  })
+})
+
 const paginatedUnassignedData = computed(() => {
   const start = (unassignedCurrentPage.value - 1) * unassignedItemsPerPage.value
-  return unassignedData.value.slice(start, start + unassignedItemsPerPage.value)
+  return filteredUnassignedData.value.slice(start, start + unassignedItemsPerPage.value)
 })
 
 // Tab Xếp lịch - columns sẽ được tạo động dựa trên tuần được chọn
@@ -852,10 +944,24 @@ const scheduleData = computed(() => {
   return Object.values(employeeGroups)
 })
 const scheduleCurrentPage = ref(1)
-const scheduleItemsPerPage = ref(5)
+const scheduleItemsPerPage = ref(8)
+
+// Filter schedule data by search term
+const filteredScheduleData = computed(() => {
+  if (!scheduleSearchTerm.value.trim()) {
+    return scheduleData.value || []
+  }
+  const searchLower = scheduleSearchTerm.value.toLowerCase().trim()
+  return (scheduleData.value || []).filter(item => {
+    const empId = (item.empId || '').toLowerCase()
+    const empName = (item.empName || '').toLowerCase()
+    return empId.includes(searchLower) || empName.includes(searchLower)
+  })
+})
+
 const paginatedScheduleData = computed(() => {
   const start = (scheduleCurrentPage.value - 1) * scheduleItemsPerPage.value
-  return (scheduleData.value || []).slice(start, start + scheduleItemsPerPage.value)
+  return filteredScheduleData.value.slice(start, start + scheduleItemsPerPage.value)
 })
 
 // Tour Guide Steps
@@ -1098,6 +1204,19 @@ const startTour = () => {
     showTourGuide.value = true
   }, 300)
 }
+
+// Reset pagination when search term changes
+watch(scheduleSearchTerm, () => {
+  scheduleCurrentPage.value = 1
+})
+
+watch(historySearchTerm, () => {
+  historyCurrentPage.value = 1
+})
+
+watch(unassignedSearchTerm, () => {
+  unassignedCurrentPage.value = 1
+})
 </script>
 
 <template>
@@ -1143,7 +1262,7 @@ const startTour = () => {
           </button>
         </div>
 
-        <!-- Quick Actions - Left side -->
+        <!-- Quick Actions and Search Filter - Same row -->
         <div class="d-flex align-items-center gap-2">
           <button 
             class="btn btn-outline-primary btn-sm" 
@@ -1166,6 +1285,27 @@ const startTour = () => {
               @change="goToSpecificDate(new Date(selectedDate))"
               :disabled="shiftLoading"
             />
+          </div>
+          
+          <!-- Search Filter - Next to date picker -->
+          <div class="input-group" style="max-width: 400px;">
+            <span class="input-group-text bg-light border-end-0">
+              <i class="fas fa-search text-muted"></i>
+            </span>
+            <input 
+              type="text" 
+              class="form-control border-start-0" 
+              v-model="scheduleSearchTerm"
+              placeholder="Tìm kiếm theo mã hoặc tên nhân viên..."
+            />
+            <button 
+              v-if="scheduleSearchTerm"
+              class="btn btn-outline-secondary btn-sm border-start-0" 
+              @click="scheduleSearchTerm = ''"
+              title="Xóa bộ lọc"
+            >
+              <i class="fas fa-times"></i>
+            </button>
           </div>
           
           <!-- Refresh Button -->
@@ -1251,10 +1391,9 @@ const startTour = () => {
               </div>
             </template>
             
-            <!-- Chỉ hiển thị nút + khi không có ca làm việc -->
+            <!-- Luôn hiển thị nút + để thêm ca làm việc -->
             <button 
-              v-else
-              class="btn btn-success btn-sm rounded-pill"
+              class="quick-add-shift-btn"
               @click="openQuickAddModal(item, getDateFromDayIndex(i))"
               title="Thêm ca làm việc"
               data-tour="quick-add-btn"
@@ -1266,7 +1405,7 @@ const startTour = () => {
         
       </DataTable>
       <Pagination
-        :totalItems="scheduleData.value?.length || 0"
+        :totalItems="filteredScheduleData.length"
         :itemsPerPage="scheduleItemsPerPage"
         :currentPage="scheduleCurrentPage"
         @update:currentPage="scheduleCurrentPage = $event"
@@ -1274,6 +1413,29 @@ const startTour = () => {
       />
     </div>
     <div v-else-if="activeTab === 'history'">
+      <!-- Search Filter -->
+      <div class="mb-3">
+        <div class="input-group" style="max-width: 400px;">
+          <span class="input-group-text bg-light border-end-0">
+            <i class="fas fa-search text-muted"></i>
+          </span>
+          <input 
+            type="text" 
+            class="form-control border-start-0" 
+            v-model="historySearchTerm"
+            placeholder="Tìm kiếm theo mã nhân viên hoặc tên nhân viên..."
+          />
+          <button 
+            v-if="historySearchTerm"
+            class="btn btn-outline-secondary border-start-0" 
+            @click="historySearchTerm = ''"
+            title="Xóa bộ lọc"
+          >
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+      
       <DataTable :columns="historyColumns" :data="paginatedHistoryData" data-tour="table-history">
         <template #actions="{ item }">
           <div class="d-flex justify-content-start gap-2" data-tour="actions-history">
@@ -1292,10 +1454,10 @@ const startTour = () => {
       <!-- Phân trang -->
       <div class="d-flex justify-content-between align-items-center mt-4">
         <div class="text-muted">
-          Hiển thị {{ paginatedHistoryData.length }} trên {{ historyData.length }} lịch sử phân ca
+          Hiển thị {{ paginatedHistoryData.length }} trên {{ filteredHistoryData.length }} lịch sử phân ca
         </div>
         <Pagination
-          :totalItems="historyData.length"
+          :totalItems="filteredHistoryData.length"
           :itemsPerPage="historyItemsPerPage"
           :currentPage="historyCurrentPage"
           @update:currentPage="historyCurrentPage = $event"
@@ -1304,14 +1466,37 @@ const startTour = () => {
       </div>
     </div>
     <div v-else-if="activeTab === 'unassigned'">
+      <!-- Search Filter -->
+      <div class="mb-3">
+        <div class="input-group" style="max-width: 400px;">
+          <span class="input-group-text bg-light border-end-0">
+            <i class="fas fa-search text-muted"></i>
+          </span>
+          <input 
+            type="text" 
+            class="form-control border-start-0" 
+            v-model="unassignedSearchTerm"
+            placeholder="Tìm kiếm theo mã nhân viên hoặc tên nhân viên..."
+          />
+          <button 
+            v-if="unassignedSearchTerm"
+            class="btn btn-outline-secondary border-start-0" 
+            @click="unassignedSearchTerm = ''"
+            title="Xóa bộ lọc"
+          >
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+      
       <DataTable :columns="unassignedColumns" :data="paginatedUnassignedData" data-tour="table-unassigned" />
       <!-- Phân trang -->
       <div class="d-flex justify-content-between align-items-center mt-4">
         <div class="text-muted">
-          Hiển thị {{ paginatedUnassignedData.length }} trên {{ unassignedData.length }} nhân viên chưa phân ca
+          Hiển thị {{ paginatedUnassignedData.length }} trên {{ filteredUnassignedData.length }} nhân viên chưa phân ca
         </div>
         <Pagination
-          :totalItems="unassignedData.length"
+          :totalItems="filteredUnassignedData.length"
           :itemsPerPage="unassignedItemsPerPage"
           :currentPage="unassignedCurrentPage"
           @update:currentPage="unassignedCurrentPage = $event"
@@ -1378,7 +1563,7 @@ const startTour = () => {
         >
           <option value="">-- Chọn ca làm việc --</option>
           <option 
-            v-for="shift in workshifts" 
+            v-for="shift in availableShiftsForQuickAdd" 
             :key="shift.id" 
             :value="shift.id"
           >
@@ -1388,6 +1573,10 @@ const startTour = () => {
             </template>
           </option>
         </select>
+        <div v-if="availableShiftsForQuickAdd.length === 0" class="text-muted small mt-2">
+          <i class="fas fa-info-circle me-1"></i>
+          Nhân viên đã được phân tất cả các ca trong ngày này
+        </div>
       </div>
 
       <div class="alert alert-info border-0" v-if="quickAddShiftId">
@@ -1622,33 +1811,33 @@ const startTour = () => {
   >
     <div class="p-4" v-if="selectedShiftForBulk">
       <!-- Selected Shift Info -->
-      <div class="card border-0 shadow-sm mb-4" data-tour="bulk-shift-info">
-        <div class="card-header bg-white border-bottom">
-          <h6 class="mb-0 fw-semibold text-dark">
-            <i class="fas fa-clock me-2 text-primary"></i>
+      <div class="card border-0 shadow-sm mb-4 bulk-modal-card" data-tour="bulk-shift-info">
+        <div class="card-header bulk-card-header">
+          <h6 class="mb-0 fw-semibold text-white">
+            <i class="fas fa-clock me-2"></i>
             Ca làm việc được chọn
           </h6>
         </div>
         <div class="card-body">
           <div class="row align-items-center">
             <div class="col-md-8">
-              <h6 class="fw-semibold mb-2 text-dark">{{ selectedShiftForBulk.name }}</h6>
+              <h6 class="fw-bold mb-2 text-dark">{{ selectedShiftForBulk.name }}</h6>
               <div class="d-flex flex-wrap gap-3">
-                <span class="text-muted">
+                <span class="badge bulk-badge-secondary">
                   <i class="fas fa-tag me-1"></i>
                   CA-{{ selectedShiftForBulk.code }}
                 </span>
-                <span class="text-muted">
+                <span class="badge bulk-badge-secondary">
                   <i class="fas fa-clock me-1"></i>
                   {{ selectedShiftForBulk.in }} - {{ selectedShiftForBulk.out }}
                 </span>
               </div>
             </div>
             <div class="col-md-4 text-end">
-              <div class="d-inline-flex align-items-center bg-light rounded px-3 py-2">
-                <i class="fas fa-users text-primary me-2"></i>
-                <span class="fw-semibold text-dark">{{ selectedShiftForBulk.employeeCount || 0 }}</span>
-                <span class="text-muted ms-1 small">nhân viên</span>
+              <div class="d-inline-flex align-items-center bulk-badge-primary rounded-pill px-3 py-2">
+                <i class="fas fa-users me-2"></i>
+                <span class="fw-semibold text-white">{{ selectedShiftForBulk.employeeCount || 0 }}</span>
+                <span class="text-white ms-1 small">nhân viên</span>
               </div>
             </div>
           </div>
@@ -1656,25 +1845,25 @@ const startTour = () => {
       </div>
 
       <!-- Date Range Selection -->
-      <div class="card border-0 shadow-sm mb-4" data-tour="bulk-date-range">
-        <div class="card-header bg-white border-bottom">
-          <h6 class="mb-0 fw-semibold text-dark">
-            <i class="fas fa-calendar-range me-2 text-primary"></i>
+      <div class="card border-0 shadow-sm mb-4 bulk-modal-card" data-tour="bulk-date-range">
+        <div class="card-header bulk-card-header">
+          <h6 class="mb-0 fw-semibold text-white">
+            <i class="fas fa-calendar-range me-2"></i>
             Chọn khoảng thời gian
           </h6>
         </div>
         <div class="card-body">
           <!-- Apply to all option -->
           <div class="mb-4">
-            <div class="form-check form-switch">
+            <div class="form-check form-switch bulk-switch">
               <input 
-                class="form-check-input" 
+                class="form-check-input bulk-switch-input" 
                 type="checkbox" 
                 id="applyToAll"
                 v-model="applyToAll"
               />
-              <label class="form-check-label fw-semibold" for="applyToAll">
-                <i class="fas fa-users me-2"></i>
+              <label class="form-check-label fw-semibold text-dark" for="applyToAll">
+                <i class="fas fa-users me-2 text-primary"></i>
                 Áp dụng cùng khoảng thời gian cho tất cả nhân viên
               </label>
             </div>
@@ -1688,19 +1877,19 @@ const startTour = () => {
           <div v-if="applyToAll">
             <div class="row">
               <div class="col-md-6">
-                <label class="form-label fw-semibold">Từ ngày</label>
+                <label class="form-label fw-semibold text-dark">Từ ngày</label>
                 <input 
                   type="date" 
-                  class="form-control" 
+                  class="form-control bulk-date-input" 
                   v-model="bulkStartDate"
                   :min="new Date().toISOString().split('T')[0]"
                 />
               </div>
               <div class="col-md-6">
-                <label class="form-label fw-semibold">Đến ngày</label>
+                <label class="form-label fw-semibold text-dark">Đến ngày</label>
                 <input 
                   type="date" 
-                  class="form-control" 
+                  class="form-control bulk-date-input" 
                   v-model="bulkEndDate"
                   :min="bulkStartDate || new Date().toISOString().split('T')[0]"
                 />
@@ -1708,15 +1897,15 @@ const startTour = () => {
             </div>
             
             <div v-if="bulkStartDate && bulkEndDate" class="mt-3">
-              <div class="alert alert-info border-0">
+              <div class="alert bulk-alert-info border-0">
                 <div class="d-flex align-items-center">
                   <i class="fas fa-info-circle me-2"></i>
                   <div>
                     <strong>Thông tin phân ca:</strong><br>
-                    <span class="text-muted">
+                    <span class="text-dark">
                       Sẽ tạo {{ selectedEmployees.length }} nhân viên × 
                       {{ Math.ceil((new Date(bulkEndDate) - new Date(bulkStartDate)) / (1000 * 60 * 60 * 24)) + 1 }} ngày = 
-                      <strong>{{ selectedEmployees.length * (Math.ceil((new Date(bulkEndDate) - new Date(bulkStartDate)) / (1000 * 60 * 60 * 24)) + 1) }} phân ca</strong>
+                      <strong class="text-primary">{{ selectedEmployees.length * (Math.ceil((new Date(bulkEndDate) - new Date(bulkStartDate)) / (1000 * 60 * 60 * 24)) + 1) }} phân ca</strong>
                     </span>
                   </div>
                 </div>
@@ -1725,12 +1914,12 @@ const startTour = () => {
           </div>
 
           <!-- Individual date ranges info (only show if not apply to all) -->
-          <div v-else class="alert alert-info border-0">
+          <div v-else class="alert bulk-alert-info border-0">
             <div class="d-flex align-items-center">
               <i class="fas fa-info-circle me-2"></i>
               <div>
                 <strong>Chế độ phân ca riêng lẻ:</strong><br>
-                <span class="text-muted">
+                <span class="text-dark">
                   Mỗi nhân viên sẽ có khoảng thời gian riêng. 
                   Vui lòng chọn nhân viên và nhập khoảng thời gian cho từng người.
                 </span>
@@ -1741,10 +1930,10 @@ const startTour = () => {
       </div>
 
       <!-- Employee Selection -->
-      <div class="card border-0 shadow-sm mb-4" data-tour="bulk-employee-selection">
-        <div class="card-header bg-white border-bottom">
-          <h6 class="mb-0 fw-semibold text-dark">
-            <i class="fas fa-users me-2 text-primary"></i>
+      <div class="card border-0 shadow-sm mb-4 bulk-modal-card" data-tour="bulk-employee-selection">
+        <div class="card-header bulk-card-header">
+          <h6 class="mb-0 fw-semibold text-white">
+            <i class="fas fa-users me-2"></i>
             Chọn nhân viên
           </h6>
         </div>
@@ -1753,13 +1942,13 @@ const startTour = () => {
           <div class="row mb-3">
             <div class="col-md-4">
               <label class="form-label fw-semibold text-dark">Tìm kiếm nhân viên</label>
-              <div class="input-group">
-                <span class="input-group-text bg-light border-end-0">
-                  <i class="fas fa-search text-muted"></i>
+              <div class="input-group bulk-input-group">
+                <span class="input-group-text bulk-input-addon">
+                  <i class="fas fa-search"></i>
                 </span>
                 <input 
                   type="text" 
-                  class="form-control border-start-0" 
+                  class="form-control bulk-input" 
                   v-model="employeeSearchTerm"
                   placeholder="Tên hoặc mã nhân viên..."
                 />
@@ -1767,11 +1956,11 @@ const startTour = () => {
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold text-dark">Chức vụ</label>
-              <div class="input-group">
-                <span class="input-group-text bg-light border-end-0">
-                  <i class="fas fa-briefcase text-muted"></i>
+              <div class="input-group bulk-input-group">
+                <span class="input-group-text bulk-input-addon">
+                  <i class="fas fa-briefcase"></i>
                 </span>
-                <select class="form-select border-start-0" v-model="selectedRole">
+                <select class="form-select bulk-input" v-model="selectedRole">
                   <option value="">Tất cả chức vụ</option>
                   <option v-for="role in uniqueRoles" :key="role" :value="role">
                     {{ role }}
@@ -1781,11 +1970,11 @@ const startTour = () => {
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold text-dark">Giới tính</label>
-              <div class="input-group">
-                <span class="input-group-text bg-light border-end-0">
-                  <i class="fas fa-user text-muted"></i>
+              <div class="input-group bulk-input-group">
+                <span class="input-group-text bulk-input-addon">
+                  <i class="fas fa-user"></i>
                 </span>
-                <select class="form-select border-start-0" v-model="selectedGender">
+                <select class="form-select bulk-input" v-model="selectedGender">
                   <option value="">Tất cả giới tính</option>
                   <option v-for="gender in uniqueGenders" :key="gender" :value="gender">
                     {{ gender }}
@@ -1798,16 +1987,16 @@ const startTour = () => {
           <!-- Selection Controls -->
           <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-              <span class="badge bg-primary me-2">
+              <span class="badge bulk-badge-primary me-2">
                 Đã chọn: {{ selectedEmployees.length }} nhân viên
               </span>
-              <span class="badge bg-info">
+              <span class="badge bulk-badge-secondary">
                 Hiển thị: {{ filteredEmployees.length }} nhân viên
               </span>
             </div>
             <div>
               <button 
-                class="btn btn-outline-success btn-sm me-2" 
+                class="btn bulk-btn-primary btn-sm me-2" 
                 @click="selectAllFiltered"
                 :disabled="filteredEmployees.length === 0"
               >
@@ -1815,7 +2004,7 @@ const startTour = () => {
                 Chọn tất cả
               </button>
               <button 
-                class="btn btn-outline-warning btn-sm" 
+                class="btn bulk-btn-secondary btn-sm" 
                 @click="deselectAll"
                 :disabled="selectedEmployees.length === 0"
               >
@@ -1831,7 +2020,10 @@ const startTour = () => {
               v-for="employee in filteredEmployees" 
               :key="employee.employeeID"
               class="employee-item border rounded mb-3"
-              :class="{ 'border-primary bg-light': isEmployeeSelected(employee) }"
+              :class="{ 
+                'border-primary bg-light': isEmployeeSelected(employee),
+                'employee-assigned-shift': getEmployeeShiftAssignmentInfo(employee, getWorkShiftId(selectedShiftForBulk))
+              }"
             >
               <!-- Employee Info -->
               <div 
@@ -1855,8 +2047,19 @@ const startTour = () => {
                     Chức vụ: {{ employee.roleName }} | 
                     Giới tính: {{ employee.gender }}
                   </small>
+                  <!-- Hiển thị thông tin đã được phân ca -->
+                  <div 
+                    v-if="getEmployeeShiftAssignmentInfo(employee, getWorkShiftId(selectedShiftForBulk))"
+                    class="mt-2"
+                  >
+                    <span class="badge bg-warning text-dark">
+                      <i class="fas fa-info-circle me-1"></i>
+                      Đã được phân từ {{ formatDateForDisplay(getEmployeeShiftAssignmentInfo(employee, getWorkShiftId(selectedShiftForBulk)).startDate.toISOString()) }} 
+                      đến {{ formatDateForDisplay(getEmployeeShiftAssignmentInfo(employee, getWorkShiftId(selectedShiftForBulk)).endDate.toISOString()) }}
+                    </span>
+                  </div>
                 </div>
-                <div v-if="isEmployeeSelected(employee)" class="text-success">
+                <div v-if="isEmployeeSelected(employee)" class="bulk-check-icon">
                   <i class="fas fa-check-circle fa-lg"></i>
                 </div>
               </div>
@@ -1868,26 +2071,26 @@ const startTour = () => {
               >
                 <div class="row align-items-end">
                   <div class="col-md-4">
-                    <label class="form-label fw-semibold small">Từ ngày</label>
+                    <label class="form-label fw-semibold small text-dark">Từ ngày</label>
                     <input 
                       type="date" 
-                      class="form-control form-control-sm" 
+                      class="form-control form-control-sm bulk-date-input" 
                       v-model="employeeDateRanges[getEmployeeId(employee)].startDate"
                       :min="new Date().toISOString().split('T')[0]"
                     />
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label fw-semibold small">Đến ngày</label>
+                    <label class="form-label fw-semibold small text-dark">Đến ngày</label>
                     <input 
                       type="date" 
-                      class="form-control form-control-sm" 
+                      class="form-control form-control-sm bulk-date-input" 
                       v-model="employeeDateRanges[getEmployeeId(employee)].endDate"
                       :min="employeeDateRanges[getEmployeeId(employee)].startDate || new Date().toISOString().split('T')[0]"
                     />
                   </div>
                   <div class="col-md-4">
                     <div v-if="employeeDateRanges[getEmployeeId(employee)].startDate && employeeDateRanges[getEmployeeId(employee)].endDate" class="text-center">
-                      <span class="badge bg-info">
+                      <span class="badge bulk-badge-primary">
                         <i class="fas fa-calendar-check me-1"></i>
                         {{ Math.ceil((new Date(employeeDateRanges[getEmployeeId(employee)].endDate) - new Date(employeeDateRanges[getEmployeeId(employee)].startDate)) / (1000 * 60 * 60 * 24)) + 1 }} phân ca
                       </span>
@@ -1909,7 +2112,7 @@ const startTour = () => {
       <div class="d-flex justify-content-end gap-2" data-tour="bulk-actions">
         <button 
           type="button" 
-          class="btn btn-outline-secondary px-4" 
+          class="btn bulk-btn-cancel px-4" 
           @click="closeBulkAssignModal"
           :disabled="bulkAssignLoading"
         >
@@ -1918,7 +2121,7 @@ const startTour = () => {
         </button>
         <button 
           type="button" 
-          class="btn btn-primary px-4 shadow-sm" 
+          class="btn bulk-btn-submit px-4" 
           @click="handleBulkAssign"
           :disabled="selectedEmployees.length === 0 || (applyToAll && (!bulkStartDate || !bulkEndDate)) || bulkAssignLoading"
         >
@@ -1991,29 +2194,16 @@ const startTour = () => {
         </div>
       </div>
 
-      <!-- New Assignment Form -->
+      <!-- Edit Date Range Form -->
       <div class="card border-light" data-tour="new-assignment-form">
         <div class="card-header bg-light">
           <h6 class="mb-0 fw-semibold text-dark">
             <i class="fas fa-edit me-2 text-muted"></i>
-            Thông tin phân ca mới
+            Sửa khoảng thời gian
           </h6>
         </div>
         <div class="card-body">
           <div class="row">
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Ca làm việc mới</label>
-              <select class="form-select" v-model="newShiftId">
-                <option value="">-- Chọn ca làm việc --</option>
-                <option 
-                  v-for="shift in workshifts" 
-                  :key="shift.code || shift.id" 
-                  :value="shift.code || shift.id"
-                >
-                  {{ shift.name || shift.shiftName }} ({{ shift.code ? `CA-${shift.code}` : shift.id }})
-                </option>
-              </select>
-            </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Từ ngày</label>
               <input 
@@ -2023,8 +2213,6 @@ const startTour = () => {
                 :min="new Date().toISOString().split('T')[0]"
               />
             </div>
-          </div>
-          <div class="row mt-3">
             <div class="col-md-6">
               <label class="form-label fw-semibold">Đến ngày</label>
               <input 
@@ -2034,13 +2222,13 @@ const startTour = () => {
                 :min="newStartDate || new Date().toISOString().split('T')[0]"
               />
             </div>
-            <div class="col-md-6">
-              <div v-if="newStartDate && newEndDate" class="mt-4">
-                <div class="alert alert-info border-0">
-                  <i class="fas fa-info-circle me-2"></i>
-                  <strong>Số ngày sẽ được phân:</strong> 
-                  {{ Math.ceil((new Date(newEndDate) - new Date(newStartDate)) / (1000 * 60 * 60 * 24)) + 1 }} ngày
-                </div>
+          </div>
+          <div class="row mt-3">
+            <div class="col-12">
+              <div v-if="newStartDate && newEndDate" class="alert alert-info border-0">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Số ngày sẽ được phân:</strong> 
+                {{ Math.ceil((new Date(newEndDate) - new Date(newStartDate)) / (1000 * 60 * 60 * 24)) + 1 }} ngày
               </div>
             </div>
           </div>
@@ -2062,11 +2250,11 @@ const startTour = () => {
           type="button" 
           class="btn btn-primary px-4 shadow-sm" 
           @click="handleChangeShift"
-          :disabled="!newStartDate || !newEndDate || !newShiftId || changeShiftLoading"
+          :disabled="!newStartDate || !newEndDate || changeShiftLoading"
         >
           <i v-if="changeShiftLoading" class="fas fa-spinner fa-spin me-1"></i>
           <i v-else class="fas fa-edit me-1"></i>
-          {{ changeShiftLoading ? 'Đang đổi phân ca...' : 'Xác nhận đổi phân ca' }}
+          {{ changeShiftLoading ? 'Đang cập nhật...' : 'Xác nhận cập nhật' }}
         </button>
       </div>
     </div>
@@ -2178,17 +2366,59 @@ const startTour = () => {
   text-align: center;
   line-height: 1.1;
 }
-.btn-success.btn-sm {
+.quick-add-shift-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: #ffffff;
   font-size: 1rem;
-  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+  position: relative;
+  overflow: hidden;
   margin-top: 2px;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.btn-success.btn-sm:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+.quick-add-shift-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.quick-add-shift-btn:hover::before {
+  left: 100%;
+}
+
+.quick-add-shift-btn:hover {
+  background: linear-gradient(135deg, #34495e 0%, #2980b9 100%);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 4px 16px rgba(52, 152, 219, 0.4);
+}
+
+.quick-add-shift-btn:active {
+  transform: translateY(0) scale(1);
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+.quick-add-shift-btn i {
+  position: relative;
+  z-index: 1;
+  transition: transform 0.3s ease;
+}
+
+.quick-add-shift-btn:hover i {
+  transform: scale(1.1);
 }
 
 .employee-item {
@@ -2211,6 +2441,18 @@ const startTour = () => {
   background-color: #f8f9fa !important;
 }
 
+.employee-item.employee-assigned-shift {
+  border: 2px solid #ffc107 !important;
+  background: linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%) !important;
+  box-shadow: 0 1px 4px rgba(255, 193, 7, 0.15);
+}
+
+.employee-item.employee-assigned-shift:hover {
+  border-color: #ffc107 !important;
+  box-shadow: 0 2px 6px rgba(255, 193, 7, 0.2);
+  transform: translateY(0);
+}
+
 .employee-list {
   border: 1px solid #dee2e6;
   border-radius: 0.5rem;
@@ -2226,6 +2468,340 @@ const startTour = () => {
 .form-check-input:focus {
   border-color: #0d6efd;
   box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Bulk Assign Modal Styles - Using MainLayout color scheme */
+.bulk-modal-card {
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.bulk-modal-card:hover {
+  box-shadow: 0 2px 8px rgba(44, 62, 80, 0.08) !important;
+}
+
+.bulk-card-header {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  border: none;
+  padding: 1rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.bulk-card-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.6s ease;
+}
+
+.bulk-card-header:hover::before {
+  left: 100%;
+}
+
+.bulk-card-header h6 {
+  position: relative;
+  z-index: 1;
+}
+
+.bulk-badge-primary {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  border: none;
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(52, 152, 219, 0.2);
+}
+
+.bulk-badge-secondary {
+  background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  border: none;
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(44, 62, 80, 0.15);
+}
+
+.bulk-input-group {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(44, 62, 80, 0.08);
+  transition: all 0.3s ease;
+}
+
+.bulk-input-group:focus-within {
+  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.2);
+  transform: translateY(0);
+}
+
+.bulk-input-addon {
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  color: #ffffff;
+  border: none;
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+}
+
+.bulk-input {
+  border: 1px solid #e0e0e0;
+  border-left: none;
+  padding: 0.75rem 1rem;
+  transition: all 0.3s ease;
+}
+
+.bulk-input:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.15);
+  outline: none;
+}
+
+.bulk-btn-primary {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 1px 3px rgba(52, 152, 219, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.bulk-btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.bulk-btn-primary:hover::before {
+  left: 100%;
+}
+
+.bulk-btn-primary:hover {
+  background: linear-gradient(135deg, #2980b9 0%, #2c3e50 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.3);
+  color: #ffffff;
+}
+
+.bulk-btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(52, 152, 219, 0.2);
+}
+
+.bulk-btn-primary:disabled {
+  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.bulk-btn-secondary {
+  background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 1px 3px rgba(44, 62, 80, 0.15);
+}
+
+.bulk-btn-secondary:hover {
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(44, 62, 80, 0.2);
+  color: #ffffff;
+}
+
+.bulk-btn-secondary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(44, 62, 80, 0.15);
+}
+
+.bulk-btn-secondary:disabled {
+  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.bulk-btn-cancel {
+  background: #ffffff;
+  color: #34495e;
+  border: 2px solid #34495e;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.bulk-btn-cancel:hover {
+  background: #34495e;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(44, 62, 80, 0.2);
+}
+
+.bulk-btn-cancel:active {
+  transform: translateY(0);
+}
+
+.bulk-btn-cancel:disabled {
+  background: #f8f9fa;
+  color: #95a5a6;
+  border-color: #e0e0e0;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.bulk-btn-submit {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 1px 3px rgba(52, 152, 219, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.bulk-btn-submit::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.bulk-btn-submit:hover::before {
+  left: 100%;
+}
+
+.bulk-btn-submit:hover {
+  background: linear-gradient(135deg, #2980b9 0%, #2c3e50 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.3);
+  color: #ffffff;
+}
+
+.bulk-btn-submit:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(52, 152, 219, 0.2);
+}
+
+.bulk-btn-submit:disabled {
+  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.bulk-alert-info {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border-left: 4px solid #3498db;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(52, 152, 219, 0.08);
+}
+
+.bulk-alert-info i {
+  color: #3498db;
+  font-size: 1.1rem;
+}
+
+.employee-item.border-primary {
+  border-color: #3498db !important;
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%) !important;
+  box-shadow: 0 1px 4px rgba(52, 152, 219, 0.15);
+}
+
+.bulk-check-icon {
+  color: #3498db;
+  animation: checkPulse 0.5s ease;
+}
+
+@keyframes checkPulse {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.employee-item:hover {
+  border-color: #3498db !important;
+  box-shadow: 0 1px 4px rgba(52, 152, 219, 0.12);
+  transform: translateY(0);
+}
+
+.form-check-input:checked {
+  background-color: #3498db;
+  border-color: #3498db;
+}
+
+.form-check-input:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+/* Form Switch Styles */
+.bulk-switch-input {
+  width: 3rem;
+  height: 1.5rem;
+  background-color: #95a5a6;
+  border: none;
+  border-radius: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.bulk-switch-input:checked {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-color: #3498db;
+}
+
+.bulk-switch-input:focus {
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+  border-color: #3498db;
+}
+
+/* Date Input Styles */
+.bulk-date-input {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.bulk-date-input:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.15);
+  outline: none;
+}
+
+.bulk-date-input:hover {
+  border-color: #3498db;
 }
 
 </style>

@@ -4310,13 +4310,11 @@ const tourSteps = computed(() => {
             <DataTable :columns="mainSummaryColumns" :data="paginatedMainSummaryData">
               <template #id="{ item }">
                 <div class="emp-id-enhanced">
-                  <i class="fas fa-id-card me-2 text-primary"></i>
                   <span class="emp-id-text fw-bold text-primary">{{ item.id }}</span>
                 </div>
               </template>
               <template #name="{ item }">
                 <div class="emp-name-row">
-                  <i class="fas fa-user me-2 text-muted"></i>
                   <span class="emp-name-text fw-bold">{{ item.name || 'N/A' }}</span>
                 </div>
               </template>
@@ -4890,13 +4888,11 @@ const tourSteps = computed(() => {
                 <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData">
                   <template #id="{ item }">
                     <div class="emp-id-enhanced">
-                      <i class="fas fa-id-card me-2 text-primary"></i>
                       <span class="emp-id-text fw-bold text-primary">{{ item.id }}</span>
                     </div>
                   </template>
                   <template #name="{ item }">
                     <div class="emp-name-row">
-                      <i class="fas fa-user me-2 text-muted"></i>
                       <span class="emp-name-text fw-bold">{{ item.name || 'N/A' }}</span>
                     </div>
                   </template>
@@ -5762,8 +5758,6 @@ const tourSteps = computed(() => {
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   border: 1px solid #e9ecef;
-  animation: fadeInUp 0.7s ease-out backwards;
-  animation-delay: 0.2s;
 }
 
 .emp-id-enhanced {
@@ -6632,31 +6626,6 @@ const tourSteps = computed(() => {
 .card {
   border-radius: 0.75rem;
   border: none;
-  animation: fadeInUp 0.6s ease-out backwards;
-}
-
-.card:nth-child(1) {
-  animation-delay: 0.1s;
-}
-
-.card:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.card:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-.card:nth-child(4) {
-  animation-delay: 0.4s;
-}
-
-.card:nth-child(5) {
-  animation-delay: 0.5s;
-}
-
-.card:nth-child(6) {
-  animation-delay: 0.6s;
 }
 
 .card-body {
@@ -6680,8 +6649,6 @@ const tourSteps = computed(() => {
   /* Transparent background */
   border: none;
   /* Remove border */
-  animation: fadeInUp 0.7s ease-out backwards;
-  animation-delay: 0.2s;
 }
 
 .attendance-summary-table .modern-table {
@@ -6689,8 +6656,6 @@ const tourSteps = computed(() => {
   border-spacing: 0;
   width: 100%;
   /* Ensure the table takes up the full width of the container */
-  animation: fadeIn 0.6s ease-out backwards;
-  animation-delay: 0.3s;
 }
 
 .attendance-summary-table th {
@@ -6895,9 +6860,6 @@ const tourSteps = computed(() => {
 }
 
 /* Enhanced row styling based on type badge */
-.attendance-summary-table tbody tr {
-  animation: slideInLeft 0.4s ease-out backwards;
-}
 
 .attendance-summary-table tbody tr:nth-child(1) {
   animation-delay: 0.1s;
@@ -7365,8 +7327,6 @@ const tourSteps = computed(() => {
   box-shadow: 0 2px 12px rgba(13, 110, 253, 0.07);
   overflow: hidden;
   border: 1px solid #e9ecef;
-  animation: fadeInUp 0.8s ease-out backwards;
-  animation-delay: 0.3s;
 }
 
 .calendar-header {
@@ -7402,31 +7362,6 @@ const tourSteps = computed(() => {
   min-height: 80px;
   border-right: 1px solid #e9ecef;
   position: relative;
-  animation: fadeIn 0.5s ease-out backwards;
-}
-
-.calendar-week:nth-child(1) .calendar-day {
-  animation-delay: 0.1s;
-}
-
-.calendar-week:nth-child(2) .calendar-day {
-  animation-delay: 0.2s;
-}
-
-.calendar-week:nth-child(3) .calendar-day {
-  animation-delay: 0.3s;
-}
-
-.calendar-week:nth-child(4) .calendar-day {
-  animation-delay: 0.4s;
-}
-
-.calendar-week:nth-child(5) .calendar-day {
-  animation-delay: 0.5s;
-}
-
-.calendar-week:nth-child(6) .calendar-day {
-  animation-delay: 0.6s;
 }
 
 .calendar-day:last-child {
@@ -7893,7 +7828,6 @@ const tourSteps = computed(() => {
   padding: 1rem;
   border-radius: 12px;
   box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
-  animation: fadeInUp 0.6s ease-out;
 }
 
 .closing-history-header {
@@ -7959,27 +7893,6 @@ const tourSteps = computed(() => {
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
   flex-shrink: 0;
-  animation: fadeInUp 0.5s ease-out backwards;
-}
-
-.legend-item-compact:nth-child(1) {
-  animation-delay: 0.1s;
-}
-
-.legend-item-compact:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.legend-item-compact:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-.legend-item-compact:nth-child(4) {
-  animation-delay: 0.4s;
-}
-
-.legend-item-compact:nth-child(5) {
-  animation-delay: 0.5s;
 }
 
 .legend-item-compact:hover {
@@ -8695,8 +8608,6 @@ const tourSteps = computed(() => {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   border-left: 3px solid #17a2b8;
-  animation: fadeInUp 0.5s ease-out backwards;
-  animation-delay: 0.1s;
 }
 
 .closing-details .alert {

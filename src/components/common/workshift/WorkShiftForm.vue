@@ -89,15 +89,21 @@ const padTime = (t) => {
 }
 
 const handleSubmit = () => {
-  const shiftDetails = formData.days.map((day, idx) => ({
-    id: day.id ?? 0,
-    workShiftID: day.workShiftID ?? 0,
-    dayOfWeek: day.day,
-    startTime: padTime(day.startTime),
-    endTime: padTime(day.endTime),
-    breakStart: padTime(day.breakStart),
-    breakEnd: padTime(day.breakEnd)
-  }))
+  // Chỉ lấy những ngày có active = true để tạo shiftDetail
+  // Backend sẽ xóa tất cả shiftDetails cũ và tạo lại từ danh sách này
+  // Vì vậy những ngày không active sẽ không được tạo lại, tức là bị xóa
+  const shiftDetails = formData.days
+    .filter(day => day.active) // Chỉ lấy những ngày được bật toggle "Áp dụng"
+    .map((day, idx) => ({
+      id: day.id ?? 0,
+      workShiftID: day.workShiftID ?? 0,
+      dayOfWeek: day.day,
+      startTime: padTime(day.startTime),
+      endTime: padTime(day.endTime),
+      breakStart: padTime(day.breakStart),
+      breakEnd: padTime(day.breakEnd)
+    }))
+  
   const payload = {
     shiftName: formData.shiftName,
     shiftDetails

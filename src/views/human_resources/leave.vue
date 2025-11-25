@@ -577,7 +577,7 @@ defineExpose({
   
   <div v-else class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h4 class="adjustment-title mb-0" data-tour="title">Danh sách đơn nghỉ phép</h4>
+      <h2 class="mb-0" data-tour="title">Danh sách đơn nghỉ phép</h2>
       <div class="d-flex gap-2" data-tour="toolbar">
         <ActionButton 
           v-if="canCreate('leave')" 
