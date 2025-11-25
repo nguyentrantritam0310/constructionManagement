@@ -9,7 +9,7 @@ import { useOvertimeRequest } from '@/composables/useOvertimeRequest'
 import { isApprovedStatus } from '@/constants/status.js'
 
 const props = defineProps({
-    mode: { type: String, required: true, validator: v => ['create', 'update'].includes(v) },
+    mode: { type: String, required: true, validator: v => ['create', 'update', 'detail'].includes(v) },
     leave: { type: Object, default: () => ({}) },
     employees: { type: Array, default: () => [] },
     leaveTypes: { type: Array, default: () => [] },
@@ -65,14 +65,19 @@ const calculateSeniorityLeave = (joinDate) => {
 }
 
 // Function to calculate total used leave days for an employee
-const calculateTotalUsedLeave = (employeeId) => {
+// excludeLeaveId: ID của đơn nghỉ phép cần loại trừ (khi update)
+// excludeVoucherCode: Mã phiếu của đơn nghỉ phép cần loại trừ (khi update)
+const calculateTotalUsedLeave = (employeeId, excludeLeaveId = null, excludeVoucherCode = null) => {
     if (!leaveRequests.value || leaveRequests.value.length === 0) {
         return 0
     }
     
     const employeeLeaveRequests = leaveRequests.value.filter(request => 
         request.employeeID === employeeId && 
-        isApprovedStatus(request.approveStatus)
+        isApprovedStatus(request.approveStatus) &&
+        // Loại trừ đơn hiện tại khi ở mode update
+        (!excludeLeaveId || request.id !== excludeLeaveId) &&
+        (!excludeVoucherCode || request.voucherCode !== excludeVoucherCode)
     )
     
     const total = employeeLeaveRequests.reduce((total, request) => {
@@ -91,7 +96,8 @@ const calculateTotalUsedLeave = (employeeId) => {
 }
 
 // Function to calculate total overtime leave days for an employee
-const calculateTotalOTLeaveDays = (employeeId) => {
+// excludeOvertimeRequestId: ID của đơn tăng ca nghỉ bù cần loại trừ (khi update)
+const calculateTotalOTLeaveDays = (employeeId, excludeOvertimeRequestId = null) => {
     if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
         return 0
     }
@@ -99,7 +105,9 @@ const calculateTotalOTLeaveDays = (employeeId) => {
     const employeeOTRequests = overtimeRequests.value.filter(request => 
         request.employeeID === employeeId && 
         isApprovedStatus(request.approveStatus) &&
-        request.overtimeFormID === 2 // Only "Tăng ca nghỉ bù" (overtime leave compensation)
+        request.overtimeFormID === 2 && // Only "Tăng ca nghỉ bù" (overtime leave compensation)
+        // Loại trừ đơn hiện tại khi ở mode update
+        (!excludeOvertimeRequestId || request.id !== excludeOvertimeRequestId)
     )
     
     const totalDays = employeeOTRequests.reduce((total, request) => {
@@ -131,9 +139,20 @@ const employeeLeaveInfo = computed(() => {
     const joinDate = new Date(employee.joinDate)
     const seniorityLeave = calculateSeniorityLeave(employee.joinDate)
     const totalLeave = 12 + seniorityLeave // 12 days default + seniority leave
-    const totalUsed = calculateTotalUsedLeave(employee.id)
+    
+    // Khi ở mode "update" hoặc "detail", loại trừ đơn hiện tại ra khỏi tính toán
+    // (hoặc bất kỳ khi nào có props.leave - đang xem/sửa một đơn cụ thể)
+    let excludeLeaveId = null
+    let excludeVoucherCode = null
+    if ((props.mode === 'update' || props.mode === 'detail') && props.leave) {
+        excludeLeaveId = props.leave.id || null
+        excludeVoucherCode = props.leave.voucherCode || null
+    }
+    
+    const totalUsed = calculateTotalUsedLeave(employee.id, excludeLeaveId, excludeVoucherCode)
     const leaveRemain = Math.max(0, totalLeave - totalUsed)
     
+    // Tính phép bù tăng ca (không cần loại trừ vì đây là đơn nghỉ phép, không phải đơn tăng ca)
     const otLeaveDays = calculateTotalOTLeaveDays(employee.id)
     const otLeaveUsed = calculateTotalOTLeaveDays(employee.id) // Same as otLeaveDays for now
     const otLeaveRemain = Math.max(0, otLeaveDays - otLeaveUsed)
@@ -515,6 +534,23 @@ onMounted(async () => {
     }
 })
 
+// Helper function to convert date string to datetime-local format (YYYY-MM-DDTHH:mm)
+// without timezone conversion issues
+const formatDateTimeLocal = (dateString) => {
+    if (!dateString) return ''
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return ''
+    
+    // Get local date components
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
 // Watch for changes in leave prop
 watch(() => props.leave, (newLeave) => {
     if (newLeave && Object.keys(newLeave).length > 0) {
@@ -523,8 +559,8 @@ watch(() => props.leave, (newLeave) => {
             employeeID: newLeave.employeeID || '',
             leaveTypeID: newLeave.leaveTypeID || '',
             workShiftID: newLeave.workShiftID || '',
-            startDateTime: newLeave.startDateTime ? new Date(newLeave.startDateTime).toISOString().slice(0, 16) : '',
-            endDateTime: newLeave.endDateTime ? new Date(newLeave.endDateTime).toISOString().slice(0, 16) : '',
+            startDateTime: formatDateTimeLocal(newLeave.startDateTime),
+            endDateTime: formatDateTimeLocal(newLeave.endDateTime),
             reason: newLeave.reason || ''
         }
         
@@ -544,6 +580,8 @@ watch(() => props.leave, (newLeave) => {
                     v-model="formData.voucherCode"
                     @blur="validateField('voucherCode')"
                     @input="validateField('voucherCode')"
+                    :disabled="props.mode === 'detail'"
+                    :readonly="props.mode === 'detail'"
                     maxlength="50"
                     placeholder="VD: NP-2024-001"
                 />
@@ -556,6 +594,7 @@ watch(() => props.leave, (newLeave) => {
                     v-model="formData.employeeID" 
                     :class="{ 'is-invalid': errors.employeeID }"
                     @change="validateField('employeeID')"
+                    :disabled="props.mode === 'detail'"
                 >
                     <option value="">Chọn nhân viên</option>
                     <option v-for="emp in employees" :key="emp.id" :value="emp.id">
@@ -640,6 +679,7 @@ watch(() => props.leave, (newLeave) => {
                     v-model="formData.leaveTypeID" 
                     :class="{ 'is-invalid': errors.leaveTypeID }"
                     @change="validateField('leaveTypeID')"
+                    :disabled="props.mode === 'detail'"
                 >
                     <option value="">Chọn loại nghỉ phép</option>
                     <option v-for="type in leaveTypes" :key="type.id" :value="type.id">
@@ -655,6 +695,7 @@ watch(() => props.leave, (newLeave) => {
                     v-model="formData.workShiftID" 
                     :class="{ 'is-invalid': errors.workShiftID }"
                     @change="validateField('workShiftID')"
+                    :disabled="props.mode === 'detail'"
                 >
                     <option value="">Chọn ca làm việc</option>
                     <option v-for="shift in workshifts" :key="shift.id" :value="shift.id">
@@ -675,6 +716,8 @@ watch(() => props.leave, (newLeave) => {
                     v-model="formData.startDateTime"
                     @blur="validateField('startDateTime')"
                     @change="validateField('startDateTime')"
+                    :disabled="props.mode === 'detail'"
+                    :readonly="props.mode === 'detail'"
                 />
                 <div class="invalid-feedback">{{ errors.startDateTime }}</div>
             </div>
@@ -687,6 +730,8 @@ watch(() => props.leave, (newLeave) => {
                     v-model="formData.endDateTime"
                     @blur="validateField('endDateTime')"
                     @change="validateField('endDateTime')"
+                    :disabled="props.mode === 'detail'"
+                    :readonly="props.mode === 'detail'"
                 />
                 <div class="invalid-feedback">{{ errors.endDateTime }}</div>
             </div>
@@ -700,6 +745,8 @@ watch(() => props.leave, (newLeave) => {
                     v-model="formData.reason"
                     @blur="validateField('reason')"
                     @input="validateField('reason')"
+                    :disabled="props.mode === 'detail'"
+                    :readonly="props.mode === 'detail'"
                     rows="3"
                     maxlength="500"
                     placeholder="Nhập lý do nghỉ phép (tối đa 500 ký tự)..."
@@ -708,7 +755,7 @@ watch(() => props.leave, (newLeave) => {
                 <small class="form-text text-muted">{{ (formData.reason || '').length }}/500 ký tự</small>
             </div>
         </div>
-        <div class="mt-4 d-flex justify-content-end gap-2">
+        <div v-if="props.mode !== 'detail'" class="mt-4 d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
             <button type="submit" class="btn btn-primary" :disabled="loading">
                 {{ loading ? 'Đang xử lý...' : (props.mode === 'update' ? 'Cập nhật' : 'Tạo mới') }}
@@ -723,6 +770,9 @@ watch(() => props.leave, (newLeave) => {
             >
                 {{ loading ? 'Đang xử lý...' : 'Gửi duyệt' }}
             </button>
+        </div>
+        <div v-else class="mt-4 d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" @click="handleClose">Đóng</button>
         </div>
     </form>
 </template>

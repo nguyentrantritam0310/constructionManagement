@@ -1,40 +1,26 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import FormField from '../FormField.vue'
 import { employeeService } from '../../../services/employeeService'
 import api from '../../../api'
 
+// ============================================================================
+// PROPS & EMITS
+// ============================================================================
 const props = defineProps({
   mode: { type: String, required: true, validator: v => ['create', 'update'].includes(v) },
   adjustment: { type: Object, default: () => ({}) }
 })
 const emit = defineEmits(['close', 'submit'])
 
+// ============================================================================
+// STATE
+// ============================================================================
 const employees = ref([])
 const adjustmentTypes = ref([])
 const adjustmentItems = ref([])
 const selectedEmployees = ref([])
 const currentYear = new Date().getFullYear()
 
-// Regex patterns cho validation
-const regexPatterns = {
-  // Số phiếu: chỉ cho phép chữ cái, số, dấu gạch ngang và gạch dưới, độ dài 1-50
-  voucherNo: /^[A-Za-z0-9_-]{1,50}$/,
-  // Ngày quyết định: định dạng YYYY-MM-DD
-  decisionDate: /^\d{4}-\d{2}-\d{2}$/,
-  // Tháng: số từ 1-12
-  month: /^(0?[1-9]|1[0-2])$/,
-  // Năm: từ 1900 đến 2100
-  year: /^(19|20)\d{2}$/,
-  // ID: chỉ số nguyên dương
-  id: /^[1-9]\d*$/,
-  // Lý do: cho phép chữ, số, khoảng trắng, dấu câu, độ dài tối đa 500
-  reason: /^[\s\S]{0,500}$/,
-  // Giá trị: số thập phân dương (cho phép số âm trong trường hợp điều chỉnh trừ)
-  value: /^-?\d+(\.\d{1,2})?$/
-}
-
-// Validation errors
 const errors = ref({
   voucherNo: '',
   decisionDate: '',
@@ -46,19 +32,39 @@ const errors = ref({
   employees: ''
 })
 
-// Helper function to format date for input field
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+const VALIDATION_PATTERNS = {
+  voucherNo: /^[A-Za-z0-9_-]{1,50}$/,
+  decisionDate: /^\d{4}-\d{2}-\d{2}$/,
+  month: /^(0?[1-9]|1[0-2])$/,
+  year: /^(19|20)\d{2}$/,
+  id: /^[1-9]\d*$/,
+  reason: /^[\s\S]{0,500}$/,
+  value: /^-?\d+(\.\d{1,2})?$/
+}
+
+const MAX_VALUE = 999999999
+const MAX_DECIMAL_PLACES = 2
+const MAX_REASON_LENGTH = 500
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+/**
+ * Format date value for input field (YYYY-MM-DD)
+ */
 const formatDateForInput = (dateValue) => {
   if (!dateValue) return ''
   
-  // Nếu đã là định dạng YYYY-MM-DD, trả về luôn
   if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateValue)) {
     return dateValue.split('T')[0]
   }
   
-  // Thử parse nhiều format khác nhau
   let date
   if (typeof dateValue === 'string') {
-    // Thử parse format dd/MM/yyyy (Việt Nam)
     const viFormat = dateValue.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
     if (viFormat) {
       date = new Date(`${viFormat[3]}-${viFormat[2]}-${viFormat[1]}`)
@@ -70,63 +76,84 @@ const formatDateForInput = (dateValue) => {
   }
   
   if (isNaN(date.getTime())) return ''
-  return date.toISOString().split('T')[0] // Returns YYYY-MM-DD format
+  return date.toISOString().split('T')[0]
 }
 
+/**
+ * Get employee name from various possible fields
+ */
+const getEmployeeName = (employee) => {
+  return employee.employeeName || 
+         employee.fullName || 
+         `${employee.firstName || ''} ${employee.lastName || ''}`.trim()
+}
+
+/**
+ * Compare two IDs (handles both string and number)
+ */
+const compareIds = (id1, id2) => {
+  return id1 == id2 || 
+         String(id1) === String(id2) ||
+         (Number(id1) === Number(id2) && !isNaN(Number(id1)) && !isNaN(Number(id2)))
+}
+
+/**
+ * Normalize employee ID (convert to number if possible, otherwise keep as string)
+ */
+const normalizeEmployeeID = (employeeID) => {
+  const num = Number(employeeID)
+  return (!isNaN(num) && num > 0) ? num : employeeID
+}
+
+// ============================================================================
+// FORM DATA INITIALIZATION
+// ============================================================================
+
 const initializeFormData = () => {
+  const adj = props.adjustment
   return {
-    voucherNo: props.adjustment.voucherNo || '',
-    decisionDate: formatDateForInput(props.adjustment.decisionDate || props.adjustment.DecisionDate),
-    month: props.adjustment.Month || props.adjustment.month || '',
-    year: props.adjustment.Year || props.adjustment.year || currentYear,
-    adjustmentTypeID: props.adjustment.AdjustmentTypeID || props.adjustment.adjustmentTypeID || '',
-    adjustmentItemID: props.adjustment.AdjustmentItemID || props.adjustment.adjustmentItemID || '',
-    reason: props.adjustment.Reason || props.adjustment.reason || '',
-    employees: props.adjustment.Employees || props.adjustment.employees || []
+    voucherNo: adj.voucherNo || '',
+    decisionDate: formatDateForInput(adj.decisionDate || adj.DecisionDate),
+    month: adj.Month || adj.month || '',
+    year: adj.Year || adj.year || currentYear,
+    adjustmentTypeID: adj.AdjustmentTypeID || adj.adjustmentTypeID || '',
+    adjustmentItemID: adj.AdjustmentItemID || adj.adjustmentItemID || '',
+    reason: adj.Reason || adj.reason || '',
+    employees: adj.Employees || adj.employees || []
   }
 }
 
 const formData = ref(initializeFormData())
 
-// Watch props.adjustment để cập nhật formData khi props thay đổi
-watch(() => props.adjustment, async (newAdjustment) => {
-  if (newAdjustment && Object.keys(newAdjustment).length > 0) {
-    formData.value = initializeFormData()
-    
-    // Cập nhật danh sách nhân viên
-    if (newAdjustment.Employees || newAdjustment.employees) {
-      selectedEmployees.value = (newAdjustment.Employees || newAdjustment.employees).map(emp => ({
-        employeeID: emp.EmployeeID || emp.employeeID,
-        employeeName: emp.EmployeeName || emp.employeeName,
-        value: emp.Value || emp.value
-      }))
-    } else {
-      selectedEmployees.value = []
-    }
-    
-    // Load adjustment items nếu có adjustmentTypeID
-    if (formData.value.adjustmentTypeID) {
-      try {
-        await onAdjustmentTypeChange()
-        if (newAdjustment.AdjustmentItemID || newAdjustment.adjustmentItemID) {
-          formData.value.adjustmentItemID = newAdjustment.AdjustmentItemID || newAdjustment.adjustmentItemID
-        }
-      } catch (error) {
-        console.error('Error loading adjustment items in watch:', error)
-      }
-    } else {
-      adjustmentItems.value = []
-    }
-  }
-}, { deep: true, immediate: true })
-
-// Debug logging
-console.log('Form initialized with props:', props.adjustment)
-console.log('Form data:', formData.value)
+// ============================================================================
+// COMPUTED
+// ============================================================================
 
 const monthYear = computed(() => {
   return `${String(formData.value.month).padStart(2, '0')}/${formData.value.year}`
 })
+
+// ============================================================================
+// EMPLOYEE MANAGEMENT
+// ============================================================================
+
+/**
+ * Get available employees for a specific row (exclude already selected employees)
+ */
+const getAvailableEmployees = (currentIndex) => {
+  const currentEmployeeID = selectedEmployees.value[currentIndex]?.employeeID
+  
+  const selectedIDs = selectedEmployees.value
+    .map((emp, idx) => idx !== currentIndex && emp.employeeID ? emp.employeeID : null)
+    .filter(id => id !== null && id !== '' && id !== undefined)
+  
+  return employees.value.filter(emp => {
+    if (currentEmployeeID && compareIds(emp.id, currentEmployeeID)) {
+      return true
+    }
+    return !selectedIDs.some(selectedID => compareIds(emp.id, selectedID))
+  })
+}
 
 const addEmployeeRow = () => {
   selectedEmployees.value.push({
@@ -140,37 +167,67 @@ const removeEmployeeRow = (index) => {
   selectedEmployees.value.splice(index, 1)
 }
 
+/**
+ * Update employee name when employee is selected
+ */
 const updateEmployeeName = (index, employeeID) => {
-  const employee = employees.value.find(emp => emp.id === employeeID)
+  if (!employeeID || employeeID === '' || employeeID === null || employeeID === undefined) {
+    return
+  }
+  
+  selectedEmployees.value[index].employeeID = employeeID
+  
+  const employee = employees.value.find(emp => compareIds(emp.id, employeeID))
+  
   if (employee) {
-    selectedEmployees.value[index].employeeName = employee.employeeName
+    selectedEmployees.value[index].employeeName = getEmployeeName(employee)
   }
 }
 
-const onAdjustmentTypeChange = async () => {
-  if (formData.value.adjustmentTypeID) {
-    try {
-      const response = await api.get(`/AdjustmentItem/by-type/${formData.value.adjustmentTypeID}`)
-      adjustmentItems.value = response.data
-      return Promise.resolve()
-    } catch (error) {
-      console.error('Error loading adjustment items:', error)
-      return Promise.reject(error)
-    }
-  } else {
+/**
+ * Handle employee selection change
+ */
+const handleEmployeeChange = (index) => {
+  const employee = selectedEmployees.value[index]
+  updateEmployeeName(index, employee.employeeID)
+  validateField('employees')
+}
+
+// ============================================================================
+// ADJUSTMENT ITEMS
+// ============================================================================
+
+const loadAdjustmentItems = async () => {
+  if (!formData.value.adjustmentTypeID) {
     adjustmentItems.value = []
-    return Promise.resolve()
+    return
+  }
+  
+  try {
+    const response = await api.get(`/AdjustmentItem/by-type/${formData.value.adjustmentTypeID}`)
+    adjustmentItems.value = response.data
+  } catch (error) {
+    console.error('Error loading adjustment items:', error)
+    adjustmentItems.value = []
   }
 }
 
-// Validation functions
+const handleAdjustmentTypeChange = async () => {
+  await loadAdjustmentItems()
+  validateField('adjustmentTypeID')
+}
+
+// ============================================================================
+// VALIDATION
+// ============================================================================
+
 const validateVoucherNo = () => {
   const value = formData.value.voucherNo?.trim()
   if (!value) {
     errors.value.voucherNo = 'Số phiếu không được để trống'
     return false
   }
-  if (!regexPatterns.voucherNo.test(value)) {
+  if (!VALIDATION_PATTERNS.voucherNo.test(value)) {
     errors.value.voucherNo = 'Số phiếu chỉ được chứa chữ cái, số, dấu gạch ngang và gạch dưới (tối đa 50 ký tự)'
     return false
   }
@@ -184,17 +241,16 @@ const validateDecisionDate = () => {
     errors.value.decisionDate = 'Ngày quyết định không được để trống'
     return false
   }
-  if (!regexPatterns.decisionDate.test(value)) {
+  if (!VALIDATION_PATTERNS.decisionDate.test(value)) {
     errors.value.decisionDate = 'Ngày quyết định không đúng định dạng'
     return false
   }
-  // Kiểm tra ngày hợp lệ
+  
   const date = new Date(value)
   if (isNaN(date.getTime())) {
     errors.value.decisionDate = 'Ngày quyết định không hợp lệ'
     return false
   }
-  // Kiểm tra ngày không được quá tương lai
   if (date > new Date()) {
     errors.value.decisionDate = 'Ngày quyết định không được lớn hơn ngày hiện tại'
     return false
@@ -239,7 +295,7 @@ const validateAdjustmentTypeID = () => {
     errors.value.adjustmentTypeID = 'Vui lòng chọn khoản cộng trừ'
     return false
   }
-  if (!regexPatterns.id.test(value)) {
+  if (!VALIDATION_PATTERNS.id.test(value)) {
     errors.value.adjustmentTypeID = 'Khoản cộng trừ không hợp lệ'
     return false
   }
@@ -249,8 +305,7 @@ const validateAdjustmentTypeID = () => {
 
 const validateAdjustmentItemID = () => {
   const value = formData.value.adjustmentItemID
-  // Hạng mục là optional, nhưng nếu có giá trị thì phải hợp lệ
-  if (value && !regexPatterns.id.test(value)) {
+  if (value && !VALIDATION_PATTERNS.id.test(value)) {
     errors.value.adjustmentItemID = 'Hạng mục không hợp lệ'
     return false
   }
@@ -260,8 +315,8 @@ const validateAdjustmentItemID = () => {
 
 const validateReason = () => {
   const value = formData.value.reason?.trim() || ''
-  if (value.length > 500) {
-    errors.value.reason = 'Lý do không được vượt quá 500 ký tự'
+  if (value.length > MAX_REASON_LENGTH) {
+    errors.value.reason = `Lý do không được vượt quá ${MAX_REASON_LENGTH} ký tự`
     return false
   }
   errors.value.reason = ''
@@ -269,7 +324,6 @@ const validateReason = () => {
 }
 
 const validateEmployees = () => {
-  // Lọc các dòng có ít nhất một trường được điền
   const rowsWithData = selectedEmployees.value.filter(
     emp => emp.employeeID || (emp.value !== null && emp.value !== undefined && emp.value !== '')
   )
@@ -279,38 +333,34 @@ const validateEmployees = () => {
     return false
   }
   
-  // Validate từng nhân viên
   for (let i = 0; i < selectedEmployees.value.length; i++) {
     const emp = selectedEmployees.value[i]
-    // Chỉ validate nếu dòng có dữ liệu
+    
     if (emp.employeeID || (emp.value !== null && emp.value !== undefined && emp.value !== '')) {
-      // Nếu có employeeID hoặc value thì phải có đủ cả hai
-      if (!emp.employeeID) {
+      if (!emp.employeeID || emp.employeeID === '' || emp.employeeID === null || emp.employeeID === undefined) {
         errors.value.employees = `Dòng ${i + 1}: Vui lòng chọn nhân viên`
         return false
       }
-      if (!regexPatterns.id.test(String(emp.employeeID))) {
-        errors.value.employees = `Dòng ${i + 1}: ID nhân viên không hợp lệ`
-        return false
-      }
+      
       if (emp.value === null || emp.value === undefined || emp.value === '') {
         errors.value.employees = `Dòng ${i + 1}: Giá trị không được để trống`
         return false
       }
+      
       const valueNum = parseFloat(emp.value)
       if (isNaN(valueNum)) {
         errors.value.employees = `Dòng ${i + 1}: Giá trị phải là số`
         return false
       }
-      // Giới hạn giá trị (ví dụ: -999999999 đến 999999999)
-      if (Math.abs(valueNum) > 999999999) {
-        errors.value.employees = `Dòng ${i + 1}: Giá trị không được vượt quá 999,999,999`
+      
+      if (Math.abs(valueNum) > MAX_VALUE) {
+        errors.value.employees = `Dòng ${i + 1}: Giá trị không được vượt quá ${MAX_VALUE.toLocaleString()}`
         return false
       }
-      // Giới hạn số thập phân (tối đa 2 chữ số sau dấu phẩy)
+      
       const decimalPlaces = (String(emp.value).split('.')[1] || '').length
-      if (decimalPlaces > 2) {
-        errors.value.employees = `Dòng ${i + 1}: Giá trị chỉ được có tối đa 2 chữ số thập phân`
+      if (decimalPlaces > MAX_DECIMAL_PLACES) {
+        errors.value.employees = `Dòng ${i + 1}: Giá trị chỉ được có tối đa ${MAX_DECIMAL_PLACES} chữ số thập phân`
         return false
       }
     }
@@ -320,7 +370,6 @@ const validateEmployees = () => {
   return true
 }
 
-// Validate toàn bộ form
 const validateForm = () => {
   const validations = [
     validateVoucherNo(),
@@ -336,40 +385,89 @@ const validateForm = () => {
   return validations.every(v => v === true)
 }
 
-// Real-time validation cho các trường input
 const validateField = (fieldName) => {
-  switch (fieldName) {
-    case 'voucherNo':
-      validateVoucherNo()
-      break
-    case 'decisionDate':
-      validateDecisionDate()
-      break
-    case 'month':
-      validateMonth()
-      break
-    case 'year':
-      validateYear()
-      break
-    case 'adjustmentTypeID':
-      validateAdjustmentTypeID()
-      break
-    case 'adjustmentItemID':
-      validateAdjustmentItemID()
-      break
-    case 'reason':
-      validateReason()
-      break
-    case 'employees':
-      validateEmployees()
-      break
+  const validators = {
+    voucherNo: validateVoucherNo,
+    decisionDate: validateDecisionDate,
+    month: validateMonth,
+    year: validateYear,
+    adjustmentTypeID: validateAdjustmentTypeID,
+    adjustmentItemID: validateAdjustmentItemID,
+    reason: validateReason,
+    employees: validateEmployees
+  }
+  
+  const validator = validators[fieldName]
+  if (validator) {
+    validator()
   }
 }
 
+// ============================================================================
+// DATA PROCESSING
+// ============================================================================
+
+/**
+ * Process and validate employee data before submission
+ */
+const processEmployeesForSubmission = () => {
+  return selectedEmployees.value
+    .filter(emp => {
+      if (!emp.employeeID || emp.employeeID === null || emp.employeeID === undefined || emp.employeeID === '') {
+        return false
+      }
+      
+      const employeeIDStr = String(emp.employeeID).trim()
+      if (employeeIDStr === '' || employeeIDStr === 'null' || employeeIDStr === 'undefined') {
+        return false
+      }
+      
+      const employeeIDNum = Number(emp.employeeID)
+      if (!isNaN(employeeIDNum) && employeeIDNum <= 0) {
+        return false
+      }
+      
+      if (emp.value === null || emp.value === undefined || emp.value === '') {
+        return false
+      }
+      
+      const valueNum = parseFloat(emp.value)
+      if (isNaN(valueNum)) {
+        return false
+      }
+      
+      return true
+    })
+    .map(emp => ({
+      employeeID: normalizeEmployeeID(emp.employeeID),
+      employeeName: emp.employeeName || '',
+      value: parseFloat(emp.value)
+    }))
+    .filter(emp => emp !== null && emp !== undefined)
+}
+
+/**
+ * Build submission data object
+ */
+const buildSubmissionData = (processedEmployees) => {
+  return {
+    voucherNo: formData.value.voucherNo.trim(),
+    decisionDate: formData.value.decisionDate,
+    month: parseInt(formData.value.month),
+    year: parseInt(formData.value.year),
+    reason: formData.value.reason?.trim() || '',
+    adjustmentTypeID: parseInt(formData.value.adjustmentTypeID),
+    ...(formData.value.adjustmentItemID && { adjustmentItemID: parseInt(formData.value.adjustmentItemID) }),
+    employees: processedEmployees
+  }
+}
+
+// ============================================================================
+// EVENT HANDLERS
+// ============================================================================
+
 const handleSubmit = () => {
-  // Validate form trước khi submit
   if (!validateForm()) {
-    // Scroll đến trường đầu tiên có lỗi
     const firstErrorField = document.querySelector('.is-invalid')
     if (firstErrorField) {
       firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -378,30 +476,59 @@ const handleSubmit = () => {
     return
   }
   
-  // Transform data to match backend DTO format (POST/PUT DTOs use camelCase)
-  const submitData = {
-    voucherNo: formData.value.voucherNo.trim(),
-    decisionDate: formData.value.decisionDate, // Already in YYYY-MM-DD format
-    month: parseInt(formData.value.month),
-    year: parseInt(formData.value.year),
-    reason: formData.value.reason?.trim() || '',
-    adjustmentTypeID: parseInt(formData.value.adjustmentTypeID),
-    // Only include adjustmentItemID if it has a value
-    ...(formData.value.adjustmentItemID && { adjustmentItemID: parseInt(formData.value.adjustmentItemID) }),
-    employees: selectedEmployees.value
-      .filter(emp => emp.employeeID && emp.value !== null && emp.value !== undefined && emp.value !== '')
-      .map(emp => ({
-        employeeID: parseInt(emp.employeeID),
-        employeeName: emp.employeeName,
-        value: parseFloat(emp.value)
-      }))
+  const processedEmployees = processEmployeesForSubmission()
+  
+  if (processedEmployees.length === 0) {
+    errors.value.employees = 'Phải có ít nhất một nhân viên với giá trị hợp lệ'
+    const employeeSection = document.querySelector('.table-responsive')
+    if (employeeSection) {
+      employeeSection.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    return
   }
   
-  console.log('Submitting data:', JSON.stringify(submitData, null, 2))
+  const submitData = buildSubmissionData(processedEmployees)
   emit('submit', submitData)
 }
 
 const handleClose = () => emit('close')
+
+// ============================================================================
+// WATCHERS
+// ============================================================================
+
+watch(() => props.adjustment, async (newAdjustment) => {
+  if (newAdjustment && Object.keys(newAdjustment).length > 0) {
+    formData.value = initializeFormData()
+    
+    if (newAdjustment.Employees || newAdjustment.employees) {
+      selectedEmployees.value = (newAdjustment.Employees || newAdjustment.employees).map(emp => ({
+        employeeID: emp.EmployeeID || emp.employeeID,
+        employeeName: emp.EmployeeName || emp.employeeName,
+        value: emp.Value || emp.value
+      }))
+    } else {
+      selectedEmployees.value = []
+    }
+    
+    if (formData.value.adjustmentTypeID) {
+      try {
+        await loadAdjustmentItems()
+        if (newAdjustment.AdjustmentItemID || newAdjustment.adjustmentItemID) {
+          formData.value.adjustmentItemID = newAdjustment.AdjustmentItemID || newAdjustment.adjustmentItemID
+        }
+      } catch (error) {
+        console.error('Error loading adjustment items in watch:', error)
+      }
+    } else {
+      adjustmentItems.value = []
+    }
+  }
+}, { deep: true, immediate: true })
+
+// ============================================================================
+// LIFECYCLE
+// ============================================================================
 
 onMounted(async () => {
   try {
@@ -413,7 +540,6 @@ onMounted(async () => {
     employees.value = employeesRes
     adjustmentTypes.value = adjustmentTypesRes.data
     
-    // Nếu là chế độ update, khởi tạo danh sách nhân viên đã chọn
     if (props.mode === 'update' && props.adjustment.employees) {
       selectedEmployees.value = props.adjustment.employees.map(emp => ({
         employeeID: emp.EmployeeID || emp.employeeID,
@@ -422,10 +548,8 @@ onMounted(async () => {
       }))
     }
     
-    // Nếu có adjustmentTypeID, load adjustment items
     if (formData.value.adjustmentTypeID) {
-      await onAdjustmentTypeChange()
-      // Nếu có adjustmentItemID từ props, set lại sau khi load items
+      await loadAdjustmentItems()
       if (props.adjustment.AdjustmentItemID || props.adjustment.adjustmentItemID) {
         formData.value.adjustmentItemID = props.adjustment.AdjustmentItemID || props.adjustment.adjustmentItemID
       }
@@ -435,9 +559,10 @@ onMounted(async () => {
   }
 })
 </script>
+
 <template>
   <form @submit.prevent="handleSubmit">
-    <!-- Hàng 1: Số phiếu, Ngày quyết định, Tháng, Năm -->
+    <!-- Basic Information -->
     <div class="row g-3 mb-4">
       <div class="col-md-3">
         <label class="form-label">Số phiếu <span class="text-danger">*</span></label>
@@ -498,7 +623,7 @@ onMounted(async () => {
       </div>
     </div>
     
-    <!-- Hàng 2: Khoản cộng trừ, Hạng mục -->
+    <!-- Adjustment Type & Item -->
     <div class="row g-3 mb-4">
       <div class="col-md-6">
         <label class="form-label">Khoản cộng trừ <span class="text-danger">*</span></label>
@@ -506,7 +631,7 @@ onMounted(async () => {
           class="form-select" 
           :class="{ 'is-invalid': errors.adjustmentTypeID }"
           v-model="formData.adjustmentTypeID" 
-          @change="onAdjustmentTypeChange(); validateField('adjustmentTypeID')"
+          @change="handleAdjustmentTypeChange"
         >
           <option value="">Chọn khoản cộng trừ</option>
           <option v-for="type in adjustmentTypes" :key="type.id" :value="type.id">
@@ -532,7 +657,7 @@ onMounted(async () => {
       </div>
     </div>
     
-    <!-- Hàng 3: Lý do -->
+    <!-- Reason -->
     <div class="row g-3 mb-4">
       <div class="col-md-12">
         <label class="form-label">Lý do</label>
@@ -551,7 +676,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Bảng nhân viên -->
+    <!-- Employees Table -->
     <div class="mb-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0">Danh sách nhân viên <span class="text-danger">*</span></h5>
@@ -580,15 +705,15 @@ onMounted(async () => {
                   class="form-select form-select-sm" 
                   :class="{ 'is-invalid': errors.employees && !employee.employeeID && (employee.value || employee.value === 0) }"
                   v-model="employee.employeeID"
-                  @change="updateEmployeeName(index, employee.employeeID); validateField('employees')"
+                  @change="handleEmployeeChange(index)"
                 >
                   <option value="">Chọn nhân viên</option>
                   <option 
-                    v-for="emp in employees" 
+                    v-for="emp in getAvailableEmployees(index)" 
                     :key="emp.id" 
                     :value="emp.id"
                   >
-                    {{ emp.employeeName }}
+                    {{ getEmployeeName(emp) }}
                   </option>
                 </select>
               </td>
@@ -623,6 +748,7 @@ onMounted(async () => {
       </div>
     </div>
 
+    <!-- Actions -->
     <div class="mt-4 d-flex justify-content-end gap-2">
       <button type="button" class="btn btn-outline-secondary" @click="handleClose">Hủy</button>
       <button type="submit" class="btn btn-primary">{{ props.mode === 'update' ? 'Cập nhật' : 'Tạo mới' }}</button>

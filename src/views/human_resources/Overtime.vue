@@ -663,15 +663,6 @@ const startTour = () => {
               icon="fas fa-undo" 
               title="Trả lại"
             ></ActionButton>
-            <!-- Always show status -->
-            <span class="badge" :class="{
-              'bg-secondary': item.approveStatus === 'Tạo mới',
-              'bg-warning': item.approveStatus === 'Chờ duyệt',
-              'bg-success': item.approveStatus === 'Đã duyệt',
-              'bg-danger': item.approveStatus === 'Từ chối'
-            }">
-              {{ item.approveStatus }}
-            </span>
           </div>
           </div>
         </template>
