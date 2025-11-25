@@ -82,24 +82,57 @@ const handlePageChange = (page) => {
   border: 1px solid #3498db;
   background: white;
   color: #3498db;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+}
+
+.pagination-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.pagination-btn:hover:not(:disabled)::before {
+  left: 100%;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: #3498db;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
   color: white;
+  border-color: #3498db;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
 }
 
 .pagination-btn.active {
-  background: #3498db;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
   color: white;
+  border-color: #3498db;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+.pagination-btn.active::before {
+  left: 100%;
 }
 
 .pagination-btn:disabled {
   border-color: #bdc3c7;
   color: #bdc3c7;
   cursor: not-allowed;
+  background: white;
+}
+
+.pagination-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(52, 152, 219, 0.2);
 }
 </style>
