@@ -199,6 +199,38 @@ export function useLeaveRequest() {
     }
   }
 
+  const createMultipleLeaveRequests = async (leaveRequestsToCreate) => {
+    let successCount = 0
+    let failureCount = 0
+    const errors = []
+
+    for (const leaveRequestData of leaveRequestsToCreate) {
+      try {
+        await createLeaveRequest(leaveRequestData)
+        successCount++
+      } catch (err) {
+        failureCount++
+        const errorMsg = err.response?.data?.message || err.message || 'Lỗi không xác định'
+        errors.push(`Dòng ${leaveRequestsToCreate.indexOf(leaveRequestData) + 1}: ${errorMsg}`)
+      }
+    }
+
+    if (successCount > 0) {
+      showMessage(`Đã tạo thành công ${successCount} đơn nghỉ phép${failureCount > 0 ? `, thất bại ${failureCount} đơn` : ''}`, 'success')
+    }
+
+    if (errors.length > 0) {
+      const errorMessage = `Có ${errors.length} đơn không thể tạo:\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n... và ${errors.length - 10} lỗi khác` : ''}`
+      showMessage(errorMessage, 'error')
+    }
+
+    if (successCount === 0 && failureCount > 0) {
+      throw new Error('Không thể tạo đơn nghỉ phép nào')
+    }
+
+    await fetchLeaveRequests()
+  }
+
   const clearError = () => {
     error.value = null
   }
@@ -216,6 +248,7 @@ export function useLeaveRequest() {
     fetchLeaveRequests,
     getLeaveRequestById,
     createLeaveRequest,
+    createMultipleLeaveRequests,
     updateLeaveRequest,
     deleteLeaveRequest,
     submitLeaveRequestForApproval,

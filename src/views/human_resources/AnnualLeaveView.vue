@@ -995,19 +995,24 @@ const startTour = () => {
   padding: 16px 8px;
   margin: 0;
 }
-.ticket-id, .ticket-name, .ticket-date, .ticket-days, .ticket-reason {
+.ticket-id, .ticket-days {
   font-size: 1.05rem;
   font-weight: 500;
-  color: #222;
   padding: 4px 12px;
   display: inline-block;
   border-radius: 6px;
-  background: #f8f9fa;
   margin-bottom: 2px;
 }
 .ticket-id {
   color: #0d6efd;
   background: #eafbe7;
+}
+.ticket-name, .ticket-date, .ticket-reason {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: #222;
+  padding: 4px 0;
+  display: inline-block;
 }
 
 /* Voucher code link styling */
@@ -1030,10 +1035,6 @@ const startTour = () => {
 .ticket-days {
   color: #009688;
   background: #e0f7fa;
-}
-.ticket-reason {
-  color: #222;
-  background: #f8f9fa;
 }
 .modal-leave-table .table th {
   background: #f5f7fa;

@@ -7,6 +7,9 @@ import { useWorkShift } from '../../composables/useWorkShift'
 import { useShiftAssignment } from '../../composables/useShiftAssignment'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import { useEmployee } from '../../composables/useEmployee'
+import { useAttendance } from '../../composables/useAttendance'
+import { useLeaveRequest } from '../../composables/useLeaveRequest'
+import { attendanceService } from '../../services/attendanceService'
 import UpdateButton from '@/components/common/UpdateButton.vue'
 import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
@@ -35,6 +38,9 @@ const {
   updateShiftAssignment,
   deleteShiftAssignment
 } = useShiftAssignment()
+
+const { attendanceList, fetchAttendance } = useAttendance()
+const { leaveRequests, fetchLeaveRequests } = useLeaveRequest()
 
 const activeTab = ref('shift')
 const tabs = [
@@ -118,6 +124,8 @@ onMounted(async () => {
   await fetchWorkShifts()
   await fetchAllShiftAssignments()
   await fetchAllEmployees()
+  await fetchAttendance(true)
+  await fetchLeaveRequests()
   loadCurrentWeekSchedule()
 })
 
@@ -136,6 +144,13 @@ const isUpdatingShift = ref(false)
 
 const showDeleteModal = ref(false)
 const shiftToDelete = ref(null)
+const showDeleteWarningModal = ref(false)
+const deleteWarningData = ref({
+  attendanceRecords: [],
+  leaveRequests: [],
+  workDate: '',
+  employeeName: ''
+})
 
 const showBulkAssignModal = ref(false)
 const selectedShiftForBulk = ref(null)
@@ -276,10 +291,38 @@ const availableShiftsForQuickAdd = computed(() => {
     })
     .map(assignment => assignment.workShiftID)
   
-  // Lọc các ca chưa được phân
+  // Lấy thứ trong tuần của ngày được chọn
+  const selectedDate = new Date(quickAddDate.value)
+  const dayOfWeek = selectedDate.getDay()
+  const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+  const selectedDayName = dayNames[dayOfWeek]
+  
+  // Lọc các ca chưa được phân VÀ có shiftDetail cho ngày đó
   return (workshifts.value || []).filter(shift => {
     const shiftId = shift.id || shift.code
-    return !assignedShiftIds.includes(shiftId)
+    
+    // Kiểm tra xem ca đã được phân chưa
+    if (assignedShiftIds.includes(shiftId)) {
+      return false
+    }
+    
+    // Kiểm tra xem ca có shiftDetail cho ngày được chọn không
+    if (!shift.shiftDetails || !Array.isArray(shift.shiftDetails)) {
+      return false
+    }
+    
+    const dayShiftDetail = shift.shiftDetails.find(detail => detail.dayOfWeek === selectedDayName)
+    
+    // Chỉ hiển thị nếu có shiftDetail cho ngày này và startTime/endTime không phải '00:00:00'
+    if (!dayShiftDetail) {
+      return false
+    }
+    
+    if (dayShiftDetail.startTime === '00:00:00' || dayShiftDetail.endTime === '00:00:00') {
+      return false
+    }
+    
+    return true
   })
 })
 
@@ -360,15 +403,136 @@ const handleDeleteShift = async () => {
   if (!shiftToDelete.value) return
 
   try {
+    // Kiểm tra xem có chấm công hoặc đơn nghỉ phép không
+    const employeeID = shiftToDelete.value.employeeID
+    const workDate = shiftToDelete.value.workDate
+    const workShiftID = shiftToDelete.value.workShiftID || shiftToDelete.value.shiftId
+    const employeeName = shiftToDelete.value.employeeName || 'N/A'
+
+    // Format workDate để so sánh (YYYY-MM-DD)
+    const workDateFormatted = formatDateForAPI(new Date(workDate))
+    const workDateObj = new Date(workDate)
+    workDateObj.setHours(0, 0, 0, 0)
+
+    const attendanceRecords = []
+    const leaveRequestRecords = []
+
+    // 1. Kiểm tra chấm công
+    try {
+      const attendanceData = await attendanceService.getAttendanceByDate(workDateFormatted)
+      const matchingAttendance = attendanceData && attendanceData.filter(att => {
+        const attEmployeeId = att.employeeID || att.employeeId || att.employeeCode
+        const attDate = new Date(att.attendanceDate || att.workDate)
+        attDate.setHours(0, 0, 0, 0)
+        return attEmployeeId === employeeID && attDate.getTime() === workDateObj.getTime()
+      })
+
+      if (matchingAttendance && matchingAttendance.length > 0) {
+        matchingAttendance.forEach((att, index) => {
+          attendanceRecords.push({
+            stt: index + 1,
+            checkInTime: att.checkInTime ? new Date(att.checkInTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
+            checkOutTime: att.checkOutTime ? new Date(att.checkOutTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
+            status: att.status || 'N/A',
+            location: att.location || 'N/A'
+          })
+        })
+      }
+    } catch (attError) {
+      console.error('Error checking attendance:', attError)
+      // Nếu lỗi khi kiểm tra, vẫn cho phép xóa (không chặn)
+    }
+
+    // 2. Kiểm tra đơn nghỉ phép
+    // Refresh leave requests để đảm bảo có dữ liệu mới nhất
+    await fetchLeaveRequests()
+    
+    const matchingLeaveRequests = leaveRequests.value && leaveRequests.value.filter(leave => {
+      // Kiểm tra cùng nhân viên
+      if (leave.employeeID !== employeeID) return false
+      
+      // Kiểm tra cùng ca làm việc (nếu có)
+      if (workShiftID && leave.workShiftID && leave.workShiftID !== workShiftID) return false
+      
+      // Kiểm tra ngày làm việc có nằm trong khoảng nghỉ phép không
+      const leaveStart = new Date(leave.startDateTime)
+      const leaveEnd = new Date(leave.endDateTime)
+      leaveStart.setHours(0, 0, 0, 0)
+      leaveEnd.setHours(0, 0, 0, 0)
+      
+      return workDateObj >= leaveStart && workDateObj <= leaveEnd
+    })
+
+    if (matchingLeaveRequests && matchingLeaveRequests.length > 0) {
+      matchingLeaveRequests.forEach((leave, index) => {
+        const startDateTime = new Date(leave.startDateTime)
+        const endDateTime = new Date(leave.endDateTime)
+        leaveRequestRecords.push({
+          stt: index + 1,
+          voucherCode: leave.voucherCode || leave.id || 'N/A',
+          leaveType: leave.leaveTypeName || 'N/A',
+          startDateTime: `${startDateTime.toLocaleDateString('vi-VN')} ${startDateTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+          endDateTime: `${endDateTime.toLocaleDateString('vi-VN')} ${endDateTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+          status: leave.approveStatus || 'N/A',
+          reason: leave.reason || 'N/A'
+        })
+      })
+    }
+
+    // Nếu có chấm công hoặc đơn nghỉ phép, hiển thị modal cảnh báo
+    if (attendanceRecords.length > 0 || leaveRequestRecords.length > 0) {
+      deleteWarningData.value = {
+        attendanceRecords,
+        leaveRequests: leaveRequestRecords,
+        workDate: formatDateForDisplay(workDate),
+        employeeName
+      }
+      closeDeleteModal() // Đóng modal xác nhận xóa
+      showDeleteWarningModal.value = true
+      return
+    }
+
+    // Nếu không có chấm công và đơn nghỉ phép, cho phép xóa
     await deleteShiftAssignment(shiftToDelete.value.id)
     await fetchAllShiftAssignments()
     closeDeleteModal()
     closeViewDetailsModal()
     showMessage('Xóa phân ca thành công!', 'success')
   } catch (error) {
+    console.error('Error deleting shift assignment:', error)
     showMessage('Có lỗi xảy ra khi xóa phân ca', 'error')
   }
 }
+
+const closeDeleteWarningModal = () => {
+  showDeleteWarningModal.value = false
+  deleteWarningData.value = {
+    attendanceRecords: [],
+    leaveRequests: [],
+    workDate: '',
+    employeeName: ''
+  }
+}
+
+// Columns cho bảng chấm công
+const attendanceColumns = [
+  { key: 'stt', label: 'STT' },
+  { key: 'checkInTime', label: 'Giờ vào' },
+  { key: 'checkOutTime', label: 'Giờ ra' },
+  { key: 'status', label: 'Trạng thái' },
+  { key: 'location', label: 'Vị trí' }
+]
+
+// Columns cho bảng đơn nghỉ phép
+const leaveRequestColumns = [
+  { key: 'stt', label: 'STT' },
+  { key: 'voucherCode', label: 'Mã phiếu' },
+  { key: 'leaveType', label: 'Loại nghỉ phép' },
+  { key: 'startDateTime', label: 'Từ ngày/giờ' },
+  { key: 'endDateTime', label: 'Đến ngày/giờ' },
+  { key: 'status', label: 'Trạng thái' },
+  { key: 'reason', label: 'Lý do' }
+]
 
 const goToToday = () => {
   const today = new Date()
@@ -929,7 +1093,8 @@ const scheduleData = computed(() => {
           employeeGroups[empId][dayKey].push({
             shiftName: assignment.workShiftName,
             shiftId: assignment.workShiftID,
-            workDate: assignment.workDateFormatted,
+            workDate: assignment.workDate,
+            workDateFormatted: assignment.workDateFormatted || formatDateForDisplay(assignment.workDate),
             startTime: assignment.startTime || '',
             endTime: assignment.endTime || '',
             id: assignment.id,
@@ -1527,64 +1692,70 @@ watch(unassignedSearchTerm, () => {
     @update:show="showQuickAddModal = $event"
     data-tour="quick-add-modal"
   >
-    <div class="p-4">
-      <div class="mb-4">
-        <div class="row">
+    <div class="quick-add-modal-content">
+      <div class="quick-add-info-cards">
+        <div class="row g-3">
           <div class="col-md-6">
-            <div class="card border-primary">
-              <div class="card-body text-center">
-                <i class="fas fa-user text-primary mb-2" style="font-size: 2rem;"></i>
-                <h6 class="fw-bold mb-1">{{ quickAddEmployee?.empName }}</h6>
-                <small class="text-muted">{{ quickAddEmployee?.empId }}</small>
+            <div class="quick-add-card quick-add-card-employee">
+              <div class="quick-add-card-icon">
+                <i class="fas fa-user"></i>
+              </div>
+              <div class="quick-add-card-content">
+                <h6 class="quick-add-card-title">{{ quickAddEmployee?.empName }}</h6>
+                <p class="quick-add-card-subtitle">{{ quickAddEmployee?.empId }}</p>
               </div>
             </div>
           </div>
           <div class="col-md-6">
-            <div class="card border-success">
-              <div class="card-body text-center">
-                <i class="fas fa-calendar-day text-success mb-2" style="font-size: 2rem;"></i>
-                <h6 class="fw-bold mb-1">{{ quickAddDate?.toLocaleDateString('vi-VN') }}</h6>
-                <small class="text-muted">{{ quickAddDate?.toLocaleDateString('vi-VN', { weekday: 'long' }) }}</small>
+            <div class="quick-add-card quick-add-card-date">
+              <div class="quick-add-card-icon">
+                <i class="fas fa-calendar-day"></i>
+              </div>
+              <div class="quick-add-card-content">
+                <h6 class="quick-add-card-title">{{ quickAddDate?.toLocaleDateString('vi-VN') }}</h6>
+                <p class="quick-add-card-subtitle">{{ quickAddDate?.toLocaleDateString('vi-VN', { weekday: 'long' }) }}</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="mb-4" data-tour="quick-add-shift-select">
-        <label class="form-label fw-semibold">
-          <i class="fas fa-clock me-1"></i>
+      <div class="quick-add-form-section" data-tour="quick-add-shift-select">
+        <label class="quick-add-label">
+          <i class="fas fa-clock me-2"></i>
           Chọn ca làm việc
         </label>
-        <select 
-          class="form-select form-select-lg border-primary" 
-          v-model="quickAddShiftId"
-          :disabled="quickAddLoading"
-        >
-          <option value="">-- Chọn ca làm việc --</option>
-          <option 
-            v-for="shift in availableShiftsForQuickAdd" 
-            :key="shift.id" 
-            :value="shift.id"
+        <div class="quick-add-select-wrapper">
+          <select 
+            class="quick-add-select" 
+            v-model="quickAddShiftId"
+            :disabled="quickAddLoading"
           >
-            {{ shift.shiftName }}
-            <template v-if="shift.shiftDetails && shift.shiftDetails.length > 0">
-              ({{ shift.shiftDetails[0].startTime }} - {{ shift.shiftDetails[0].endTime }})
-            </template>
-          </option>
-        </select>
-        <div v-if="availableShiftsForQuickAdd.length === 0" class="text-muted small mt-2">
-          <i class="fas fa-info-circle me-1"></i>
+            <option value="">-- Chọn ca làm việc --</option>
+            <option 
+              v-for="shift in availableShiftsForQuickAdd" 
+              :key="shift.id" 
+              :value="shift.id"
+            >
+              {{ shift.shiftName }}
+              <template v-if="shift.shiftDetails && shift.shiftDetails.length > 0">
+                ({{ shift.shiftDetails[0].startTime }} - {{ shift.shiftDetails[0].endTime }})
+              </template>
+            </option>
+          </select>
+        </div>
+        <div v-if="availableShiftsForQuickAdd.length === 0" class="quick-add-empty-message">
+          <i class="fas fa-info-circle me-2"></i>
           Nhân viên đã được phân tất cả các ca trong ngày này
         </div>
       </div>
 
-      <div class="alert alert-info border-0" v-if="quickAddShiftId">
-        <div class="d-flex align-items-center">
-          <i class="fas fa-info-circle me-2"></i>
-          <div>
-            <strong>Xác nhận phân ca:</strong><br>
-            <span class="text-muted">
+      <div class="quick-add-confirm-alert" v-if="quickAddShiftId">
+        <div class="quick-add-confirm-content">
+          <i class="fas fa-check-circle quick-add-confirm-icon"></i>
+          <div class="quick-add-confirm-text">
+            <strong>Xác nhận phân ca:</strong>
+            <span>
               {{ quickAddEmployee?.empName }} sẽ làm ca 
               <strong>{{ workshifts.find(s => s.id == quickAddShiftId)?.shiftName }}</strong>
               vào ngày <strong>{{ quickAddDate?.toLocaleDateString('vi-VN') }}</strong>
@@ -1593,24 +1764,24 @@ watch(unassignedSearchTerm, () => {
         </div>
       </div>
 
-      <div class="d-flex justify-content-end gap-2 mt-4" data-tour="quick-add-actions">
+      <div class="quick-add-actions" data-tour="quick-add-actions">
         <button 
           type="button" 
-          class="btn btn-outline-secondary rounded-pill px-4" 
+          class="quick-add-btn quick-add-btn-cancel" 
           @click="closeQuickAddModal"
           :disabled="quickAddLoading"
         >
-          <i class="fas fa-times me-1"></i>
+          <i class="fas fa-times me-2"></i>
           Hủy
         </button>
         <button 
           type="button" 
-          class="btn btn-primary rounded-pill px-4" 
+          class="quick-add-btn quick-add-btn-submit" 
           @click="handleQuickAddShift"
           :disabled="!quickAddShiftId || quickAddLoading"
         >
-          <i v-if="quickAddLoading" class="fas fa-spinner fa-spin me-1"></i>
-          <i v-else class="fas fa-check me-1"></i>
+          <i v-if="quickAddLoading" class="fas fa-spinner fa-spin me-2"></i>
+          <i v-else class="fas fa-check me-2"></i>
           {{ quickAddLoading ? 'Đang phân ca...' : 'Xác nhận phân ca' }}
         </button>
       </div>
@@ -1625,105 +1796,50 @@ watch(unassignedSearchTerm, () => {
     @update:show="showViewDetailsModal = $event"
     data-tour="view-details-modal"
   >
-    <div class="p-4" v-if="selectedShiftDetails">
-      <div class="row mb-4">
-        <div class="col-md-6">
-          <div class="card border-primary">
-            <div class="card-body text-center">
-              <i class="fas fa-user text-primary mb-2" style="font-size: 2rem;"></i>
-              <h6 class="fw-bold mb-1">{{ selectedShiftDetails.employeeName || 'N/A' }}</h6>
-              <small class="text-muted">Mã NV: {{ selectedShiftDetails.employeeID || 'N/A' }}</small>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="card border-success">
-            <div class="card-body text-center">
-              <i class="fas fa-clock text-success mb-2" style="font-size: 2rem;"></i>
-              <h6 class="fw-bold mb-1">{{ selectedShiftDetails.shiftName || 'N/A' }}</h6>
-              <small class="text-muted">Mã ca: {{ selectedShiftDetails.shiftId || 'N/A' }}</small>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="row mb-4">
-        <div class="col-md-6">
-          <div class="card border-info">
-            <div class="card-body text-center">
-              <i class="fas fa-calendar-day text-info mb-2" style="font-size: 2rem;"></i>
-              <h6 class="fw-bold mb-1">{{ selectedShiftDetails.workDateFormatted || 'N/A' }}</h6>
-              <small class="text-muted">{{ selectedShiftDetails.workDate ? new Date(selectedShiftDetails.workDate).toLocaleDateString('vi-VN', { weekday: 'long' }) : 'N/A' }}</small>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="card border-warning">
-            <div class="card-body text-center">
-              <i class="fas fa-clock text-warning mb-2" style="font-size: 2rem;"></i>
-              <h6 class="fw-bold mb-1">{{ selectedShiftDetails.startTime || 'N/A' }} - {{ selectedShiftDetails.endTime || 'N/A' }}</h6>
-              <small class="text-muted">Thời gian làm việc</small>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Đổi ca làm việc -->
-      <div class="card border-warning" data-tour="change-shift-section">
-        <div class="card-header bg-warning text-dark">
-          <h6 class="mb-0 fw-bold">
-            <i class="fas fa-exchange-alt me-2"></i>
-            Đổi ca làm việc
-          </h6>
-        </div>
-        <div class="card-body">
-          <div class="row">
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">
-                <i class="fas fa-clock me-1"></i>
-                Ca hiện tại
-              </label>
-              <div class="form-control-plaintext bg-light p-2 rounded">
-                <strong>{{ selectedShiftDetails.shiftName || 'N/A' }}</strong><br>
-                <small class="text-muted">{{ selectedShiftDetails.startTime || 'N/A' }} - {{ selectedShiftDetails.endTime || 'N/A' }}</small>
+    <div class="shift-details-modal-content" v-if="selectedShiftDetails">
+      <!-- Thông tin chính -->
+      <div class="shift-details-main-info">
+        <div class="row g-2">
+          <div class="col-4">
+            <div class="shift-details-info-item">
+              <div class="shift-details-info-icon">
+                <i class="fas fa-user"></i>
               </div>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">
-                <i class="fas fa-arrow-right me-1"></i>
-                Chọn ca mới
-              </label>
-              <select 
-                class="form-select border-warning" 
-                v-model="newShiftId"
-                :disabled="isUpdatingShift"
-              >
-                <option value="">-- Chọn ca làm việc mới --</option>
-                <option 
-                  v-for="shift in workshifts" 
-                  :key="shift.id" 
-                  :value="shift.id"
-                  :disabled="shift.id == selectedShiftDetails.shiftId"
-                >
-                  {{ shift.shiftName }}
-                  <template v-if="shift.shiftDetails && shift.shiftDetails.length > 0">
-                    ({{ shift.shiftDetails[0].startTime }} - {{ shift.shiftDetails[0].endTime }})
-                  </template>
-                </option>
-              </select>
+              <div class="shift-details-info-content">
+                <label>Nhân viên</label>
+                <div class="shift-details-info-value">
+                  <strong>{{ selectedShiftDetails.employeeName || 'N/A' }}</strong>
+                  <span class="text-muted">({{ selectedShiftDetails.employeeID || 'N/A' }})</span>
+                </div>
+              </div>
             </div>
           </div>
           
-          <div class="mt-3" v-if="newShiftId">
-            <div class="alert alert-success border-0">
-              <div class="d-flex align-items-center">
-                <i class="fas fa-check-circle me-2"></i>
-                <div>
-                  <strong>Xác nhận đổi ca:</strong><br>
-                  <span class="text-muted">
-                    Từ <strong>{{ selectedShiftDetails.shiftName }}</strong> 
-                    sang <strong>{{ workshifts.find(s => s.id == newShiftId)?.shiftName }}</strong>
-                  </span>
+          <div class="col-4">
+            <div class="shift-details-info-item">
+              <div class="shift-details-info-icon">
+                <i class="fas fa-calendar-day"></i>
+              </div>
+              <div class="shift-details-info-content">
+                <label>Ngày làm việc</label>
+                <div class="shift-details-info-value">
+                  <strong>{{ selectedShiftDetails.workDateFormatted || (selectedShiftDetails.workDate ? formatDateForDisplay(selectedShiftDetails.workDate) : 'N/A') }}</strong>
+                  <span class="text-muted">{{ selectedShiftDetails.workDate ? new Date(selectedShiftDetails.workDate).toLocaleDateString('vi-VN', { weekday: 'long' }) : '' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-4">
+            <div class="shift-details-info-item">
+              <div class="shift-details-info-icon">
+                <i class="fas fa-clock"></i>
+              </div>
+              <div class="shift-details-info-content">
+                <label>Ca làm việc</label>
+                <div class="shift-details-info-value">
+                  <strong>{{ selectedShiftDetails.shiftName || 'N/A' }}</strong>
+                  <span class="text-muted">{{ selectedShiftDetails.startTime || 'N/A' }} - {{ selectedShiftDetails.endTime || 'N/A' }}</span>
                 </div>
               </div>
             </div>
@@ -1731,32 +1847,79 @@ watch(unassignedSearchTerm, () => {
         </div>
       </div>
 
-      <div class="d-flex justify-content-end gap-2 mt-4" data-tour="view-details-actions">
+      <!-- Đổi ca làm việc -->
+      <div class="shift-details-change-section" data-tour="change-shift-section">
+        <div class="shift-details-change-header">
+          <i class="fas fa-exchange-alt me-2"></i>
+          <h6 class="mb-0">Đổi ca làm việc</h6>
+        </div>
+        <div class="shift-details-change-body">
+          <label class="shift-details-label">
+            <i class="fas fa-arrow-right me-2"></i>
+            Chọn ca mới
+          </label>
+          <div class="shift-details-select-wrapper">
+            <select 
+              class="shift-details-select" 
+              v-model="newShiftId"
+              :disabled="isUpdatingShift"
+            >
+              <option value="">-- Chọn ca làm việc mới --</option>
+              <option 
+                v-for="shift in workshifts" 
+                :key="shift.id" 
+                :value="shift.id"
+                :disabled="shift.id == selectedShiftDetails.shiftId"
+              >
+                {{ shift.shiftName }}
+                <template v-if="shift.shiftDetails && shift.shiftDetails.length > 0">
+                  ({{ shift.shiftDetails[0].startTime }} - {{ shift.shiftDetails[0].endTime }})
+                </template>
+              </option>
+            </select>
+          </div>
+          
+          <div class="shift-details-confirm-alert" v-if="newShiftId">
+            <div class="shift-details-confirm-content">
+              <i class="fas fa-check-circle shift-details-confirm-icon"></i>
+              <div class="shift-details-confirm-text">
+                <strong>Xác nhận đổi ca:</strong>
+                <span>
+                  Từ <strong>{{ selectedShiftDetails.shiftName }}</strong> 
+                  sang <strong>{{ workshifts.find(s => s.id == newShiftId)?.shiftName }}</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="shift-details-actions" data-tour="view-details-actions">
         <button 
           type="button" 
-          class="btn btn-outline-secondary rounded-pill px-4" 
+          class="shift-details-btn shift-details-btn-delete" 
+          @click="openDeleteModal(selectedShiftDetails)"
+        >
+          <i class="fas fa-trash me-2"></i>
+          Xóa phân ca
+        </button>
+        <button 
+          type="button" 
+          class="shift-details-btn shift-details-btn-cancel" 
           @click="closeViewDetailsModal"
         >
-          <i class="fas fa-times me-1"></i>
+          <i class="fas fa-times me-2"></i>
           Đóng
         </button>
         <button 
           type="button" 
-          class="btn btn-warning rounded-pill px-4" 
+          class="shift-details-btn shift-details-btn-update" 
           @click="handleUpdateShift"
           :disabled="!newShiftId || isUpdatingShift"
         >
-          <i v-if="isUpdatingShift" class="fas fa-spinner fa-spin me-1"></i>
-          <i v-else class="fas fa-exchange-alt me-1"></i>
+          <i v-if="isUpdatingShift" class="fas fa-spinner fa-spin me-2"></i>
+          <i v-else class="fas fa-exchange-alt me-2"></i>
           {{ isUpdatingShift ? 'Đang đổi ca...' : 'Đổi ca' }}
-        </button>
-        <button 
-          type="button" 
-          class="btn btn-danger rounded-pill px-4" 
-          @click="openDeleteModal(selectedShiftDetails)"
-        >
-          <i class="fas fa-trash me-1"></i>
-          Xóa phân ca
         </button>
       </div>
     </div>
@@ -1776,7 +1939,7 @@ watch(unassignedSearchTerm, () => {
         <p class="text-muted">
           <strong>{{ shiftToDelete.employeeName || 'N/A' }}</strong> - 
           <strong>{{ shiftToDelete.shiftName || 'N/A' }}</strong><br>
-          Ngày: <strong>{{ shiftToDelete.workDateFormatted || 'N/A' }}</strong>
+          Ngày: <strong>{{ shiftToDelete.workDateFormatted || (shiftToDelete.workDate ? formatDateForDisplay(shiftToDelete.workDate) : 'N/A') }}</strong>
         </p>
       </div>
 
@@ -1796,6 +1959,73 @@ watch(unassignedSearchTerm, () => {
         >
           <i class="fas fa-trash me-1"></i>
           Xóa
+        </button>
+      </div>
+    </div>
+  </ModalDialog>
+
+  <!-- Delete Warning Modal -->
+  <ModalDialog 
+    :show="showDeleteWarningModal" 
+    title="Không thể xóa phân ca"
+    size="lg"
+    @update:show="showDeleteWarningModal = $event"
+  >
+    <div class="p-4">
+      <div class="alert alert-warning border-0 mb-4">
+        <div class="d-flex align-items-center">
+          <i class="fas fa-exclamation-triangle me-3" style="font-size: 2rem;"></i>
+          <div>
+            <h6 class="mb-1 fw-bold">Không thể xóa phân ca</h6>
+            <p class="mb-0">
+              <strong>{{ deleteWarningData.employeeName }}</strong> - Ngày <strong>{{ deleteWarningData.workDate }}</strong>
+            </p>
+            <p class="mb-0 mt-2">
+              <span v-if="deleteWarningData.attendanceRecords.length > 0">
+                Đã có <strong>{{ deleteWarningData.attendanceRecords.length }}</strong> dữ liệu chấm công
+              </span>
+              <span v-if="deleteWarningData.attendanceRecords.length > 0 && deleteWarningData.leaveRequests.length > 0"> và </span>
+              <span v-if="deleteWarningData.leaveRequests.length > 0">
+                <strong>{{ deleteWarningData.leaveRequests.length }}</strong> đơn nghỉ phép
+              </span>
+              <span v-if="deleteWarningData.attendanceRecords.length > 0 || deleteWarningData.leaveRequests.length > 0"> cho ngày này.</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bảng dữ liệu chấm công -->
+      <div v-if="deleteWarningData.attendanceRecords.length > 0" class="mb-4">
+        <h6 class="mb-3 fw-bold">
+          <i class="fas fa-fingerprint me-2 text-primary"></i>
+          Dữ liệu chấm công
+        </h6>
+        <DataTable 
+          :columns="attendanceColumns" 
+          :data="deleteWarningData.attendanceRecords"
+        />
+      </div>
+
+      <!-- Bảng đơn nghỉ phép -->
+      <div v-if="deleteWarningData.leaveRequests.length > 0">
+        <h6 class="mb-3 fw-bold">
+          <i class="fas fa-calendar-times me-2 text-primary"></i>
+          Đơn nghỉ phép
+        </h6>
+        <DataTable 
+          :columns="leaveRequestColumns" 
+          :data="deleteWarningData.leaveRequests"
+        />
+      </div>
+
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <button 
+          type="button" 
+          class="btn btn-primary rounded-pill px-4" 
+          @click="closeDeleteWarningModal"
+        >
+          <i class="fas fa-check me-1"></i>
+          Đã hiểu
         </button>
       </div>
     </div>
@@ -2773,6 +3003,22 @@ watch(unassignedSearchTerm, () => {
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.bulk-switch-input::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1.25rem;
+  height: 1.25rem;
+  background-color: #ffffff;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .bulk-switch-input:checked {
@@ -2780,9 +3026,15 @@ watch(unassignedSearchTerm, () => {
   border-color: #3498db;
 }
 
+.bulk-switch-input:checked::before {
+  left: calc(100% - 1.25rem - 2px);
+  background-color: #ffffff;
+}
+
 .bulk-switch-input:focus {
   box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
   border-color: #3498db;
+  outline: none;
 }
 
 /* Date Input Styles */
@@ -2802,6 +3054,524 @@ watch(unassignedSearchTerm, () => {
 
 .bulk-date-input:hover {
   border-color: #3498db;
+}
+
+/* Quick Add Shift Modal Styles */
+.quick-add-modal-content {
+  padding: 1.5rem;
+}
+
+.quick-add-info-cards {
+  margin-bottom: 2rem;
+}
+
+.quick-add-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 2px 8px rgba(44, 62, 80, 0.08);
+  transition: all 0.2s ease;
+  border: 1px solid rgba(52, 152, 219, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.quick-add-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  transition: width 0.3s ease;
+}
+
+.quick-add-card:hover {
+  border-color: rgba(52, 152, 219, 0.3);
+  box-shadow: 0 2px 12px rgba(52, 152, 219, 0.1);
+}
+
+.quick-add-card:hover::before {
+  opacity: 0.08;
+}
+
+.quick-add-card-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-add-card-employee .quick-add-card-icon {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+}
+
+.quick-add-card-date .quick-add-card-icon {
+  background: linear-gradient(135deg, #27ae60 0%, #16a085 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(39, 174, 96, 0.2);
+}
+
+.quick-add-card-content {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-add-card-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 0.25rem;
+  transition: color 0.3s ease;
+}
+
+.quick-add-card-subtitle {
+  font-size: 0.875rem;
+  color: #7f8c8d;
+  margin: 0;
+  transition: color 0.3s ease;
+}
+
+.quick-add-card:hover .quick-add-card-title {
+  color: #3498db;
+}
+
+.quick-add-form-section {
+  margin-bottom: 1.5rem;
+}
+
+.quick-add-label {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+}
+
+.quick-add-label i {
+  color: #3498db;
+}
+
+.quick-add-select-wrapper {
+  position: relative;
+}
+
+.quick-add-select {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid rgba(52, 152, 219, 0.2);
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 1rem;
+  color: #2c3e50;
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%233498db' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 12px;
+  padding-right: 2.5rem;
+}
+
+.quick-add-select:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.quick-add-select:disabled {
+  background-color: #f8f9fa;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.quick-add-empty-message {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%);
+  border-left: 4px solid #ffc107;
+  border-radius: 8px;
+  color: #856404;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+}
+
+.quick-add-confirm-alert {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+  border-left: 4px solid #28a745;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.1);
+  animation: slideInDown 0.3s ease;
+  max-width: 100%;
+}
+
+.quick-add-confirm-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.quick-add-confirm-icon {
+  color: #28a745;
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.quick-add-confirm-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-add-confirm-text strong {
+  color: #155724;
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.quick-add-confirm-text span {
+  color: #155724;
+  line-height: 1.4;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.quick-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(52, 152, 219, 0.1);
+}
+
+.quick-add-btn {
+  padding: 0.75rem 2rem;
+  border-radius: 25px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-add-btn-cancel {
+  background: #ffffff;
+  color: #34495e;
+  border: 2px solid #e0e0e0;
+}
+
+.quick-add-btn-cancel:hover {
+  background: #f8f9fa;
+  border-color: #bdc3c7;
+}
+
+.quick-add-btn-submit {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+}
+
+.quick-add-btn-submit:hover:not(:disabled) {
+  background: linear-gradient(135deg, #34495e 0%, #2980b9 100%);
+  box-shadow: 0 3px 12px rgba(52, 152, 219, 0.3);
+}
+
+.quick-add-btn-submit:disabled {
+  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+/* Shift Details Modal Styles */
+.shift-details-modal-content {
+  padding: 1.25rem;
+}
+
+.shift-details-main-info {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid rgba(52, 152, 219, 0.1);
+  box-shadow: 0 2px 8px rgba(44, 62, 80, 0.08);
+}
+
+.shift-details-info-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.75rem 0.5rem;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.shift-details-info-item:hover {
+  background: rgba(52, 152, 219, 0.05);
+}
+
+.shift-details-info-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.2);
+}
+
+.shift-details-info-content {
+  width: 100%;
+  text-align: center;
+}
+
+.shift-details-info-content label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #7f8c8d;
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shift-details-info-value {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: center;
+}
+
+.shift-details-info-value strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2c3e50;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.shift-details-info-value .text-muted {
+  font-size: 0.8rem;
+  color: #7f8c8d;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.shift-details-change-section {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 10px;
+  border: 1px solid rgba(52, 152, 219, 0.1);
+  overflow: hidden;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(44, 62, 80, 0.08);
+}
+
+.shift-details-change-header {
+  background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+  color: #ffffff;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.shift-details-change-header i {
+  font-size: 1rem;
+}
+
+.shift-details-change-body {
+  padding: 1rem;
+}
+
+.shift-details-label {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.shift-details-label i {
+  color: #3498db;
+}
+
+.shift-details-select-wrapper {
+  position: relative;
+}
+
+.shift-details-select {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid rgba(52, 152, 219, 0.2);
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 0.95rem;
+  color: #2c3e50;
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%233498db' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 12px;
+  padding-right: 2.5rem;
+}
+
+.shift-details-select:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.shift-details-select:disabled {
+  background-color: #f8f9fa;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.shift-details-confirm-alert {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+  border-left: 4px solid #28a745;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.1);
+  animation: slideInDown 0.3s ease;
+  max-width: 100%;
+}
+
+.shift-details-confirm-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.shift-details-confirm-icon {
+  color: #28a745;
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.shift-details-confirm-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.shift-details-confirm-text strong {
+  color: #155724;
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.shift-details-confirm-text span {
+  color: #155724;
+  line-height: 1.4;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.shift-details-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(52, 152, 219, 0.1);
+}
+
+.shift-details-btn {
+  padding: 0.6rem 1.5rem;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shift-details-btn-cancel {
+  background: #ffffff;
+  color: #34495e;
+  border: 2px solid #e0e0e0;
+}
+
+.shift-details-btn-cancel:hover {
+  background: #f8f9fa;
+  border-color: #bdc3c7;
+}
+
+.shift-details-btn-update {
+  background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(243, 156, 18, 0.2);
+}
+
+.shift-details-btn-update:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+  box-shadow: 0 3px 12px rgba(243, 156, 18, 0.3);
+}
+
+.shift-details-btn-update:disabled {
+  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.shift-details-btn-delete {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(231, 76, 60, 0.2);
+}
+
+.shift-details-btn-delete:hover {
+  background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+  box-shadow: 0 3px 12px rgba(231, 76, 60, 0.3);
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 </style>

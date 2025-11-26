@@ -1,40 +1,127 @@
 <script setup>
+// ============================================================================
+// KHAI BÁO IMPORT
+// ============================================================================
+// Vue core - Thư viện Vue cốt lõi
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+// Components - Các component Vue
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import LeaveForm from '../../components/common/leave/LeaveForm.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
 import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
-import { useAuth } from '../../composables/useAuth.js'
-import api from '../../api'
-import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import TabBar from '../../components/common/TabBar.vue'
+import TimeFilter from '../../components/common/TimeFilter.vue'
 
+// Composables - Các composable Vue (hooks tái sử dụng)
+import { useAuth } from '../../composables/useAuth.js'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import { useEmployee } from '../../composables/useEmployee'
+import { useAttendance } from '../../composables/useAttendance'
+import { useWorkShift } from '../../composables/useWorkShift'
+import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
+import { useLeaveRequest } from '../../composables/useLeaveRequest'
+import { useLeaveType } from '../../composables/useLeaveType'
+import { useShiftAssignment } from '../../composables/useShiftAssignment'
+import { usePermissions } from '../../composables/usePermissions'
+
+// Services - Các service xử lý API và business logic
+import api from '../../api'
+import { attendanceDataService } from '../../services/attendanceDataService'
+
+// ============================================================================
+// KHỞI TẠO COMPOSABLES
+// ============================================================================
+const { employees: allEmployees, fetchAllEmployees } = useEmployee()
+const { attendanceList, fetchAttendance } = useAttendance()
+const { workshifts, fetchWorkShifts } = useWorkShift()
+const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
+const { leaveRequests, fetchLeaveRequests, loading: leaveLoading, error: leaveError } = useLeaveRequest()
+const { leaveTypes, fetchLeaveTypes } = useLeaveType()
+const { shiftAssignments, fetchAllShiftAssignments, createShiftAssignment } = useShiftAssignment()
+const { showMessage } = useGlobalMessage()
+const { currentUser, isDirector, isHRManager, isHREmployee } = useAuth()
+const { canView } = usePermissions()
+
+const route = useRoute()
+const router = useRouter()
+
+// Đăng ký components
+const components = {
+  TimeFilter
+}
+
+// ============================================================================
+// BIẾN REACTIVE - TRẠNG THÁI MODAL
+// ============================================================================
 const showEmployeeModal = ref(false)
 const showDayModal = ref(false)
 const showLeaveFormModal = ref(false)
 const showImageModal = ref(false)
-const selectedImage = ref(null)
-
-// Location map modal
 const showLocationMapModal = ref(false)
-const mapLocation = ref({ lat: null, lng: null, name: null })
+const showTourGuide = ref(false)
+const showAIChatbot = ref(false)
+
+// ============================================================================
+// BIẾN REACTIVE - DỮ LIỆU ĐÃ CHỌN
+// ============================================================================
 const selectedEmployee = ref(null)
 const selectedDateIdx = ref(null)
 const selectedLeaveRequest = ref(null)
+const selectedImage = ref(null)
+const mapLocation = ref({ lat: null, lng: null, name: null })
+
+// ============================================================================
+// BIẾN REACTIVE - TRẠNG THÁI LOADING VÀ LỖI
+// ============================================================================
 const dayModalLoading = ref(false)
 const dayModalError = ref(null)
-const showTourGuide = ref(false)
-
-// AI Chatbot for zero hours/days warning
-const showAIChatbot = ref(false)
 const aiChatbotMessage = ref('')
 
-// Function to analyze why hours/days are zero and provide suggestions
+// ============================================================================
+// BIẾN REACTIVE - TRẠNG THÁI TAB VÀ BỘ LỌC
+// ============================================================================
+const activeTab = ref('summary')
+const showMoreTabs = ref(false)
+const currentMonth = ref(new Date())
+const selectedStartDate = ref('')
+const selectedEndDate = ref('')
+const selectedWeek = ref('')
+const selectedYear = ref(new Date().getFullYear())
+const selectedMonth = ref(new Date().getMonth() + 1)
+
+// ============================================================================
+// BIẾN REACTIVE - TRẠNG THÁI PHÂN TRANG
+// ============================================================================
+const currentPage = ref(1)
+const pageSize = ref(5)
+const overtimeCurrentPage = ref(1)
+const overtimePageSize = ref(5)
+
+// ============================================================================
+// BIẾN REACTIVE - MẢNG DỮ LIỆU
+// ============================================================================
+const attendanceHistory = ref([])
+const workHistory = ref([])
+const updatingShifts = ref({}) // Theo dõi các bản ghi chấm công đang được cập nhật
+
+// ============================================================================
+// HÀM TIỆN ÍCH - PHÂN TÍCH GIỜ CÔNG BẰNG 0
+// ============================================================================
+
+/**
+ * Phân tích nguyên nhân tại sao giờ công/ngày công bằng 0 và đưa ra gợi ý
+ * @param {Object} item - Dữ liệu chấm công cần phân tích
+ * @returns {Object} { reasons: Array, suggestions: Array } - Danh sách nguyên nhân và gợi ý
+ */
 function analyzeZeroWorkTime(item) {
   const reasons = []
   const suggestions = []
   
-  // Check if check-in/check-out times exist
+  // Kiểm tra xem có thời gian chấm công vào/ra không
   if (!item.checkInTime || !item.checkOutTime) {
     reasons.push('Thiếu dữ liệu chấm công vào hoặc ra')
     suggestions.push('Kiểm tra lại dữ liệu chấm công của nhân viên')
@@ -42,13 +129,13 @@ function analyzeZeroWorkTime(item) {
     const checkInTime = new Date(`2000-01-01T${item.checkInTime}:00`)
     const checkOutTime = new Date(`2000-01-01T${item.checkOutTime}:00`)
     
-    // Check if check-out is before check-in (invalid time range)
+    // Kiểm tra xem giờ ra có trước giờ vào không (khoảng thời gian không hợp lệ)
     if (checkOutTime <= checkInTime) {
       reasons.push('Giờ ra nhỏ hơn hoặc bằng giờ vào (dữ liệu không hợp lệ)')
       suggestions.push('Kiểm tra lại thời gian chấm công vào và ra')
     }
     
-    // Check if work shift is assigned
+    // Kiểm tra xem có ca làm việc được phân chưa
     if (!item.workShiftID) {
       reasons.push('Nhân viên chưa được phân ca làm việc')
       suggestions.push('Phân ca làm việc cho nhân viên trong ngày này')
@@ -71,18 +158,18 @@ function analyzeZeroWorkTime(item) {
           const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
           const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
           
-          // Check if check-in is after shift end
+          // Kiểm tra xem giờ vào có sau giờ kết thúc ca không
           if (checkInTime >= shiftEnd) {
             suggestions.push('Kiểm tra lại thời gian chấm công')
           }
           
-          // Check if check-out is before shift start
+          // Kiểm tra xem giờ ra có trước giờ bắt đầu ca không
           if (checkOutTime <= shiftStart) {
             reasons.push('Giờ ra trước giờ bắt đầu ca làm việc')
             suggestions.push('Kiểm tra lại thời gian chấm công')
           }
           
-          // Check if effective work time is zero
+          // Kiểm tra xem thời gian làm việc hiệu quả có bằng 0 không
           const effectiveCheckInTime = checkInTime < shiftStart ? shiftStart : checkInTime
           const effectiveCheckOutTime = checkOutTime < shiftEnd ? checkOutTime : shiftEnd
           const totalTimeHours = (effectiveCheckOutTime - effectiveCheckInTime) / (1000 * 60 * 60)
@@ -99,14 +186,17 @@ function analyzeZeroWorkTime(item) {
   return { reasons, suggestions }
 }
 
-// Function to show warning for zero hours
+/**
+ * Hiển thị cảnh báo khi số giờ công bằng 0 thông qua AI Chatbot
+ * @param {Object} item - Dữ liệu chấm công có số giờ công bằng 0
+ */
 function showZeroHoursWarning(item) {
   const analysis = analyzeZeroWorkTime(item)
   const reasonsText = analysis.reasons.length > 0 
     ? analysis.reasons.map((r, i) => `\n${i + 1}. ${r}`).join('')
     : '\nKhông xác định được nguyên nhân cụ thể'
   
-  // Add suggestion about changing shift in summary tab
+  // Thêm gợi ý về việc đổi ca trong tab tổng hợp
   const allSuggestions = [...analysis.suggestions]
   if (item.workShiftID) {
     allSuggestions.push('Nếu người chấm công chọn nhầm ca, có thể vào tab "Bảng tổng hợp công" để chọn lại ca cho ngày này')
@@ -123,7 +213,7 @@ function showZeroHoursWarning(item) {
 ĐỀ XUẤT:${suggestionsText}`
   showAIChatbot.value = true
   
-  // Auto-open chat bubble after a short delay
+  // Tự động mở chat bubble sau một khoảng thời gian ngắn
   setTimeout(() => {
     const chatbotButton = document.querySelector('.ai-chatbot-button')
     if (chatbotButton) {
@@ -132,14 +222,17 @@ function showZeroHoursWarning(item) {
   }, 100)
 }
 
-// Function to show warning for zero days
+/**
+ * Hiển thị cảnh báo khi số ngày công bằng 0 thông qua AI Chatbot
+ * @param {Object} item - Dữ liệu chấm công có số ngày công bằng 0
+ */
 function showZeroDaysWarning(item) {
   const analysis = analyzeZeroWorkTime(item)
   const reasonsText = analysis.reasons.length > 0 
     ? analysis.reasons.map((r, i) => `\n${i + 1}. ${r}`).join('')
     : '\nKhông xác định được nguyên nhân cụ thể'
   
-  // Add suggestion about changing shift in summary tab
+  // Thêm gợi ý về việc đổi ca trong tab tổng hợp
   const allSuggestions = [...analysis.suggestions]
   if (item.workShiftID) {
     allSuggestions.push('Nếu người chấm công chọn nhầm ca, có thể vào tab "Bảng tổng hợp công" để chọn lại ca cho ngày này')
@@ -156,7 +249,7 @@ function showZeroDaysWarning(item) {
 \nĐỀ XUẤT:${suggestionsText}`
   showAIChatbot.value = true
   
-  // Auto-open chat bubble after a short delay
+  // Tự động mở chat bubble sau một khoảng thời gian ngắn
   setTimeout(() => {
     const chatbotButton = document.querySelector('.ai-chatbot-button')
     if (chatbotButton) {
@@ -167,7 +260,7 @@ function showZeroDaysWarning(item) {
 
 
 // ============================================================================
-// COMMON FUNCTIONS FOR CALCULATING WORK DAYS
+// HÀM CHUNG ĐỂ TÍNH NGÀY CÔNG
 // ============================================================================
 
 /**
@@ -184,13 +277,13 @@ function calculateWorkDaysFromAttendanceData(attendanceItem, workShift = null) {
   const checkInTime = new Date(`2000-01-01T${attendanceItem.checkInTime}`)
   const checkOutTime = new Date(`2000-01-01T${attendanceItem.checkOutTime}`)
   
-  // Get shift details
+  // Lấy thông tin chi tiết ca làm việc
   if (!workShift) {
     workShift = workshifts.value.find(shift => shift.id === attendanceItem.workShiftID)
   }
   
   if (!workShift || !workShift.shiftDetails) {
-    // Fallback: calculate from actual time, assume 8 hours standard
+    // Dự phòng: tính từ thời gian thực tế, giả định 8 giờ chuẩn
     const actualWorkHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
     const workDays = Math.round((actualWorkHours / 8) * 100) / 100
     return { actualWorkHours, workDays, standardWorkHours: 8 }
@@ -203,7 +296,7 @@ function calculateWorkDaysFromAttendanceData(attendanceItem, workShift = null) {
   
   const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
   if (!dayShiftDetail || dayShiftDetail.startTime === '00:00:00' || dayShiftDetail.endTime === '00:00:00') {
-    // Fallback: calculate from actual time, assume 8 hours standard
+    // Dự phòng: tính từ thời gian thực tế, giả định 8 giờ chuẩn
     const actualWorkHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
     const workDays = Math.round((actualWorkHours / 8) * 100) / 100
     return { actualWorkHours, workDays, standardWorkHours: 8 }
@@ -212,7 +305,7 @@ function calculateWorkDaysFromAttendanceData(attendanceItem, workShift = null) {
   const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
   const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
   
-  // Calculate standard work hours for this shift (giờ ra ca - giờ vào ca - giờ nghỉ trưa)
+  // Tính giờ công chuẩn cho ca này (giờ ra ca - giờ vào ca - giờ nghỉ trưa)
   let standardWorkHours = (shiftEnd - shiftStart) / (1000 * 60 * 60)
   if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
       dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
@@ -222,14 +315,14 @@ function calculateWorkDaysFromAttendanceData(attendanceItem, workShift = null) {
     standardWorkHours -= breakHours
   }
   
-  // Calculate effective check-in and check-out times
-  // Effective check-in: nếu checkInTime < shiftStart thì lấy shiftStart, ngược lại lấy checkInTime
+  // Tính thời gian chấm công vào/ra hiệu quả
+  // Thời gian vào hiệu quả: nếu checkInTime < shiftStart thì lấy shiftStart, ngược lại lấy checkInTime
   const effectiveCheckInTime = checkInTime < shiftStart ? shiftStart : checkInTime
   
-  // Effective check-out: nếu checkOutTime < shiftEnd thì lấy checkOutTime, ngược lại lấy shiftEnd
+  // Thời gian ra hiệu quả: nếu checkOutTime < shiftEnd thì lấy checkOutTime, ngược lại lấy shiftEnd
   const effectiveCheckOutTime = checkOutTime < shiftEnd ? checkOutTime : shiftEnd
   
-  // Calculate total time hours
+  // Tính tổng số giờ
   let totalTimeHours = (effectiveCheckOutTime - effectiveCheckInTime) / (1000 * 60 * 60)
   
   // Nếu kết quả âm thì = 0
@@ -237,7 +330,7 @@ function calculateWorkDaysFromAttendanceData(attendanceItem, workShift = null) {
     totalTimeHours = 0
   }
   
-  // Subtract lunch break if it falls within work time
+  // Trừ giờ nghỉ trưa nếu nó nằm trong thời gian làm việc
   let actualWorkHours = totalTimeHours
   if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
       dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
@@ -256,9 +349,9 @@ function calculateWorkDaysFromAttendanceData(attendanceItem, workShift = null) {
     actualWorkHours = 0
   }
   
-  // Calculate work days: chia cho ngày công chuẩn của ca (không phải 8 giờ cố định)
-  // Nếu standardWorkHours = 0, fallback về 8 giờ
-  const divisor = standardWorkHours > 0 ? standardWorkHours : 8
+  // Tính ngày công: luôn chia cho 8 giờ chuẩn (1 ngày công = 8 giờ)
+  // Không chia cho standardWorkHours của ca vì ngày công phải dựa trên chuẩn 8 giờ/ngày
+  const divisor = 8 // 1 ngày công = 8 giờ chuẩn
   const workDays = Math.round((actualWorkHours / divisor) * 100) / 100
   return { actualWorkHours, workDays, standardWorkHours }
 }
@@ -277,27 +370,27 @@ function calculateWorkDaysFromLeaveRequest(leaveRequest, targetDate, workShift =
   const leaveEnd = new Date(leaveRequest.endDateTime)
   const target = new Date(targetDate)
   
-  // Set target date to start of day for comparison
+  // Đặt ngày đích về đầu ngày để so sánh
   target.setHours(0, 0, 0, 0)
   
-  // Check if target date is within leave period
+  // Kiểm tra xem ngày đích có nằm trong khoảng nghỉ phép không
   const leaveStartDate = new Date(leaveStart)
   leaveStartDate.setHours(0, 0, 0, 0)
   const leaveEndDate = new Date(leaveEnd)
   leaveEndDate.setHours(0, 0, 0, 0)
   
   if (target < leaveStartDate || target > leaveEndDate) {
-    return { actualWorkHours: 0, workDays: 0, standardWorkHours: 8 } // Not in leave period
+    return { actualWorkHours: 0, workDays: 0, standardWorkHours: 8 } // Không nằm trong khoảng nghỉ phép
   }
   
-  // Get work shift details
+  // Lấy thông tin chi tiết ca làm việc
   if (!workShift && leaveRequest.workShiftID) {
     workShift = workshifts.value.find(shift => shift.id === leaveRequest.workShiftID)
   }
   
-  // Default work hours if no shift info
+  // Giờ công mặc định nếu không có thông tin ca
   let workHours = 0
-  let standardWorkHours = 8 // Default 8 hours if no shift info
+  let standardWorkHours = 8 // Mặc định 8 giờ nếu không có thông tin ca
   
   if (workShift && workShift.shiftDetails) {
     const dayOfWeek = target.getDay()
@@ -306,23 +399,35 @@ function calculateWorkDaysFromLeaveRequest(leaveRequest, targetDate, workShift =
     
     const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
     
+    // Debug log để kiểm tra shift detail
+    console.log('Shift detail lookup:', {
+      currentDayName,
+      dayShiftDetail: dayShiftDetail ? {
+        startTime: dayShiftDetail.startTime,
+        endTime: dayShiftDetail.endTime,
+        breakStart: dayShiftDetail.breakStart,
+        breakEnd: dayShiftDetail.breakEnd
+      } : null,
+      allShiftDetails: workShift.shiftDetails.map(d => ({ dayOfWeek: d.dayOfWeek, startTime: d.startTime, endTime: d.endTime }))
+    });
+    
     if (dayShiftDetail && dayShiftDetail.startTime !== '00:00:00' && dayShiftDetail.endTime !== '00:00:00') {
       const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
       const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
       
-      // Calculate standard work hours (giờ ra ca - giờ vào ca - giờ nghỉ trưa)
-      standardWorkHours = (shiftEnd - shiftStart) / (1000 * 60 * 60)
+      // Tính giờ công chuẩn (giờ ra ca - giờ vào ca - giờ nghỉ trưa)
+      standardWorkHours = (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60)
       if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
           dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
         const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
         const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
-        const breakHours = (breakEnd - breakStart) / (1000 * 60 * 60)
+        const breakHours = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60 * 60)
         standardWorkHours -= breakHours
       }
       
-      // Determine work hours based on leave period
+      // Xác định giờ công dựa trên khoảng nghỉ phép
       if (target.getTime() === leaveStartDate.getTime() && target.getTime() === leaveEndDate.getTime()) {
-        // Single day leave
+        // Nghỉ phép một ngày
         const leaveStartTime = new Date(`2000-01-01T${leaveStart.toTimeString().substring(0, 8)}`)
         const leaveEndTime = new Date(`2000-01-01T${leaveEnd.toTimeString().substring(0, 8)}`)
         const leaveStartTimeOnly = leaveStartTime.getTime()
@@ -339,7 +444,7 @@ function calculateWorkDaysFromLeaveRequest(leaveRequest, targetDate, workShift =
           const effectiveEnd = leaveEndTimeOnly > shiftEndTime ? shiftEnd : leaveEndTime
           const leaveHours = (effectiveEnd - effectiveStart) / (1000 * 60 * 60)
           
-          // Subtract break if it falls within leave time
+          // Trừ giờ nghỉ nếu nó nằm trong thời gian nghỉ phép
           if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
               dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
             const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
@@ -357,38 +462,65 @@ function calculateWorkDaysFromLeaveRequest(leaveRequest, targetDate, workShift =
           }
         }
       } else if (target.getTime() === leaveStartDate.getTime()) {
-        // First day - from leave start to shift end
-        const leaveStartTime = new Date(`2000-01-01T${leaveStart.toTimeString().substring(0, 8)}`)
+        // Ngày đầu tiên - từ giờ bắt đầu nghỉ phép đến giờ kết thúc ca
+        // Lấy giờ từ leaveStart (có thể có timezone, nên dùng getHours/getMinutes/getSeconds)
+        const leaveStartHours = leaveStart.getHours()
+        const leaveStartMinutes = leaveStart.getMinutes()
+        const leaveStartSeconds = leaveStart.getSeconds()
+        const leaveStartTime = new Date(2000, 0, 1, leaveStartHours, leaveStartMinutes, leaveStartSeconds)
         const leaveStartTimeOnly = leaveStartTime.getTime()
         const shiftStartTime = shiftStart.getTime()
+        
+        // Debug log
+        console.log('First day calculation:', {
+          leaveStart: leaveStart.toISOString(),
+          leaveStartHours,
+          leaveStartMinutes,
+          leaveStartTime: leaveStartTime.toTimeString().substring(0, 8),
+          leaveStartTimeOnly,
+          shiftStartTime,
+          shiftStart: shiftStart.toTimeString().substring(0, 8),
+          shiftEnd: shiftEnd.toTimeString().substring(0, 8),
+          standardWorkHours
+        });
         
         // Nếu nghỉ phép bắt đầu từ đầu ca (leaveStartTime <= shiftStart), tính full ca
         if (leaveStartTimeOnly <= shiftStartTime) {
           workHours = standardWorkHours
+          console.log('First day: Full shift (leaveStartTime <= shiftStart)', workHours);
         } else {
           // Nếu nghỉ phép bắt đầu sau đầu ca, tính từ leaveStartTime đến shiftEnd
           const effectiveEnd = shiftEnd
-          const dayHours = (effectiveEnd - leaveStartTime) / (1000 * 60 * 60)
+          const dayHours = (effectiveEnd.getTime() - leaveStartTime.getTime()) / (1000 * 60 * 60)
           
-          // Subtract break if applicable
+          console.log('First day: Partial shift calculation:', {
+            leaveStartTime: leaveStartTime.toTimeString().substring(0, 8),
+            effectiveEnd: effectiveEnd.toTimeString().substring(0, 8),
+            dayHours
+          });
+          
+          // Trừ giờ nghỉ nếu có
           if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
               dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
             const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
             const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
-            if (leaveStartTime <= breakEnd && effectiveEnd >= breakStart) {
-              const actualBreakStart = leaveStartTime > breakStart ? leaveStartTime : breakStart
-              const actualBreakEnd = effectiveEnd < breakEnd ? effectiveEnd : breakEnd
-              const actualBreakHours = (actualBreakEnd - actualBreakStart) / (1000 * 60 * 60)
+            if (leaveStartTime.getTime() <= breakEnd.getTime() && effectiveEnd.getTime() >= breakStart.getTime()) {
+              const actualBreakStart = leaveStartTime.getTime() > breakStart.getTime() ? leaveStartTime : breakStart
+              const actualBreakEnd = effectiveEnd.getTime() < breakEnd.getTime() ? effectiveEnd : breakEnd
+              const actualBreakHours = (actualBreakEnd.getTime() - actualBreakStart.getTime()) / (1000 * 60 * 60)
               workHours = dayHours - Math.max(0, actualBreakHours)
+              console.log('First day: After break subtraction:', { actualBreakHours, workHours });
             } else {
               workHours = dayHours
             }
           } else {
             workHours = dayHours
           }
+          
+          console.log('First day: Final workHours:', workHours);
         }
       } else if (target.getTime() === leaveEndDate.getTime()) {
-        // Last day - from shift start to leave end
+        // Ngày cuối cùng - từ giờ bắt đầu ca đến giờ kết thúc nghỉ phép
         const leaveEndTime = new Date(`2000-01-01T${leaveEnd.toTimeString().substring(0, 8)}`)
         const leaveEndTimeOnly = leaveEndTime.getTime()
         const shiftEndTime = shiftEnd.getTime()
@@ -399,17 +531,17 @@ function calculateWorkDaysFromLeaveRequest(leaveRequest, targetDate, workShift =
         } else {
           // Nếu nghỉ phép kết thúc trước cuối ca, tính từ shiftStart đến leaveEndTime
           const effectiveStart = shiftStart
-          const dayHours = (leaveEndTime - effectiveStart) / (1000 * 60 * 60)
+          const dayHours = (leaveEndTime.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60)
           
-          // Subtract break if applicable
+          // Trừ giờ nghỉ nếu có
           if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
               dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
             const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
             const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
-            if (effectiveStart <= breakEnd && leaveEndTime >= breakStart) {
-              const actualBreakStart = effectiveStart > breakStart ? effectiveStart : breakStart
-              const actualBreakEnd = leaveEndTime < breakEnd ? leaveEndTime : breakEnd
-              const actualBreakHours = (actualBreakEnd - actualBreakStart) / (1000 * 60 * 60)
+            if (effectiveStart.getTime() <= breakEnd.getTime() && leaveEndTime.getTime() >= breakStart.getTime()) {
+              const actualBreakStart = effectiveStart.getTime() > breakStart.getTime() ? effectiveStart : breakStart
+              const actualBreakEnd = leaveEndTime.getTime() < breakEnd.getTime() ? leaveEndTime : breakEnd
+              const actualBreakHours = (actualBreakEnd.getTime() - actualBreakStart.getTime()) / (1000 * 60 * 60)
               workHours = dayHours - Math.max(0, actualBreakHours)
             } else {
               workHours = dayHours
@@ -419,15 +551,39 @@ function calculateWorkDaysFromLeaveRequest(leaveRequest, targetDate, workShift =
           }
         }
       } else {
-        // Middle day - full shift hours
+        // Ngày giữa - full ca làm việc
         workHours = standardWorkHours
       }
     } else {
-      // No shift detail, use default
+      // Không có thông tin chi tiết ca - nhưng vẫn cần tính toán dựa trên thời gian nghỉ phép
+      // Nếu là ngày đầu tiên, tính từ leaveStart đến 17:00 (mặc định)
+      // Nếu là ngày cuối, tính từ 08:00 (mặc định) đến leaveEnd
+      // Nếu là ngày giữa, tính full ca (8 giờ)
+      if (target.getTime() === leaveStartDate.getTime()) {
+        // Ngày đầu tiên - từ leaveStart đến 17:00 (mặc định)
+        const leaveStartHours = leaveStart.getHours()
+        const leaveStartMinutes = leaveStart.getMinutes()
+        const leaveStartSeconds = leaveStart.getSeconds()
+        const leaveStartTime = new Date(2000, 0, 1, leaveStartHours, leaveStartMinutes, leaveStartSeconds)
+        const defaultEndTime = new Date(2000, 0, 1, 17, 0, 0) // 17:00 mặc định
+        workHours = (defaultEndTime.getTime() - leaveStartTime.getTime()) / (1000 * 60 * 60)
+        console.log('First day (no shift detail):', { leaveStartTime: leaveStartTime.toTimeString().substring(0, 8), workHours });
+      } else if (target.getTime() === leaveEndDate.getTime()) {
+        // Ngày cuối cùng - từ 08:00 (mặc định) đến leaveEnd
+        const leaveEndHours = leaveEnd.getHours()
+        const leaveEndMinutes = leaveEnd.getMinutes()
+        const leaveEndSeconds = leaveEnd.getSeconds()
+        const leaveEndTime = new Date(2000, 0, 1, leaveEndHours, leaveEndMinutes, leaveEndSeconds)
+        const defaultStartTime = new Date(2000, 0, 1, 8, 0, 0) // 08:00 mặc định
+        workHours = (leaveEndTime.getTime() - defaultStartTime.getTime()) / (1000 * 60 * 60)
+        console.log('Last day (no shift detail):', { leaveEndTime: leaveEndTime.toTimeString().substring(0, 8), workHours });
+      } else {
+        // Ngày giữa - full ca (8 giờ mặc định)
       workHours = standardWorkHours
+      }
     }
   } else {
-    // No shift info, use default
+    // Không có thông tin ca, dùng mặc định
     workHours = standardWorkHours
   }
   
@@ -436,20 +592,38 @@ function calculateWorkDaysFromLeaveRequest(leaveRequest, targetDate, workShift =
     workHours = 0
   }
   
-  // Calculate work days: chia cho ngày công chuẩn của ca (không phải 8 giờ cố định)
-  // Nếu standardWorkHours = 0, fallback về 8 giờ
-  const divisor = standardWorkHours > 0 ? standardWorkHours : 8
+  // Tính ngày công: luôn chia cho 8 giờ chuẩn (1 ngày công = 8 giờ)
+  // Không chia cho standardWorkHours của ca vì ngày công phải dựa trên chuẩn 8 giờ/ngày
+  const divisor = 8 // 1 ngày công = 8 giờ chuẩn
   const workDays = Math.round((workHours / divisor) * 100) / 100
+  
+  console.log('calculateWorkDaysFromLeaveRequest final result:', {
+    targetDate: target.toLocaleDateString('vi-VN'),
+    actualWorkHours: workHours,
+    standardWorkHours,
+    workDays
+  });
+  
   return { actualWorkHours: workHours, workDays, standardWorkHours }
 }
 
-// Legacy function - kept for backward compatibility, now uses common function
+/**
+ * Tính ngày công từ dữ liệu chấm công (hàm legacy, giữ lại để tương thích ngược)
+ * @param {Object} attendanceItem - Dữ liệu chấm công
+ * @returns {Number} Số ngày công
+ */
 function calculateWorkDaysFromAttendance(attendanceItem) {
   const result = calculateWorkDaysFromAttendanceData(attendanceItem)
   return typeof result === 'object' ? result.workDays : result
 }
 
-// Function to calculate employee summary from attendance data
+/**
+ * Tính toán tổng hợp công của nhân viên từ dữ liệu chấm công và nghỉ phép
+ * Bao gồm: tổng đi làm, nghỉ có lương, vắng không phép, số phút đi trễ, số phút về sớm
+ * @param {String|Number} employeeId - ID của nhân viên
+ * @param {String} employeeName - Tên nhân viên
+ * @returns {Object} Summary object với các thống kê công
+ */
 function calculateEmployeeSummary(employeeId, employeeName) {
   const summary = {
     totalWorkDays: 0,
@@ -462,7 +636,7 @@ function calculateEmployeeSummary(employeeId, employeeName) {
     totalForgotCheckOut: 0
   }
 
-  // Calculate from attendanceList (actual attendance data)
+  // Tính từ attendanceList (dữ liệu chấm công thực tế)
   // Tổng hợp workDays từ từng ngày chấm công (cộng workDays của từng ngày lại)
   if (attendanceList.value && attendanceList.value.length > 0) {
     const employeeAttendance = attendanceList.value.filter(att => {
@@ -470,15 +644,18 @@ function calculateEmployeeSummary(employeeId, employeeName) {
       return attEmployeeId === employeeId
     })
 
-    // Calculate total present (work days) from attendance data
+    // Tính tổng đi làm (ngày công) từ dữ liệu chấm công
     employeeAttendance.forEach(att => {
       if (att.checkInTime && att.checkOutTime) {
         const result = calculateWorkDaysFromAttendanceData(att)
         summary.totalPresent += result.workDays
         
-        // Calculate late and early minutes
+        // Tính số phút đi trễ và về sớm
         if (att.workShiftID) {
           const workShift = workshifts.value.find(shift => shift.id === att.workShiftID)
+          let shiftStart = null
+          let shiftEnd = null
+          
           if (workShift && workShift.shiftDetails) {
             const workDate = new Date(att.workDate)
             const dayOfWeek = workDate.getDay()
@@ -509,9 +686,10 @@ function calculateEmployeeSummary(employeeId, employeeName) {
     })
   }
 
-  // Calculate paid leave days from leave requests
+  // Tính ngày nghỉ có lương từ các đơn nghỉ phép
   // Tổng hợp workDays từ từng ngày nghỉ phép (cộng workDays của từng ngày lại)
   // Chỉ tính các ngày không có chấm công thực tế
+  // Nếu có nhiều đơn trùng lặp trong cùng một ngày, chỉ tính đơn có thời gian nghỉ dài hơn
   if (leaveRequests.value && leaveRequests.value.length > 0) {
     const monthStart = new Date(selectedYear.value, selectedMonth.value - 1, 1)
     const monthEnd = new Date(selectedYear.value, selectedMonth.value, 0, 23, 59, 59)
@@ -533,12 +711,13 @@ function calculateEmployeeSummary(employeeId, employeeName) {
       })
     }
     
-    leaveRequests.value.forEach(leave => {
-      if (leave.employeeID !== employeeId) return
+    // Lọc các đơn nghỉ phép có lương đã duyệt của nhân viên này
+    const paidLeaveRequests = leaveRequests.value.filter(leave => {
+      if (leave.employeeID !== employeeId) return false
       
       const leaveStart = new Date(leave.startDateTime)
       const leaveEnd = new Date(leave.endDateTime)
-      if (leaveStart > monthEnd || leaveEnd < monthStart) return
+      if (leaveStart > monthEnd || leaveEnd < monthStart) return false
       
       const leaveTypeName = (leave.leaveTypeName || '').toLowerCase()
       // Chỉ tính "Phép năm" và "Phép có lương", loại trừ "Nghỉ bù"
@@ -547,8 +726,18 @@ function calculateEmployeeSummary(employeeId, employeeName) {
                           !leaveTypeName.includes('nghỉ bù') &&
                           !leaveTypeName.includes('bù')
       
-      if (isPaidLeave && (leave.approveStatus === 'Đã duyệt' || leave.approveStatus === 'Approved')) {
-        // Calculate work days for each day in the leave period within the month
+      return isPaidLeave && (leave.approveStatus === 'Đã duyệt' || leave.approveStatus === 'Approved')
+    })
+    
+    // Nhóm các đơn theo ngày và tìm khoảng nghỉ phép dài nhất cho mỗi ngày
+    // Map<dayString, {leave, duration, workDays}>
+    const dayLeaveMap = new Map()
+    
+    paidLeaveRequests.forEach(leave => {
+      const leaveStart = new Date(leave.startDateTime)
+      const leaveEnd = new Date(leave.endDateTime)
+      
+      // Tính ngày công cho mỗi ngày trong khoảng nghỉ phép trong tháng
         const startDate = new Date(leaveStart > monthStart ? leaveStart : monthStart)
         startDate.setHours(0, 0, 0, 0)
         const endDate = new Date(leaveEnd < monthEnd ? leaveEnd : monthEnd)
@@ -563,16 +752,127 @@ function calculateEmployeeSummary(employeeId, employeeName) {
           // Đảm bảo ngày nằm trong phạm vi tháng
           if (dateKey >= monthStart && dateKey <= monthEnd) {
             if (!attendanceDates.has(dateKey.getTime())) {
-              const result = calculateWorkDaysFromLeaveRequest(leave, d)
-              summary.totalPaidLeave += result.workDays
+            const dayString = `${dateKey.getFullYear()}-${String(dateKey.getMonth() + 1).padStart(2, '0')}-${String(dateKey.getDate()).padStart(2, '0')}`
+            
+            // Tính phần của đơn nghỉ phép này rơi vào ngày này
+            const dayStart = new Date(dateKey.getFullYear(), dateKey.getMonth(), dateKey.getDate())
+            const dayEnd = new Date(dateKey.getFullYear(), dateKey.getMonth(), dateKey.getDate(), 23, 59, 59, 999)
+            
+            const requestStartOnDay = leaveStart > dayStart ? leaveStart : dayStart
+            const requestEndOnDay = leaveEnd < dayEnd ? leaveEnd : dayEnd
+            const dayDuration = requestEndOnDay - requestStartOnDay
+            
+            // Tính workDays cho ngày này
+            const result = calculateWorkDaysFromLeaveRequest(leave, dateKey)
+            
+            // Lưu khoảng nghỉ phép dài nhất cho ngày này
+            if (!dayLeaveMap.has(dayString) || dayLeaveMap.get(dayString).duration < dayDuration) {
+              dayLeaveMap.set(dayString, { 
+                leave, 
+                duration: dayDuration, 
+                workDays: result.workDays 
+              })
             }
           }
         }
       }
     })
+    
+    // Tổng hợp workDays từ khoảng nghỉ phép dài nhất cho mỗi ngày
+    // Đồng thời tính số phút đi trễ/về sớm từ các đơn nghỉ phép
+    dayLeaveMap.forEach((dayData, dayString) => {
+      summary.totalPaidLeave += dayData.workDays
+      
+      // Tính số phút đi trễ/về sớm từ đơn nghỉ phép
+      const leave = dayData.leave
+      const dateKey = new Date(dayString + 'T00:00:00')
+      
+      // Lấy thông tin chi tiết ca làm việc cho ngày này
+      let shiftStart = null
+      let shiftEnd = null
+      
+      if (leave.workShiftID) {
+        const workShift = workshifts.value.find(shift => shift.id === leave.workShiftID)
+        if (workShift && workShift.shiftDetails) {
+          const dayOfWeek = dateKey.getDay()
+          const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+          const currentDayName = dayNames[dayOfWeek]
+          const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
+          
+          if (dayShiftDetail && dayShiftDetail.startTime !== '00:00:00' && dayShiftDetail.endTime !== '00:00:00') {
+            shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
+            shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
+          } else {
+            // Dự phòng: thử lấy từ các ngày khác
+            const weekdays = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật']
+            for (const dayName of weekdays) {
+              const fallbackDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === dayName)
+              if (fallbackDetail && fallbackDetail.startTime !== '00:00:00' && fallbackDetail.endTime !== '00:00:00') {
+                shiftStart = new Date(`2000-01-01T${fallbackDetail.startTime}`)
+                shiftEnd = new Date(`2000-01-01T${fallbackDetail.endTime}`)
+                break
+              }
+            }
+          }
+        }
+      }
+      
+      // Nếu vẫn không có thời gian ca, dùng mặc định 8:00-17:00
+      if (!shiftStart) {
+        shiftStart = new Date('2000-01-01T08:00:00')
+      }
+      if (!shiftEnd) {
+        shiftEnd = new Date('2000-01-01T17:00:00')
+      }
+      
+      // Xác định xem đây là ngày đầu, ngày cuối, hay ngày giữa
+      const leaveStart = new Date(leave.startDateTime)
+      const leaveEnd = new Date(leave.endDateTime)
+      const leaveStartDate = new Date(leaveStart)
+      leaveStartDate.setHours(0, 0, 0, 0)
+      const leaveEndDate = new Date(leaveEnd)
+      leaveEndDate.setHours(0, 0, 0, 0)
+      const currentLeaveDate = new Date(dateKey)
+      currentLeaveDate.setHours(0, 0, 0, 0)
+      
+      if (leaveStartDate.getTime() === leaveEndDate.getTime()) {
+        // Nghỉ phép một ngày - tính đi trễ/về sớm dựa trên thời gian nghỉ phép thực tế
+        const leaveStartTime = new Date(leave.startDateTime)
+        const leaveEndTime = new Date(leave.endDateTime)
+        const leaveStartTimeOnly = new Date(`2000-01-01T${leaveStartTime.toTimeString().substring(0, 8)}`)
+        const leaveEndTimeOnly = new Date(`2000-01-01T${leaveEndTime.toTimeString().substring(0, 8)}`)
+        
+        if (leaveStartTimeOnly > shiftStart) {
+          summary.totalLateMinutes += Math.round((leaveStartTimeOnly - shiftStart) / (1000 * 60))
+        }
+        if (leaveEndTimeOnly < shiftEnd) {
+          summary.totalEarlyMinutes += Math.round((shiftEnd - leaveEndTimeOnly) / (1000 * 60))
+        }
+      } else {
+        // Nghỉ phép nhiều ngày
+        if (currentLeaveDate.getTime() === leaveStartDate.getTime()) {
+          // Ngày đầu - tính đi trễ dựa trên thời gian bắt đầu nghỉ phép
+          const leaveStartTime = new Date(leave.startDateTime)
+          const leaveStartTimeOnly = new Date(`2000-01-01T${leaveStartTime.toTimeString().substring(0, 8)}`)
+          
+          if (leaveStartTimeOnly > shiftStart) {
+            summary.totalLateMinutes += Math.round((leaveStartTimeOnly - shiftStart) / (1000 * 60))
+          }
+        } else if (currentLeaveDate.getTime() === leaveEndDate.getTime()) {
+          // Ngày cuối - tính về sớm dựa trên thời gian kết thúc nghỉ phép
+          const leaveEndTime = new Date(leave.endDateTime)
+          const leaveEndTimeOnly = new Date(`2000-01-01T${leaveEndTime.toTimeString().substring(0, 8)}`)
+          
+          if (leaveEndTimeOnly < shiftEnd) {
+            summary.totalEarlyMinutes += Math.round((shiftEnd - leaveEndTimeOnly) / (1000 * 60))
+          }
+        }
+        // Các ngày giữa - không có đi trễ/về sớm (full ca)
+      }
+    })
   }
 
-  // Calculate absent without leave from attendance matrix
+  // Tính vắng không phép từ ma trận chấm công
   // Đếm các ngày có status 'absent-without-leave' (đã được xác định trong generateAttendanceForEmployee)
   const empIdx = allEmployees.value.findIndex(e => e.id === employeeId)
   if (empIdx !== -1 && attendanceMatrix.value && attendanceMatrix.value[empIdx]) {
@@ -582,19 +882,23 @@ function calculateEmployeeSummary(employeeId, employeeName) {
       if (!dayData) return
 
       // Đếm các ngày có status 'absent-without-leave'
-      // Logic xác định vắng không phép đã được xử lý trong generateAttendanceForEmployee
+      // Logic xác định vắng không phép đã được xử lý trong hàm generateAttendanceForEmployee
       if (dayData.status === 'absent-without-leave') {
           summary.totalAbsentWithoutLeave += 1
       }
     })
   }
 
-  // Total work days = total present + total paid leave
+  // Tổng ngày công = tổng đi làm + tổng nghỉ có lương
   summary.totalWorkDays = summary.totalPresent + summary.totalPaidLeave
 
   return summary
 }
 
+/**
+ * Mở modal hiển thị thông tin tổng hợp công của nhân viên
+ * @param {Object} emp - Đối tượng nhân viên
+ */
 function openEmployeeModal(emp) {
   // Tìm employee đầy đủ từ allEmployees để có thông tin đầy đủ
   const fullEmployee = allEmployees.value.find(e => e.id === emp.id) || emp
@@ -610,9 +914,18 @@ function openEmployeeModal(emp) {
   }
   showEmployeeModal.value = true
 }
+/**
+ * Đóng modal thông tin tổng hợp công của nhân viên
+ */
 function closeEmployeeModal() {
   showEmployeeModal.value = false
 }
+
+/**
+ * Mở modal chi tiết chấm công từng ngày cho nhân viên
+ * @param {Object} emp - Đối tượng nhân viên
+ * @param {Number} dayIdx - Chỉ số ngày trong tháng (0-based)
+ */
 async function openDayModal(emp, dayIdx) {
   // Tìm employee đầy đủ từ allEmployees để có thông tin name và position
   const fullEmployee = allEmployees.value.find(e => e.id === emp.id) || emp
@@ -624,18 +937,21 @@ async function openDayModal(emp, dayIdx) {
   selectedDateIdx.value = dayIdx
   showDayModal.value = true
   
-  // Reset previous data and loading state
+  // Đặt lại dữ liệu trước đó và trạng thái loading
   dayModalLoading.value = true
   dayModalError.value = null
   attendanceHistory.value = []
   workHistory.value = []
-  updatingShifts.value = {} // Reset updating state
+  updatingShifts.value = {} // Đặt lại trạng thái cập nhật
   
-  // Load real data for the selected day
+  // Tải dữ liệu thực tế cho ngày đã chọn
   await loadDayModalData(selectedEmployee.value, dayIdx)
 }
 
-// Function to open day modal from personal tab
+/**
+ * Mở modal chi tiết chấm công từng ngày từ tab bảng công cá nhân
+ * @param {Object} day - Đối tượng ngày từ calendar
+ */
 async function openPersonalDayModal(day) {
   if (!day || !day.isCurrentMonth || !day.day) return
   
@@ -644,18 +960,25 @@ async function openPersonalDayModal(day) {
     return
   }
   
-  // Calculate day index (day.day is 1-based, dayIdx is 0-based)
+  // Tính chỉ số ngày (day.day là 1-based, dayIdx là 0-based)
   const dayIdx = day.day - 1
   
-  // Use current user as the employee
+  // Sử dụng người dùng hiện tại làm nhân viên
   await openDayModal(currentUser.value, dayIdx)
 }
 
+/**
+ * Đóng modal chi tiết chấm công từng ngày
+ */
 function closeDayModal() {
   showDayModal.value = false
 }
 
-// Function to handle image click for zoom
+/**
+ * Xử lý sự kiện click vào ảnh chấm công để phóng to
+ * @param {String} imageUrl - URL của ảnh
+ * @param {String} imageType - Loại ảnh ('checkin' hoặc 'checkout')
+ */
 function handleImageClick(imageUrl, imageType = 'checkin') {
   if (!imageUrl) return
   
@@ -666,7 +989,12 @@ function handleImageClick(imageUrl, imageType = 'checkin') {
   showImageModal.value = true
 }
 
-// Function to open location map
+/**
+ * Mở modal hiển thị bản đồ vị trí chấm công
+ * @param {Number} lat - Vĩ độ
+ * @param {Number} lng - Kinh độ
+ * @param {String} locationName - Tên địa điểm
+ */
 function openLocationMap(lat, lng, locationName) {
   mapLocation.value = {
     lat: lat,
@@ -676,6 +1004,10 @@ function openLocationMap(lat, lng, locationName) {
   showLocationMapModal.value = true
 }
 
+/**
+ * Mở modal form nghỉ phép với mã phiếu cụ thể
+ * @param {String} voucherCode - Mã phiếu nghỉ phép
+ */
 const openLeaveFormModal = (voucherCode) => {
   if (!voucherCode) return
   
@@ -687,12 +1019,17 @@ const openLeaveFormModal = (voucherCode) => {
   }
 }
 
+/**
+ * Đóng modal form nghỉ phép
+ */
 function closeLeaveFormModal() {
   showLeaveFormModal.value = false
   selectedLeaveRequest.value = null
 }
 
-// Cấu hình cột cho DataTable
+// ============================================================================
+// CẤU HÌNH CỘT BẢNG DỮ LIỆU
+// ============================================================================
 const attendanceColumns = [
   { key: 'stt', label: 'STT' },
   { key: 'avatar', label: 'Ảnh' },
@@ -712,7 +1049,7 @@ const workColumns = [
   { key: 'workHour', label: 'Giờ/ngày công' }
 ]
 
-// Columns without actions for day modal
+// Cột không có hành động cho modal ngày
 const attendanceColumnsNoActions = [
   { key: 'stt', label: 'STT' },
   { key: 'shiftName', label: 'Tên ca' },
@@ -732,15 +1069,16 @@ const workColumnsNoActions = [
   { key: 'workHour', label: 'Giờ/ngày công' }
 ]
 
+// ============================================================================
+// COMPUTED PROPERTIES - DỮ LIỆU ĐÃ LỌC
+// ============================================================================
 const filteredAttendanceHistory = computed(() => attendanceHistory.value || [])
-
-
 const filteredWorkHistory = computed(() => workHistory.value || [])
-const attendanceHistory = ref([])
-const workHistory = ref([])
-const updatingShifts = ref({}) // Track which attendance records are being updated
 
-// Computed property để lấy danh sách ca đã được phân cho nhân viên trong ngày cụ thể
+/**
+ * Lấy danh sách ca đã được phân cho nhân viên trong ngày cụ thể
+ * @returns {Array} Danh sách ca làm việc đã được phân
+ */
 const assignedShiftsForEmployeeAndDate = computed(() => {
   if (!selectedEmployee.value || selectedDateIdx.value === null) {
     return []
@@ -752,8 +1090,8 @@ const assignedShiftsForEmployeeAndDate = computed(() => {
     return []
   }
   
-  // Parse ngày từ dayHeader (format: "DD/MM (T2)" hoặc tương tự)
-  const selectedDayMonth = selectedDateHeader.split(' ')[0] // Extract "DD/MM" part
+  // Phân tích ngày từ dayHeader (định dạng: "DD/MM (T2)" hoặc tương tự)
+  const selectedDayMonth = selectedDateHeader.split(' ')[0] // Trích xuất phần "DD/MM"
   const [day, month] = selectedDayMonth.split('/')
   const fullDate = `${selectedYear.value}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
   const targetDate = new Date(fullDate)
@@ -764,7 +1102,7 @@ const assignedShiftsForEmployeeAndDate = computed(() => {
     shiftAssignments.value.forEach(assignment => {
       if (assignment.employeeID === selectedEmployee.value.id) {
         const assignmentDate = new Date(assignment.workDate)
-        // So sánh ngày (bỏ qua giờ)
+        // So sánh ngày (bỏ qua giờ phút)
         if (assignmentDate.toDateString() === targetDate.toDateString()) {
           assignedShiftIds.add(assignment.workShiftID)
         }
@@ -778,7 +1116,11 @@ const assignedShiftsForEmployeeAndDate = computed(() => {
   return assignedShifts
 })
 
-// Computed property để lấy danh sách ca cho một item cụ thể (bao gồm ca hiện tại)
+/**
+ * Lấy danh sách ca có sẵn cho một item chấm công cụ thể (bao gồm ca hiện tại)
+ * @param {Object} item - Item chấm công cần lấy danh sách ca
+ * @returns {Array} Danh sách ca làm việc có sẵn
+ */
 const getAvailableShiftsForItem = (item) => {
   const assignedShifts = assignedShiftsForEmployeeAndDate.value
   
@@ -786,48 +1128,17 @@ const getAvailableShiftsForItem = (item) => {
   if (item.workShiftID) {
     const currentShift = workshifts.value.find(shift => shift.id === item.workShiftID)
     if (currentShift && !assignedShifts.find(s => s.id === currentShift.id)) {
-      // Thêm ca hiện tại vào đầu danh sách nếu chưa có
+      // Thêm ca hiện tại vào đầu danh sách nếu chưa có trong danh sách
       return [currentShift, ...assignedShifts]
     }
   }
   
   return assignedShifts
 }
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import TabBar from '../../components/common/TabBar.vue'
-import TimeFilter from '../../components/common/TimeFilter.vue'
-import { attendanceDataService } from '../../services/attendanceDataService'
-import { useEmployee } from '../../composables/useEmployee'
-import { useAttendance } from '../../composables/useAttendance'
-import { useWorkShift } from '../../composables/useWorkShift'
-import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
-import { useLeaveRequest } from '../../composables/useLeaveRequest'
-import { useLeaveType } from '../../composables/useLeaveType'
-import { useShiftAssignment } from '../../composables/useShiftAssignment'
-import { usePermissions } from '../../composables/usePermissions'
 
-// Initialize composables
-const { employees: allEmployees, fetchAllEmployees } = useEmployee()
-const { attendanceList, fetchAttendance } = useAttendance()
-const { workshifts, fetchWorkShifts } = useWorkShift()
-const { overtimeRequests, fetchOvertimeRequests, loading: overtimeLoading, error: overtimeError } = useOvertimeRequest()
-const { leaveRequests, fetchLeaveRequests, loading: leaveLoading, error: leaveError } = useLeaveRequest()
-const { leaveTypes, fetchLeaveTypes } = useLeaveType()
-const { shiftAssignments, fetchAllShiftAssignments, createShiftAssignment } = useShiftAssignment()
-const { showMessage } = useGlobalMessage()
-const { currentUser, isDirector, isHRManager, isHREmployee } = useAuth()
-const { canView } = usePermissions()
-
-// Components
-const components = {
-  TimeFilter
-}
-
-const activeTab = ref('summary')
-const route = useRoute()
-const router = useRouter()
-const showMoreTabs = ref(false) // Control visibility of the "More" dropdown
+// ============================================================================
+// CẤU HÌNH TAB
+// ============================================================================
 
 const allTabs = [
   { key: 'summary', label: 'Bảng tổng hợp công', icon: 'fas fa-table', restricted: true },
@@ -838,7 +1149,10 @@ const allTabs = [
   { key: 'attendance', label: 'Dữ liệu chấm công', icon: 'fas fa-fingerprint', restricted: false, personalOnly: true },
 ]
 
-// Computed property to filter tabs based on user permissions
+/**
+ * Lọc danh sách tab dựa trên quyền của người dùng
+ * @returns {Array} Danh sách tab được phép truy cập
+ */
 const tabs = computed(() => {
   return allTabs.filter(tab => {
     // If tab is not restricted, show it to everyone
@@ -849,17 +1163,17 @@ const tabs = computed(() => {
       return canView('attendance-summary')
     }
     
-    // For other restricted tabs, use existing logic as fallback
+    // Đối với các tab bị hạn chế khác, sử dụng logic hiện có làm dự phòng
     const hasHRPermission = isDirector.value || isHRManager.value || isHREmployee.value
     return hasHRPermission
   })
 })
 
-// Watch for changes in tabs and adjust activeTab if needed
+// Theo dõi thay đổi trong tabs và điều chỉnh activeTab nếu cần
 watch(tabs, (newTabs) => {
   const availableTabKeys = newTabs.map(tab => tab.key)
   
-  // If current active tab is not available, switch to first available tab
+  // Nếu tab đang hoạt động hiện tại không khả dụng, chuyển sang tab khả dụng đầu tiên
   if (!availableTabKeys.includes(activeTab.value)) {
     if (availableTabKeys.length > 0) {
       activeTab.value = availableTabKeys[0]
@@ -867,37 +1181,27 @@ watch(tabs, (newTabs) => {
   }
 }, { immediate: true })
 
-// Time filter controls for all tabs
-const currentMonth = ref(new Date())
-const selectedStartDate = ref('')
-const selectedEndDate = ref('')
-const selectedWeek = ref('')
-const selectedYear = ref(new Date().getFullYear())
-const selectedMonth = ref(new Date().getMonth() + 1)
+// Bộ lọc thời gian và phân trang đã được khai báo ở phần BIẾN REACTIVE phía trên
 
-// Pagination for main summary table
-const currentPage = ref(1)
-const pageSize = ref(5)
-
-// Pagination for overtime table
-const overtimeCurrentPage = ref(1)
-const overtimePageSize = ref(5)
-
-// Limit the number of visible tabs
+// Giới hạn số lượng tab hiển thị
 const visibleTabsCount = computed(() => Math.min(6, tabs.value.length))
 const visibleTabs = computed(() => tabs.value.slice(0, visibleTabsCount.value))
 const hiddenTabs = computed(() => tabs.value.slice(visibleTabsCount.value))
 
+/**
+ * Chuyển đổi tab và tải dữ liệu tương ứng
+ * @param {String} tabKey - Key của tab cần chuyển đến
+ */
 const selectTab = async (tabKey) => {
   activeTab.value = tabKey
-  showMoreTabs.value = false // Close the "More" dropdown when a tab is selected
+  showMoreTabs.value = false // Đóng dropdown "Thêm" khi một tab được chọn
 
-  // Reflect tab change in URL so external navigations work
+  // Phản ánh thay đổi tab trong URL để điều hướng bên ngoài hoạt động
   try {
     await router.replace({ path: route.path, query: { ...route.query, tab: tabKey } })
   } catch (e) {}
 
-  // Load specific data when switching to summary tab
+  // Tải dữ liệu cụ thể khi chuyển sang tab tổng hợp
   if (tabKey === 'summary') {
     await Promise.all([
       loadAttendanceDataForSummary(),
@@ -920,8 +1224,10 @@ const selectTab = async (tabKey) => {
   }
 }
 
-// Tạo danh sách ngày trong tháng được chọn (computed để reactive)
- // Tạo danh sách ngày trong tháng được chọn (computed để reactive)
+/**
+ * Tạo danh sách header các ngày trong tháng được chọn (format: "DD/MM (T2)")
+ * @returns {Array} Mảng các chuỗi header ngày
+ */
 const dayHeaders = computed(() => {
   const year = selectedYear.value
   const month = selectedMonth.value
@@ -933,7 +1239,11 @@ const dayHeaders = computed(() => {
   })
 })
 
-// Function to get work shift details by ID
+/**
+ * Lấy thông tin chi tiết ca làm việc theo ID
+ * @param {String|Number} workShiftId - ID của ca làm việc
+ * @returns {Object|null} Thông tin ca làm việc hoặc null nếu không tìm thấy
+ */
 function getWorkShiftDetails(workShiftId) {
   if (!workshifts.value || !workShiftId) return null;
 
@@ -946,27 +1256,32 @@ function getWorkShiftDetails(workShiftId) {
   return workShift;
 }
 
-// Function to check if leave time is sufficient compared to work shift
+/**
+ * Kiểm tra xem thời gian nghỉ phép có đủ so với ca làm việc không
+ * @param {Object} leaveRequest - Đơn nghỉ phép
+ * @param {String|Number} workShiftId - ID của ca làm việc
+ * @returns {Boolean} true nếu thời gian nghỉ phép đủ, false nếu không
+ */
 function isLeaveTimeSufficient(leaveRequest, workShiftId) {
-  if (!leaveRequest || !workShiftId) return true; // Default to sufficient if no data
+  if (!leaveRequest || !workShiftId) return true; // Mặc định là đủ nếu không có dữ liệu
 
   const workShift = getWorkShiftDetails(workShiftId);
   if (!workShift || !workShift.shiftDetails || workShift.shiftDetails.length === 0) {
-    return true; // Default to sufficient if no work shift data
+    return true; // Mặc định là đủ nếu không có dữ liệu ca làm việc
   }
 
-  // Get leave time
+  // Lấy thời gian nghỉ phép
   const leaveStart = new Date(leaveRequest.startDateTime);
   const leaveEnd = new Date(leaveRequest.endDateTime);
 
-  // Get work shift time (assuming shiftDetails has start and end times)
-  // This might need adjustment based on actual workShift structure
-  const shiftDetail = workShift.shiftDetails[0]; // Assuming first detail contains the main shift
+  // Lấy thời gian ca làm việc (giả định shiftDetails có start và end times)
+  // Có thể cần điều chỉnh dựa trên cấu trúc workShift thực tế
+  const shiftDetail = workShift.shiftDetails[0]; // Giả định detail đầu tiên chứa ca chính
   if (!shiftDetail || !shiftDetail.startTime || !shiftDetail.endTime) {
-    return true; // Default to sufficient if no shift time data
+    return true; // Mặc định là đủ nếu không có dữ liệu thời gian ca
   }
 
-  // Parse shift times (assuming format like "08:00" or "08:30:00")
+  // Phân tích thời gian ca (giả định định dạng như "08:00" hoặc "08:30:00")
   const [shiftStartHour, shiftStartMin] = shiftDetail.startTime.split(':').map(Number);
   const [shiftEndHour, shiftEndMin] = shiftDetail.endTime.split(':').map(Number);
 
@@ -976,7 +1291,7 @@ function isLeaveTimeSufficient(leaveRequest, workShiftId) {
   const shiftEnd = new Date(leaveEnd);
   shiftEnd.setHours(shiftEndHour, shiftEndMin, 0, 0);
 
-  // Check if leave time covers the full work shift
+  // Kiểm tra xem thời gian nghỉ phép có bao phủ toàn bộ ca làm việc không
   const leaveStartTime = leaveStart.getTime();
   const leaveEndTime = leaveEnd.getTime();
   const shiftStartTime = shiftStart.getTime();
@@ -985,6 +1300,11 @@ function isLeaveTimeSufficient(leaveRequest, workShiftId) {
   return leaveStartTime <= shiftStartTime && leaveEndTime >= shiftEndTime
 }
 
+/**
+ * Format ngày thành chuỗi định dạng YYYY-MM-DD
+ * @param {Date} date - Đối tượng Date cần format
+ * @returns {String} Chuỗi ngày định dạng YYYY-MM-DD
+ */
 const formatDateToString = (date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -992,17 +1312,33 @@ const formatDateToString = (date) => {
   return `${year}-${month}-${day}`
 }
 
+/**
+ * Format datetime thành chuỗi ngày YYYY-MM-DD
+ * @param {String|Date} dateTime - Datetime string hoặc Date object
+ * @returns {String} Chuỗi ngày định dạng YYYY-MM-DD
+ */
 const formatRequestDate = (dateTime) => {
   const date = new Date(dateTime)
   return formatDateToString(date)
 }
 
+/**
+ * So khớp ID nhân viên (hỗ trợ so sánh string và number)
+ * @param {String|Number} requestId - ID cần so sánh
+ * @param {String|Number} targetId - ID đích
+ * @returns {Boolean} true nếu khớp, false nếu không
+ */
 const matchEmployeeId = (requestId, targetId) => {
   return requestId === targetId || 
          requestId === String(targetId) || 
          String(requestId) === targetId
 }
 
+/**
+ * Kiểm tra xem trạng thái có phải là "Đã duyệt" không
+ * @param {String|Number} status - Trạng thái cần kiểm tra
+ * @returns {Boolean} true nếu đã duyệt, false nếu không
+ */
 const isApprovedStatus = (status) => {
   return status === 'Đã duyệt' || status === 'Approved'
 }
@@ -1038,7 +1374,12 @@ const checkLeaveRequestForEmployee = (employeeId, date) => {
   }) || null
 }
 
-// Function to calculate work hours for a specific date within a leave period
+/**
+ * Tính giờ công cho một ngày cụ thể trong khoảng nghỉ phép
+ * @param {Object} leaveRequest - Đơn nghỉ phép
+ * @param {Date} targetDate - Ngày cần tính
+ * @returns {Number|null} Số giờ công hoặc null nếu không nằm trong khoảng nghỉ phép
+ */
 function calculateWorkHoursForDate(leaveRequest, targetDate) {
   if (!leaveRequest) return null;
 
@@ -1046,40 +1387,40 @@ function calculateWorkHoursForDate(leaveRequest, targetDate) {
   const leaveEnd = new Date(leaveRequest.endDateTime);
   const target = new Date(targetDate);
   
-  // Set target date to start of day for comparison
+  // Đặt ngày đích về đầu ngày để so sánh
   target.setHours(0, 0, 0, 0);
   
-  // Get work shift details (assuming 8:00-17:00 as default)
+  // Lấy thông tin chi tiết ca làm việc (giả định 8:00-17:00 làm mặc định)
   const workShiftStart = 8; // 8:00 AM
   const workShiftEnd = 17;   // 5:00 PM
   
-  // Check if target date is within leave period
+  // Kiểm tra xem ngày đích có nằm trong khoảng nghỉ phép không
   const leaveStartDate = new Date(leaveStart);
   leaveStartDate.setHours(0, 0, 0, 0);
   const leaveEndDate = new Date(leaveEnd);
   leaveEndDate.setHours(0, 0, 0, 0);
   
   if (target < leaveStartDate || target > leaveEndDate) {
-    return null; // Not in leave period
+    return null; // Không nằm trong khoảng nghỉ phép
   }
   
-  // Calculate work hours for this specific date
+  // Tính giờ công cho ngày cụ thể này
   let workStartHour = workShiftStart;
   let workEndHour = workShiftEnd;
   
-  // If this is the first day of leave
+  // Nếu đây là ngày đầu tiên của nghỉ phép
   if (target.getTime() === leaveStartDate.getTime()) {
     // Ngày đầu: từ giờ nghỉ đến cuối ca (10h-17h)
     workStartHour = leaveStart.getHours() + (leaveStart.getMinutes() / 60);
     workEndHour = workShiftEnd;
   }
-  // If this is the last day of leave
+  // Nếu đây là ngày cuối cùng của nghỉ phép
   else if (target.getTime() === leaveEndDate.getTime()) {
     // Ngày cuối: từ đầu ca đến giờ nghỉ (8h-16h)
     workStartHour = workShiftStart;
     workEndHour = leaveEnd.getHours() + (leaveEnd.getMinutes() / 60);
   }
-  // If this is a middle day (full work day)
+  // Nếu đây là ngày giữa (full ngày làm việc)
   else {
     // Các ngày giữa: full ca làm việc (8h-17h)
     workStartHour = workShiftStart;
@@ -1281,7 +1622,7 @@ const generateAttendanceForEmployee = (employeeId, employeeName) => {
         // Cho phép sai số nhỏ (0.1 giờ = 6 phút) để tránh lỗi làm tròn
         const isSufficient = workHours >= (standardWorkHours - 0.1)
 
-        // Calculate late and early minutes
+        // Tính số phút đi trễ và về sớm
         let lateMinutes = 0
         let earlyMinutes = 0
         if (dayAttendance.workShiftID) {
@@ -1296,12 +1637,12 @@ const generateAttendanceForEmployee = (employeeId, employeeName) => {
               const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
               const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
               
-              // Calculate late minutes (check-in after shift start)
+              // Tính số phút đi trễ (chấm công vào sau giờ bắt đầu ca)
               if (checkInTime > shiftStart) {
                 lateMinutes = Math.round((checkInTime - shiftStart) / (1000 * 60))
               }
               
-              // Calculate early minutes (check-out before shift end)
+              // Tính số phút về sớm (chấm công ra trước giờ kết thúc ca)
               if (checkOutTime < shiftEnd) {
                 earlyMinutes = Math.round((shiftEnd - checkOutTime) / (1000 * 60))
               }
@@ -1309,7 +1650,7 @@ const generateAttendanceForEmployee = (employeeId, employeeName) => {
           }
         }
 
-        // Determine status: if late or early, show as 'insufficient' (vàng nhạt), otherwise check if sufficient
+        // Xác định trạng thái: nếu đi trễ hoặc về sớm, hiển thị là 'insufficient' (vàng nhạt), ngược lại kiểm tra xem có đủ không
         let finalStatus = isSufficient ? 'work' : 'insufficient'
         if (lateMinutes > 0 || earlyMinutes > 0) {
           finalStatus = 'insufficient' // Đi trễ hoặc về sớm thì hiển thị vàng nhạt (bất kể đủ giờ công hay không)
@@ -1507,38 +1848,53 @@ const mainSummaryData = computed(() => {
   return employeesWithAttendance
 });
 
-// Paginated data for main summary table
+/**
+ * Dữ liệu đã phân trang cho bảng tổng hợp chính
+ * @returns {Array} Mảng dữ liệu đã được phân trang
+ */
 const paginatedMainSummaryData = computed(() => {
   const startIndex = (currentPage.value - 1) * pageSize.value;
   const endIndex = startIndex + pageSize.value;
   return mainSummaryData.value.slice(startIndex, endIndex);
 });
 
-// Total pages for pagination
+/**
+ * Tổng số trang cho phân trang
+ * @returns {Number} Tổng số trang
+ */
 const totalPages = computed(() => {
   return Math.ceil(mainSummaryData.value.length / pageSize.value);
 });
 
-// Paginated data for overtime table
+/**
+ * Dữ liệu đã phân trang cho bảng tăng ca
+ * @returns {Array} Mảng dữ liệu đã được phân trang
+ */
 const paginatedOvertimeData = computed(() => {
   const startIndex = (overtimeCurrentPage.value - 1) * overtimePageSize.value;
   const endIndex = startIndex + overtimePageSize.value;
   return overtimeData.value.slice(startIndex, endIndex);
 });
 
-// Total pages for overtime pagination
+/**
+ * Tổng số trang cho phân trang tăng ca
+ * @returns {Number} Tổng số trang
+ */
 const overtimeTotalPages = computed(() => {
   return Math.ceil(overtimeData.value.length / overtimePageSize.value);
 });
 
-// Function to get visible page numbers for pagination
+/**
+ * Lấy danh sách số trang hiển thị cho phân trang
+ * @returns {Array} Mảng các số trang và dấu '...' để hiển thị
+ */
 const getVisiblePages = () => {
   const total = totalPages.value;
   const current = currentPage.value;
-  const delta = 2; // Number of pages to show on each side of current page
+  const delta = 2; // Số trang hiển thị ở mỗi bên của trang hiện tại
 
   if (total <= 7) {
-    // Show all pages if total is small
+    // Hiển thị tất cả các trang nếu tổng số trang nhỏ
     return Array.from({ length: total }, (_, i) => i + 1);
   }
 
@@ -1566,14 +1922,17 @@ const getVisiblePages = () => {
   return rangeWithDots;
 };
 
-// Function to get visible page numbers for overtime pagination
+/**
+ * Lấy danh sách số trang hiển thị cho phân trang tăng ca
+ * @returns {Array} Mảng các số trang và dấu '...' để hiển thị
+ */
 const getOvertimeVisiblePages = () => {
   const total = overtimeTotalPages.value;
   const current = overtimeCurrentPage.value;
-  const delta = 2; // Number of pages to show on each side of current page
+  const delta = 2; // Số trang hiển thị ở mỗi bên của trang hiện tại
 
   if (total <= 7) {
-    // Show all pages if total is small
+    // Hiển thị tất cả các trang nếu tổng số trang nhỏ
     return Array.from({ length: total }, (_, i) => i + 1);
   }
 
@@ -1601,7 +1960,7 @@ const getOvertimeVisiblePages = () => {
   return rangeWithDots;
 };
 
-// Dummy data cho bảng tăng ca
+// Dữ liệu mẫu cho bảng tăng ca
 const overtimeHeaders = computed(() => dayHeaders.value);
 const overtimeColumns = computed(() => [
   { key: 'stt', label: 'STT', class: 'text-center col-stt' },
@@ -1709,7 +2068,7 @@ const overtimeData = computed(() => {
         ...emp
       };
 
-      // Calculate totals for the employee
+      // Tính tổng cho nhân viên
       employee.totalOvertimeHours = getTotalOvertimeHours(employee);
       employee.totalOvertimeDays = getTotalOvertimeDays(employee);
       employee.totalOvertimeHoursWithCoeff = getTotalOvertimeHoursWithCoefficient(employee);
@@ -1728,7 +2087,9 @@ function getOvertimeCellClass(type) {
   return '';
 }
 
-// Helper functions for overtime calculations
+/**
+ * Các hàm tiện ích để tính toán tăng ca
+ */
 function getTotalOvertimeHours(employee) {
   if (!employee) return 0;
 
@@ -1750,7 +2111,7 @@ function getTotalOvertimeDays(employee) {
   overtimeHeaders.value.forEach((_, idx) => {
     const dayData = employee[`day_${idx}`];
     if (dayData && dayData.hours > 0) {
-      totalDays += dayData.hours / 8; // Convert hours to days (8 hours = 1 day)
+      totalDays += dayData.hours / 8; // Chuyển đổi giờ sang ngày (8 giờ = 1 ngày)
     }
   });
 
@@ -1764,7 +2125,7 @@ function getTotalOvertimeHoursWithCoefficient(employee) {
   overtimeHeaders.value.forEach((_, idx) => {
     const dayData = employee[`day_${idx}`];
     if (dayData && dayData.hours > 0) {
-      const coefficient = dayData.request?.coefficient || 1; // Default to 1 if no coefficient
+      const coefficient = dayData.request?.coefficient || 1; // Mặc định là 1 nếu không có hệ số
       totalHours += dayData.hours * coefficient;
     }
   });
@@ -1779,7 +2140,7 @@ function getTotalOvertimeDaysWithCoefficient(employee) {
   overtimeHeaders.value.forEach((_, idx) => {
     const dayData = employee[`day_${idx}`];
     if (dayData && dayData.hours > 0) {
-      const coefficient = dayData.request?.coefficient || 1; // Default to 1 if no coefficient
+      const coefficient = dayData.request?.coefficient || 1; // Mặc định là 1 nếu không có hệ số
       totalDays += (dayData.hours / 8) * coefficient;
     }
   });
@@ -1787,7 +2148,9 @@ function getTotalOvertimeDaysWithCoefficient(employee) {
   return Math.round(totalDays * 100) / 100;
 }
 
-// Helper functions for specific day overtime calculations
+/**
+ * Các hàm tiện ích để tính toán tăng ca cho ngày cụ thể
+ */
 function getDayOvertimeHours(employee, dayIdx) {
   if (!employee || dayIdx === null) return 0;
   const dayData = employee[`day_${dayIdx}`];
@@ -1804,7 +2167,7 @@ function getDayOvertimeHoursWithCoefficient(employee, dayIdx) {
   if (!employee || dayIdx === null) return 0;
   const dayData = employee[`day_${dayIdx}`];
   if (dayData && dayData.hours > 0) {
-    const coefficient = dayData.request?.coefficient || 1; // Default to 1 if no coefficient
+      const coefficient = dayData.request?.coefficient || 1; // Mặc định là 1 nếu không có hệ số
     return Math.round((dayData.hours * coefficient) * 100) / 100;
   }
   return 0;
@@ -1814,13 +2177,15 @@ function getDayOvertimeDaysWithCoefficient(employee, dayIdx) {
   if (!employee || dayIdx === null) return 0;
   const dayData = employee[`day_${dayIdx}`];
   if (dayData && dayData.hours > 0) {
-    const coefficient = dayData.request?.coefficient || 1; // Default to 1 if no coefficient
+      const coefficient = dayData.request?.coefficient || 1; // Mặc định là 1 nếu không có hệ số
     return Math.round(((dayData.hours / 8) * coefficient) * 100) / 100;
   }
   return 0;
 }
 
-// Function to check if there are any overtime requests in the current month
+/**
+ * Kiểm tra xem có đơn tăng ca nào trong tháng hiện tại không
+ */
 
 // Modal chi tiết tăng ca
 const showOvertimeModal = ref(false);
@@ -1840,7 +2205,10 @@ function openOvertimeModal(emp, dayIdx = null) {
   showOvertimeModal.value = true;
 }
 
-// Function to open overtime modal from personal overtime tab
+/**
+ * Mở modal tăng ca từ tab tăng ca cá nhân
+ * @param {Object} day - Đối tượng ngày từ calendar
+ */
 function openPersonalOvertimeModal(day) {
   if (!day || !day.isCurrentMonth || !day.day) return
   
@@ -1849,7 +2217,7 @@ function openPersonalOvertimeModal(day) {
     return
   }
   
-  // Calculate day index (day.day is 1-based, dayIdx is 0-based)
+  // Tính chỉ số ngày (day.day là 1-based, dayIdx là 0-based)
   const dayIdx = day.day - 1
   
   // Convert personal overtime data to format expected by modal
@@ -1867,7 +2235,7 @@ function openPersonalOvertimeModal(day) {
     totalOvertimeDaysWithCoeff: 0
   }
   
-  // Get overtime data for the selected day
+  // Lấy dữ liệu tăng ca cho ngày đã chọn
   if (day.overtime && day.overtime.requests && day.overtime.requests.length > 0) {
     const overtimeRequests = day.overtime.requests
     let totalHours = 0
@@ -1898,7 +2266,7 @@ function openPersonalOvertimeModal(day) {
     }
   }
   
-  // Calculate monthly totals from personalOvertimeData
+  // Tính tổng hàng tháng từ dữ liệu tăng ca cá nhân
   const allDays = personalOvertimeData.value.flat().filter(d => d.isCurrentMonth && d.overtime && d.overtime.requests)
   allDays.forEach(dayData => {
     if (dayData.overtime && dayData.overtime.requests) {
@@ -1925,7 +2293,9 @@ function closeOvertimeModal() {
   showOvertimeModal.value = false;
 }
 
-// Helper functions to get current user display name and position
+/**
+ * Các hàm tiện ích để lấy tên hiển thị và chức vụ của người dùng hiện tại
+ */
 function getCurrentUserDisplayName() {
   if (!currentUser.value) return 'N/A'
   const fullEmployee = allEmployees.value.find(e => e.id === currentUser.value.id) || currentUser.value
@@ -1962,7 +2332,9 @@ const detailError = ref(null)
 const workShifts = ref([])
 const workShiftLoading = ref(false)
 
-// Function to calculate work hours, days, late and early minutes
+/**
+ * Tính toán giờ công, ngày công, số phút đi trễ và về sớm
+ */
 // Sử dụng hàm chung calculateWorkDaysFromAttendanceData
 const calculateWorkDetails = (item) => {
   const checkInTimeStr = item.checkInTime
@@ -2011,7 +2383,7 @@ const calculateWorkDetails = (item) => {
           standardWorkHours -= breakHours
         }
         
-        // Calculate effective check-in and check-out (same logic as calculateWorkDaysFromAttendanceData)
+        // Tính thời gian chấm công vào/ra hiệu quả (cùng logic với calculateWorkDaysFromAttendanceData)
         const effectiveCheckInTime = checkInTime < shiftStart ? shiftStart : checkInTime
         const effectiveCheckOutTime = checkOutTime < shiftEnd ? checkOutTime : shiftEnd
         
@@ -2040,7 +2412,7 @@ const calculateWorkDetails = (item) => {
         
         workHours = actualWorkHours
       } else {
-        // Fallback: calculate from actual time
+        // Dự phòng: tính từ thời gian thực tế
         workHours = (checkOutTime - checkInTime) / (1000 * 60 * 60)
         if (workHours < 0) workHours = 0
       }
@@ -2074,12 +2446,12 @@ const calculateWorkDetails = (item) => {
         const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
         const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
         
-        // Calculate late minutes (check-in after shift start)
+        // Tính số phút đi trễ (chấm công vào sau giờ bắt đầu ca)
         if (checkInTime > shiftStart) {
           lateMinutes = Math.round((checkInTime - shiftStart) / (1000 * 60))
         }
         
-        // Calculate early minutes (check-out before shift end)
+        // Tính số phút về sớm (chấm công ra trước giờ kết thúc ca)
         if (checkOutTime < shiftEnd) {
           earlyMinutes = Math.round((shiftEnd - checkOutTime) / (1000 * 60))
         }
@@ -2132,15 +2504,15 @@ const loadAttendanceData = async () => {
   try {
     let data
 
-    // Check if week filter is selected
+    // Kiểm tra xem có chọn bộ lọc tuần không
     if (selectedWeek.value) {
       data = await attendanceDataService.getAttendanceDataByWeek(selectedWeek.value)
     }
-    // Check if date range is selected
+    // Kiểm tra xem có chọn khoảng ngày không
     else if (selectedStartDate.value && selectedEndDate.value) {
       data = await attendanceDataService.getAttendanceDataByDateRange(selectedStartDate.value, selectedEndDate.value)
     } else {
-      // Default to current month
+      // Mặc định là tháng hiện tại
       data = await attendanceDataService.getAttendanceDataByMonth(selectedYear.value, selectedMonth.value)
     }
 
@@ -2153,7 +2525,7 @@ const loadAttendanceData = async () => {
       })
     }
 
-    // Transform data to match the expected format
+    // Chuyển đổi dữ liệu để khớp với định dạng mong đợi
     const transformedData = []
     let sttCounter = 1 // Đếm STT từ 1 cho mỗi dòng trong transformedData
 
@@ -2223,7 +2595,11 @@ const loadAttendanceData = async () => {
   }
 }
 
-// Helper function to get attendance type based on status
+/**
+ * Hàm tiện ích để lấy loại chấm công dựa trên trạng thái
+ * @param {String} status - Trạng thái chấm công
+ * @returns {String} Loại chấm công (tiếng Việt)
+ */
 const getAttendanceType = (status) => {
   switch (status) {
     case 'Present':
@@ -2256,7 +2632,9 @@ const paginatedAttendanceData = computed(() => {
   return attendanceData.value.slice(start, start + attendanceItemsPerPage.value)
 })
 
-// Time filter functions
+/**
+ * Các hàm xử lý bộ lọc thời gian
+ */
 const handleDateRangeChanged = (dateRange) => {
   if (dateRange.startDate && dateRange.endDate) {
     selectedStartDate.value = dateRange.startDate
@@ -2287,7 +2665,9 @@ const handleWeekChanged = (weekData) => {
   }
 }
 
-// Month navigation methods
+/**
+ * Các phương thức điều hướng tháng
+ */
 const goToPreviousMonth = () => {
   if (selectedMonth.value === 1) {
     selectedMonth.value = 12
@@ -2328,7 +2708,9 @@ const printAttendanceReport = () => {
   // TODO: Implement print report
 }
 
-// Watch for changes in year/month filters
+/**
+ * Theo dõi thay đổi trong bộ lọc năm/tháng
+ */
 watch([selectedYear, selectedMonth], async () => {
   currentPage.value = 1 // Reset to first page when changing month/year
   overtimeCurrentPage.value = 1 // Reset overtime pagination when changing month/year
@@ -2362,15 +2744,15 @@ const loadDetailData = async () => {
   try {
     let data
 
-    // Check if week filter is selected
+    // Kiểm tra xem có chọn bộ lọc tuần không
     if (selectedWeek.value) {
       data = await attendanceDataService.getAttendanceDataByWeek(selectedWeek.value)
     }
-    // Check if date range is selected
+    // Kiểm tra xem có chọn khoảng ngày không
     else if (selectedStartDate.value && selectedEndDate.value) {
       data = await attendanceDataService.getAttendanceDataByDateRange(selectedStartDate.value, selectedEndDate.value)
     } else {
-      // Default to current month
+      // Mặc định là tháng hiện tại
       data = await attendanceDataService.getAttendanceDataByMonth(selectedYear.value, selectedMonth.value)
     }
 
@@ -2384,7 +2766,7 @@ const loadDetailData = async () => {
       })
     }
 
-    // Transform data to match the expected format for detail view
+    // Chuyển đổi dữ liệu để khớp với định dạng mong đợi for detail view
     const transformedData = []
     let sttCounter = 1
 
@@ -2441,7 +2823,7 @@ const loadDayModalData = async (employee, dayIdx) => {
   try {
     console.log('Loading day modal data for employee:', employee.id, 'day:', dayIdx);
     
-    // Get the actual date from dayHeaders
+    // Lấy ngày thực tế từ dayHeaders
     const selectedDateHeader = dayHeaders.value[dayIdx];
     const selectedDayMonth = selectedDateHeader.split(' ')[0]; // Extract "DD/MM" part
     const [day, month] = selectedDayMonth.split('/');
@@ -2462,10 +2844,10 @@ const loadDayModalData = async (employee, dayIdx) => {
     console.log('API Response length:', attendanceData?.length);
     console.log('=== END API CALL DEBUG ===');
     
-    // Get work shift information for this employee
+    // Lấy thông tin ca làm việc cho nhân viên này
     let workShiftInfo = null;
     if (attendanceData && attendanceData.length > 0) {
-      // Try to get work shift ID from attendance data
+      // Thử lấy ID ca làm việc từ dữ liệu chấm công
       const workShiftId = attendanceData[0].workShiftID;
       console.log('WorkShift ID from attendance:', workShiftId);
       
@@ -2476,7 +2858,7 @@ const loadDayModalData = async (employee, dayIdx) => {
       }
     }
     
-    // Transform attendance data to match expected format - bao gồm cả attendance và nghỉ phép
+    // Chuyển đổi dữ liệu chấm công để khớp với định dạng mong đợi - bao gồm cả chấm công và nghỉ phép
     const transformedAttendanceData = [];
     let sttCounter = 1;
     
@@ -2536,12 +2918,54 @@ const loadDayModalData = async (employee, dayIdx) => {
              (targetDate.getTime() >= leaveStartDate.getTime() && targetDate.getTime() <= leaveEndDate.getTime());
     });
     
+    // Loại bỏ trùng lặp: chỉ giữ đơn có thời gian nghỉ dài hơn trong ngày
+    const uniqueDayLeaveRequests = []
+    const processedLeaves = new Map() // Map<workShiftID, leave>
+    
     dayLeaveRequestsForAttendance.forEach(leave => {
-      // Get work shift info for this leave request
+      const leaveWorkShiftId = leave.workShiftID
+      const selectedDate = new Date(fullDate)
+      const leaveStartDate = new Date(leave.startDateTime)
+      const leaveEndDate = new Date(leave.endDateTime)
+      
+      // Tính thời gian nghỉ trong ngày này
+      let dayStart = new Date(selectedDate)
+      dayStart.setHours(0, 0, 0, 0)
+      let dayEnd = new Date(selectedDate)
+      dayEnd.setHours(23, 59, 59, 999)
+      
+      const leaveStartInDay = leaveStartDate > dayStart ? leaveStartDate : dayStart
+      const leaveEndInDay = leaveEndDate < dayEnd ? leaveEndDate : dayEnd
+      const leaveDurationInDay = leaveEndInDay - leaveStartInDay
+      
+      // Nếu chưa có đơn nào cho ca này, hoặc đơn này có thời gian dài hơn
+      if (!processedLeaves.has(leaveWorkShiftId) || 
+          processedLeaves.get(leaveWorkShiftId).duration < leaveDurationInDay) {
+        processedLeaves.set(leaveWorkShiftId, { leave, duration: leaveDurationInDay })
+      }
+    })
+    
+    // Chuyển đổi Map thành array - chỉ lấy đơn có thời gian dài nhất cho mỗi ca
+    const finalDayLeaveRequests = Array.from(processedLeaves.values()).map(item => item.leave)
+    
+    // Debug: log để kiểm tra
+    console.log('=== LEAVE REQUESTS DE-DUPLICATION DEBUG ===')
+    console.log('Total leave requests for attendance:', dayLeaveRequestsForAttendance.length)
+    console.log('After de-duplication:', finalDayLeaveRequests.length)
+    console.log('Processed leaves map:', Array.from(processedLeaves.entries()).map(([shiftId, data]) => ({
+      workShiftID: shiftId,
+      leaveId: data.leave.id,
+      duration: data.duration / (1000 * 60 * 60), // Convert to hours
+      startDateTime: data.leave.startDateTime,
+      endDateTime: data.leave.endDateTime
+    })))
+    
+    finalDayLeaveRequests.forEach(leave => {
+      // Lấy thông tin ca làm việc cho đơn nghỉ phép này
       const leaveWorkShiftId = leave.workShiftID;
       const leaveWorkShiftInfo = workshifts.value.find(shift => shift.id === leaveWorkShiftId);
       
-      // Get the day of week for the selected date
+      // Lấy thứ trong tuần cho ngày đã chọn
       const selectedDate = new Date(fullDate);
       const selectedDayOfWeek = selectedDate.getDay();
       const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
@@ -2553,7 +2977,7 @@ const loadDayModalData = async (employee, dayIdx) => {
         leaveDayShiftDetail = leaveWorkShiftInfo.shiftDetails.find(detail => detail.dayOfWeek === selectedDayName);
       }
       
-      // Determine check-in and check-out times
+      // Xác định thời gian chấm công vào và ra
       let checkInTime = new Date(leave.startDateTime);
       let checkOutTime = new Date(leave.endDateTime);
       
@@ -2565,19 +2989,29 @@ const loadDayModalData = async (employee, dayIdx) => {
       if (leaveStartDate !== leaveEndDate) {
         // Multi-day leave
         if (currentLeaveDate === leaveStartDate) {
-          // Start day - use leave start time and shift end time
+          // Start day - use leave start time (giữ nguyên giờ từ leave.startDateTime) and shift end time
+          // checkInTime đã được set từ leave.startDateTime ở trên, không cần thay đổi
           if (leaveDayShiftDetail && leaveDayShiftDetail.endTime !== '00:00:00') {
             const shiftEndTime = new Date(`2000-01-01T${leaveDayShiftDetail.endTime}`);
             checkOutTime = new Date(selectedDate);
             checkOutTime.setHours(shiftEndTime.getHours(), shiftEndTime.getMinutes(), shiftEndTime.getSeconds());
+          } else {
+            // Fallback: nếu không có shift detail, dùng giờ kết thúc ca mặc định 17:00
+            checkOutTime = new Date(selectedDate);
+            checkOutTime.setHours(17, 0, 0);
           }
         } else if (currentLeaveDate === leaveEndDate) {
-          // End day - use shift start time and leave end time
+          // End day - use shift start time and leave end time (giữ nguyên giờ từ leave.endDateTime)
           if (leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00') {
             const shiftStartTime = new Date(`2000-01-01T${leaveDayShiftDetail.startTime}`);
             checkInTime = new Date(selectedDate);
             checkInTime.setHours(shiftStartTime.getHours(), shiftStartTime.getMinutes(), shiftStartTime.getSeconds());
+          } else {
+            // Fallback: nếu không có shift detail, dùng giờ bắt đầu ca mặc định 08:00
+            checkInTime = new Date(selectedDate);
+            checkInTime.setHours(8, 0, 0);
           }
+          // checkOutTime đã được set từ leave.endDateTime ở trên, không cần thay đổi
         } else {
           // Middle day - use full shift hours
           if (leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00' && leaveDayShiftDetail.endTime !== '00:00:00') {
@@ -2601,15 +3035,16 @@ const loadDayModalData = async (employee, dayIdx) => {
         }
       }
       
-      // Check if checkin is more than half of shift hours (treat as checkout)
+      // Kiểm tra xem giờ vào có lớn hơn nửa giờ ca không (xem như checkout)
+      // Chỉ áp dụng cho ngày đầu tiên
       let isCheckinAfterHalfShift = false;
-      if (leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00' && leaveDayShiftDetail.endTime !== '00:00:00') {
+      if (currentLeaveDate === leaveStartDate && leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00' && leaveDayShiftDetail.endTime !== '00:00:00') {
         const shiftStartTime = new Date(`2000-01-01T${leaveDayShiftDetail.startTime}`);
         const shiftEndTime = new Date(`2000-01-01T${leaveDayShiftDetail.endTime}`);
         const shiftDuration = (shiftEndTime - shiftStartTime) / (1000 * 60 * 60); // hours
         const halfShiftTime = new Date(shiftStartTime.getTime() + (shiftDuration * 30 * 60 * 1000)); // half shift in minutes
         
-        // Check if leave start time is after half of shift
+        // Kiểm tra xem thời gian bắt đầu nghỉ phép có sau nửa ca không
         const leaveStartTime = new Date(leave.startDateTime);
         const leaveStartTimeOnly = new Date(`2000-01-01T${leaveStartTime.toTimeString().substring(0, 8)}`);
         
@@ -2618,8 +3053,10 @@ const loadDayModalData = async (employee, dayIdx) => {
         }
       }
       
-      if (isCheckinAfterHalfShift) {
-        // Only create checkout entry
+      // Đảm bảo mỗi ngày đều có đủ 2 dòng (checkin và checkout)
+      // Trừ trường hợp ngày đầu tiên và checkin sau nửa ca (chỉ có checkout)
+      if (isCheckinAfterHalfShift && currentLeaveDate === leaveStartDate) {
+        // Chỉ ngày đầu tiên và checkin sau nửa ca: chỉ tạo checkout entry
         transformedAttendanceData.push({
           stt: sttCounter++,
           avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
@@ -2631,7 +3068,7 @@ const loadDayModalData = async (employee, dayIdx) => {
           location: 'Nghỉ phép'
         });
       } else {
-        // Create both check-in and check-out entries
+        // Tất cả các trường hợp khác: luôn có cả checkin và checkout
         transformedAttendanceData.push({
           stt: sttCounter++,
           avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
@@ -2657,13 +3094,13 @@ const loadDayModalData = async (employee, dayIdx) => {
     });
     
     // 3. Thêm thông tin nghỉ phép cho tất cả các ngày trong khoảng nghỉ (nếu chưa có dữ liệu gì)
-    if (transformedAttendanceData.length === 0 && dayLeaveRequestsForAttendance.length > 0) {
-      dayLeaveRequestsForAttendance.forEach(leave => {
-        // Get work shift info for this leave request
+    if (transformedAttendanceData.length === 0 && finalDayLeaveRequests.length > 0) {
+      finalDayLeaveRequests.forEach(leave => {
+        // Lấy thông tin ca làm việc cho đơn nghỉ phép này
         const leaveWorkShiftId = leave.workShiftID;
         const leaveWorkShiftInfo = workshifts.value.find(shift => shift.id === leaveWorkShiftId);
         
-        // Get the day of week for the selected date
+        // Lấy thứ trong tuần cho ngày đã chọn
         const selectedDate = new Date(fullDate);
         const selectedDayOfWeek = selectedDate.getDay();
         const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
@@ -2675,7 +3112,7 @@ const loadDayModalData = async (employee, dayIdx) => {
           leaveDayShiftDetail = leaveWorkShiftInfo.shiftDetails.find(detail => detail.dayOfWeek === selectedDayName);
         }
         
-        // Determine check-in and check-out times
+        // Xác định thời gian chấm công vào và ra
         let checkInTime = new Date(leave.startDateTime);
         let checkOutTime = new Date(leave.endDateTime);
         
@@ -2687,19 +3124,29 @@ const loadDayModalData = async (employee, dayIdx) => {
         if (leaveStartDate !== leaveEndDate) {
           // Multi-day leave
           if (currentLeaveDate === leaveStartDate) {
-            // Start day - use leave start time and shift end time
+            // Start day - use leave start time (giữ nguyên giờ từ leave.startDateTime) and shift end time
+            // checkInTime đã được set từ leave.startDateTime ở trên, không cần thay đổi
             if (leaveDayShiftDetail && leaveDayShiftDetail.endTime !== '00:00:00') {
               const shiftEndTime = new Date(`2000-01-01T${leaveDayShiftDetail.endTime}`);
               checkOutTime = new Date(selectedDate);
               checkOutTime.setHours(shiftEndTime.getHours(), shiftEndTime.getMinutes(), shiftEndTime.getSeconds());
+            } else {
+              // Fallback: nếu không có shift detail, dùng giờ kết thúc ca mặc định 17:00
+              checkOutTime = new Date(selectedDate);
+              checkOutTime.setHours(17, 0, 0);
             }
           } else if (currentLeaveDate === leaveEndDate) {
-            // End day - use shift start time and leave end time
+            // End day - use shift start time and leave end time (giữ nguyên giờ từ leave.endDateTime)
             if (leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00') {
               const shiftStartTime = new Date(`2000-01-01T${leaveDayShiftDetail.startTime}`);
               checkInTime = new Date(selectedDate);
               checkInTime.setHours(shiftStartTime.getHours(), shiftStartTime.getMinutes(), shiftStartTime.getSeconds());
+            } else {
+              // Fallback: nếu không có shift detail, dùng giờ bắt đầu ca mặc định 08:00
+              checkInTime = new Date(selectedDate);
+              checkInTime.setHours(8, 0, 0);
             }
+            // checkOutTime đã được set từ leave.endDateTime ở trên, không cần thay đổi
           } else {
             // Middle day - use full shift hours
             if (leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00' && leaveDayShiftDetail.endTime !== '00:00:00') {
@@ -2723,15 +3170,16 @@ const loadDayModalData = async (employee, dayIdx) => {
           }
         }
         
-        // Check if checkin is more than half of shift hours (treat as checkout)
+        // Kiểm tra xem giờ vào có lớn hơn nửa giờ ca không (xem như checkout)
+        // Chỉ áp dụng cho ngày đầu tiên
         let isCheckinAfterHalfShift = false;
-        if (leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00' && leaveDayShiftDetail.endTime !== '00:00:00') {
+        if (currentLeaveDate === leaveStartDate && leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00' && leaveDayShiftDetail.endTime !== '00:00:00') {
           const shiftStartTime = new Date(`2000-01-01T${leaveDayShiftDetail.startTime}`);
           const shiftEndTime = new Date(`2000-01-01T${leaveDayShiftDetail.endTime}`);
           const shiftDuration = (shiftEndTime - shiftStartTime) / (1000 * 60 * 60); // hours
           const halfShiftTime = new Date(shiftStartTime.getTime() + (shiftDuration * 30 * 60 * 1000)); // half shift in minutes
           
-          // Check if leave start time is after half of shift
+          // Kiểm tra xem thời gian bắt đầu nghỉ phép có sau nửa ca không
           const leaveStartTime = new Date(leave.startDateTime);
           const leaveStartTimeOnly = new Date(`2000-01-01T${leaveStartTime.toTimeString().substring(0, 8)}`);
           
@@ -2740,8 +3188,10 @@ const loadDayModalData = async (employee, dayIdx) => {
           }
         }
         
-        if (isCheckinAfterHalfShift) {
-          // Only create checkout entry
+        // Đảm bảo mỗi ngày đều có đủ 2 dòng (checkin và checkout)
+        // Trừ trường hợp ngày đầu tiên và checkin sau nửa ca (chỉ có checkout)
+        if (isCheckinAfterHalfShift && currentLeaveDate === leaveStartDate) {
+          // Chỉ ngày đầu tiên và checkin sau nửa ca: chỉ tạo checkout entry
           transformedAttendanceData.push({
             stt: sttCounter++,
             avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
@@ -2753,7 +3203,7 @@ const loadDayModalData = async (employee, dayIdx) => {
             location: 'Nghỉ phép'
           });
         } else {
-          // Create both check-in and check-out entries
+          // Tất cả các trường hợp khác: luôn có cả checkin và checkout
           transformedAttendanceData.push({
             stt: sttCounter++,
             avatar: 'https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/up_anh_lay_link_thumb_d0e098dfc5.jpg',
@@ -2789,11 +3239,11 @@ const loadDayModalData = async (employee, dayIdx) => {
     if (attendanceData && attendanceData.length > 0) {
       attendanceData.forEach((item, index) => {
         if (item.checkInTime && item.checkOutTime) {
-          // Calculate work hours
+          // Tính giờ công
           const checkInTime = new Date(`2000-01-01T${item.checkInTime}`);
           const checkOutTime = new Date(`2000-01-01T${item.checkOutTime}`);
           
-          // Get shift details to calculate proper work hours and lunch break
+          // Lấy thông tin chi tiết ca làm việc to calculate proper work hours and lunch break
           // Sử dụng workShiftID từ item (có thể đã được update) để tìm shift info
           const itemWorkShiftID = item.workShiftID;
           let shiftDetails = [];
@@ -2814,7 +3264,7 @@ const loadDayModalData = async (employee, dayIdx) => {
             shiftDetails = workShiftInfo.shiftDetails || [];
           }
           
-          // Get the day of week for the selected date
+          // Lấy thứ trong tuần cho ngày đã chọn
           const selectedDate = new Date(fullDate);
           const dayOfWeek = selectedDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
           const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
@@ -2831,7 +3281,7 @@ const loadDayModalData = async (employee, dayIdx) => {
             const startTime = new Date(`2000-01-01T${dayShiftDetail.startTime}`);
             const endTime = new Date(`2000-01-01T${dayShiftDetail.endTime}`);
             
-            // Calculate standard work hours excluding lunch break for this specific day
+            // Tính giờ công chuẩn không bao gồm giờ nghỉ trưa cho ngày cụ thể này
             let workHours = (endTime - startTime) / (1000 * 60 * 60);
             
             // Subtract lunch break time if exists
@@ -2865,14 +3315,14 @@ const loadDayModalData = async (employee, dayIdx) => {
             shiftEnd = new Date('2000-01-01T17:30:00');
           }
           
-          // Calculate effective check-in and check-out times (new logic)
+          // Tính thời gian chấm công vào/ra hiệu quả (logic mới)
           // Effective check-in: nếu checkInTime < shiftStart thì lấy shiftStart, ngược lại lấy checkInTime
           const effectiveCheckInTime = checkInTime < shiftStart ? shiftStart : checkInTime
           
           // Effective check-out: nếu checkOutTime < shiftEnd thì lấy checkOutTime, ngược lại lấy shiftEnd
           const effectiveCheckOutTime = checkOutTime < shiftEnd ? checkOutTime : shiftEnd
           
-          // Calculate total time hours
+          // Tính tổng số giờ
           let totalTimeHours = (effectiveCheckOutTime - effectiveCheckInTime) / (1000 * 60 * 60)
           
           // Nếu kết quả âm thì = 0
@@ -2880,7 +3330,7 @@ const loadDayModalData = async (employee, dayIdx) => {
             totalTimeHours = 0
           }
           
-          // Subtract lunch break if it falls within work time
+          // Trừ giờ nghỉ trưa nếu nó nằm trong thời gian làm việc
           let actualWorkHours = totalTimeHours
           if (dayShiftDetail && dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
               dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
@@ -2899,11 +3349,12 @@ const loadDayModalData = async (employee, dayIdx) => {
             actualWorkHours = 0
           }
           
-          // Calculate work days: chia cho ngày công chuẩn của ca
-          const divisor = totalWorkHours > 0 ? totalWorkHours : 8
+          // Tính ngày công: luôn chia cho 8 giờ chuẩn (1 ngày công = 8 giờ)
+          // Không chia cho totalWorkHours của ca vì ngày công phải dựa trên chuẩn 8 giờ/ngày
+          const divisor = 8 // 1 ngày công = 8 giờ chuẩn
           const workDays = Math.round((actualWorkHours / divisor) * 100) / 100
           
-          // Calculate late/early minutes using actual shift times
+          // Tính số phút đi trễ/về sớm sử dụng thời gian ca thực tế
           const lateMinutes = Math.max(0, (checkInTime - shiftStart) / (1000 * 60));
           
           // For early calculation, use shift end time as expected end time
@@ -2923,11 +3374,15 @@ const loadDayModalData = async (employee, dayIdx) => {
           console.log('LateMinutes:', lateMinutes, 'EarlyMinutes:', earlyMinutes);
           console.log('=== END DEBUG ===');
           
+          // Tính ngày công chuẩn: chia cho 8 giờ chuẩn (1 ngày công = 8 giờ)
+          // Nhưng với các ca có công chuẩn < 8 giờ, ngày công chuẩn sẽ < 1
+          const standardWorkDays = (totalWorkHours / 8).toFixed(2)
+          
           transformedWorkData.push({
             stt: workSttCounter++,
             shiftName: item.shiftName,
             workShiftID: itemWorkShiftID, // Lưu workShiftID để kiểm tra sau
-            standard: `${totalWorkHours.toFixed(2)}/${(totalWorkHours / 8).toFixed(2)}`,
+            standard: `${totalWorkHours.toFixed(2)}/${standardWorkDays}`,
             scanInOut: `Vào: ${item.checkInTime.toString().substring(0, 5)}, Ra: ${item.checkOutTime.toString().substring(0, 5)}`,
             lateEarly: `Đi trễ: ${Math.round(lateMinutes)} phút, Về sớm: ${Math.round(earlyMinutes)} phút`,
             workHour: `${actualWorkHours.toFixed(2)}/${workDays.toFixed(2)}`
@@ -2951,26 +3406,67 @@ const loadDayModalData = async (employee, dayIdx) => {
              (targetDate.getTime() >= leaveStartDate.getTime() && targetDate.getTime() <= leaveEndDate.getTime());
     });
     
-    // Chỉ hiển thị nghỉ phép nếu không có chấm công thực tế
-    if (transformedWorkData.length === 0) {
+    // Loại bỏ trùng lặp: chỉ giữ đơn có thời gian nghỉ dài hơn trong ngày
+    const uniqueDayLeaveRequestsForWork = []
+    const processedLeavesForWork = new Map() // Map<workShiftID, leave>
+    
       dayLeaveRequestsForWork.forEach(leave => {
-      // Get work shift info for this leave request
+      const leaveWorkShiftId = leave.workShiftID
+      const selectedDate = new Date(fullDate)
+      const leaveStartDate = new Date(leave.startDateTime)
+      const leaveEndDate = new Date(leave.endDateTime)
+      
+      // Tính thời gian nghỉ trong ngày này
+      let dayStart = new Date(selectedDate)
+      dayStart.setHours(0, 0, 0, 0)
+      let dayEnd = new Date(selectedDate)
+      dayEnd.setHours(23, 59, 59, 999)
+      
+      const leaveStartInDay = leaveStartDate > dayStart ? leaveStartDate : dayStart
+      const leaveEndInDay = leaveEndDate < dayEnd ? leaveEndDate : dayEnd
+      const leaveDurationInDay = leaveEndInDay - leaveStartInDay
+      
+      // Nếu chưa có đơn nào cho ca này, hoặc đơn này có thời gian dài hơn
+      if (!processedLeavesForWork.has(leaveWorkShiftId) || 
+          processedLeavesForWork.get(leaveWorkShiftId).duration < leaveDurationInDay) {
+        processedLeavesForWork.set(leaveWorkShiftId, { leave, duration: leaveDurationInDay })
+      }
+    })
+    
+    // Chuyển đổi Map thành array
+    const finalDayLeaveRequestsForWork = Array.from(processedLeavesForWork.values()).map(item => item.leave)
+    
+    // Xử lý nghỉ phép: merge vào ca làm việc đã có hoặc tạo mới nếu chưa có
+    finalDayLeaveRequestsForWork.forEach(leave => {
+      // Lấy thông tin ca làm việc cho đơn nghỉ phép này
       const leaveWorkShiftId = leave.workShiftID;
       const leaveWorkShiftInfo = workshifts.value.find(shift => shift.id === leaveWorkShiftId);
       
-      // Calculate work days using common function
+      // Tính ngày công sử dụng hàm chung
       const selectedDate = new Date(fullDate);
       const leaveResult = calculateWorkDaysFromLeaveRequest(leave, selectedDate, leaveWorkShiftInfo);
       const leaveWorkDays = typeof leaveResult === 'object' ? leaveResult.workDays : leaveResult;
-      const leaveWorkHours = typeof leaveResult === 'object' ? leaveResult.actualWorkHours : (leaveWorkDays * 8); // Use actual work hours if available
+      const leaveWorkHours = typeof leaveResult === 'object' ? leaveResult.actualWorkHours : (leaveWorkDays * 8); // Giờ công thực tế (actual work hours)
+      const leaveStandardWorkHours = typeof leaveResult === 'object' ? leaveResult.standardWorkHours : 8; // Giờ công chuẩn của ca (standard work hours)
       
-      // Get shift details for display purposes
+      // Debug log để kiểm tra giá trị
+      console.log('Leave calculation result:', {
+        date: selectedDate.toLocaleDateString('vi-VN'),
+        leaveStart: leave.startDateTime,
+        leaveEnd: leave.endDateTime,
+        actualWorkHours: leaveWorkHours,
+        standardWorkHours: leaveStandardWorkHours,
+        workDays: leaveWorkDays,
+        result: leaveResult
+      });
+      
+      // Lấy thông tin chi tiết ca làm việc for display purposes
       let leaveShiftStart = null;
       let leaveShiftEnd = null;
       let leaveScanInOut = 'Vào: --:--, Ra: --:--';
       let leaveLateEarly = 'Nghỉ phép';
       
-      // Set scan in/out times and calculate late/early based on leave type
+      // Đặt thời gian quét vào/ra và tính đi trễ/về sớm dựa trên loại nghỉ phép
       const leaveStartDate = new Date(leave.startDateTime);
       leaveStartDate.setHours(0, 0, 0, 0);
       const leaveEndDate = new Date(leave.endDateTime);
@@ -2978,10 +3474,10 @@ const loadDayModalData = async (employee, dayIdx) => {
       const currentLeaveDate = new Date(selectedDate);
       currentLeaveDate.setHours(0, 0, 0, 0);
       
-      // Always try to get shift details for comparison, but don't require it for displaying times
+      // Luôn cố gắng lấy thông tin chi tiết ca để so sánh, nhưng không bắt buộc để hiển thị thời gian
       let leaveDayShiftDetail = null;
       if (leaveWorkShiftInfo && leaveWorkShiftInfo.shiftDetails) {
-        // Get the day of week for the selected date
+        // Lấy thứ trong tuần cho ngày đã chọn
         const selectedDayOfWeek = selectedDate.getDay();
         const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
         const selectedDayName = dayNames[selectedDayOfWeek];
@@ -2995,7 +3491,7 @@ const loadDayModalData = async (employee, dayIdx) => {
         }
       }
       
-      // Determine scan in/out times based on leave period
+      // Xác định thời gian quét vào/ra dựa trên khoảng nghỉ phép
       if (leaveStartDate.getTime() === leaveEndDate.getTime()) {
         // Single day leave - use actual leave times
         const leaveStartTime = new Date(leave.startDateTime);
@@ -3003,34 +3499,59 @@ const loadDayModalData = async (employee, dayIdx) => {
         
         leaveScanInOut = `Vào: ${leaveStartTime.toTimeString().substring(0, 5)}, Ra: ${leaveEndTime.toTimeString().substring(0, 5)}`;
         
-        // Calculate late/early if we have shift details
+        // Tính đi trễ/về sớm nếu có thông tin chi tiết ca
         if (leaveShiftStart && leaveShiftEnd) {
           const leaveStartTimeOnly = new Date(`2000-01-01T${leaveStartTime.toTimeString().substring(0, 8)}`);
           const leaveEndTimeOnly = new Date(`2000-01-01T${leaveEndTime.toTimeString().substring(0, 8)}`);
           const lateMinutes = Math.max(0, (leaveStartTimeOnly - leaveShiftStart) / (1000 * 60));
           const earlyMinutes = Math.max(0, (leaveShiftEnd - leaveEndTimeOnly) / (1000 * 60));
           leaveLateEarly = `Đi trễ: ${Math.round(lateMinutes)} phút, Về sớm: ${Math.round(earlyMinutes)} phút`;
+        } else {
+          // If no shift details, default to 0 late/early
+          leaveLateEarly = 'Đi trễ: 0 phút, Về sớm: 0 phút';
         }
       } else {
         // Multi-day leave - check if this is start, middle, or end day
         if (currentLeaveDate.getTime() === leaveStartDate.getTime()) {
-          // Start day - use leave start time
+          // Start day - use leave start time and shift end time (KHÔNG dùng leave.endDateTime vì đó là giờ kết thúc đơn nghỉ, không phải giờ kết thúc ca)
           const leaveStartTime = new Date(leave.startDateTime);
           
-          if (leaveDayShiftDetail && leaveDayShiftDetail.endTime !== '00:00:00') {
-            // Use shift end time if available
-            leaveScanInOut = `Vào: ${leaveStartTime.toTimeString().substring(0, 5)}, Ra: ${leaveDayShiftDetail.endTime.substring(0, 5)}`;
+          // Luôn ưu tiên dùng shift end time từ leaveDayShiftDetail hoặc leaveShiftEnd
+          // Ngày đầu tiên: giờ ra phải là giờ kết thúc ca (shift.endTime), không phải leave.endDateTime
+          let shiftEndTimeStr = null;
+          
+          if (leaveDayShiftDetail && leaveDayShiftDetail.endTime && leaveDayShiftDetail.endTime !== '00:00:00') {
+            // Use shift end time from shift detail (đây là giờ kết thúc ca, ví dụ 17:00)
+            shiftEndTimeStr = leaveDayShiftDetail.endTime.substring(0, 5);
+          } else if (leaveShiftEnd) {
+            // Fallback: dùng leaveShiftEnd đã được tính từ shift detail
+            const shiftEndHours = String(leaveShiftEnd.getHours()).padStart(2, '0');
+            const shiftEndMinutes = String(leaveShiftEnd.getMinutes()).padStart(2, '0');
+            shiftEndTimeStr = `${shiftEndHours}:${shiftEndMinutes}`;
           } else {
-            // Fallback to leave end time if no shift detail
-            const leaveEndTime = new Date(leave.endDateTime);
-            leaveScanInOut = `Vào: ${leaveStartTime.toTimeString().substring(0, 5)}, Ra: ${leaveEndTime.toTimeString().substring(0, 5)}`;
+            // Fallback cuối cùng: dùng giờ kết thúc ca mặc định 17:00 (KHÔNG dùng leave.endDateTime)
+            shiftEndTimeStr = '17:00';
           }
           
-          // Calculate late if we have shift details
+          // Debug: log để kiểm tra giá trị
+          console.log('Start day - leaveScanInOut calculation:', {
+            leaveStartTime: leaveStartTime.toTimeString().substring(0, 5),
+            leaveDayShiftDetailEndTime: leaveDayShiftDetail?.endTime,
+            leaveShiftEnd: leaveShiftEnd ? `${String(leaveShiftEnd.getHours()).padStart(2, '0')}:${String(leaveShiftEnd.getMinutes()).padStart(2, '0')}` : null,
+            shiftEndTimeStr,
+            leaveEndDateTime: new Date(leave.endDateTime).toTimeString().substring(0, 5)
+          });
+          
+          leaveScanInOut = `Vào: ${leaveStartTime.toTimeString().substring(0, 5)}, Ra: ${shiftEndTimeStr}`;
+          
+          // Tính đi trễ nếu có thông tin chi tiết ca
           if (leaveShiftStart) {
             const leaveStartTimeOnly = new Date(`2000-01-01T${leaveStartTime.toTimeString().substring(0, 8)}`);
             const lateMinutes = Math.max(0, (leaveStartTimeOnly - leaveShiftStart) / (1000 * 60));
             leaveLateEarly = `Đi trễ: ${Math.round(lateMinutes)} phút, Về sớm: 0 phút`;
+          } else {
+            // If no shift details, default to 0 late/early
+            leaveLateEarly = 'Đi trễ: 0 phút, Về sớm: 0 phút';
           }
         } else if (currentLeaveDate.getTime() === leaveEndDate.getTime()) {
           // End day - use leave end time
@@ -3045,103 +3566,88 @@ const loadDayModalData = async (employee, dayIdx) => {
             leaveScanInOut = `Vào: ${leaveStartTime.toTimeString().substring(0, 5)}, Ra: ${leaveEndTime.toTimeString().substring(0, 5)}`;
           }
           
-          // Calculate early if we have shift details
+          // Tính về sớm nếu có thông tin chi tiết ca
           if (leaveShiftEnd) {
             const leaveEndTimeOnly = new Date(`2000-01-01T${leaveEndTime.toTimeString().substring(0, 8)}`);
             const earlyMinutes = Math.max(0, (leaveShiftEnd - leaveEndTimeOnly) / (1000 * 60));
             leaveLateEarly = `Đi trễ: 0 phút, Về sớm: ${Math.round(earlyMinutes)} phút`;
+          } else {
+            // If no shift details, default to 0 late/early
+            leaveLateEarly = 'Đi trễ: 0 phút, Về sớm: 0 phút';
           }
         } else {
           // Middle day - use shift times if available, otherwise use leave times
           if (leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00' && leaveDayShiftDetail.endTime !== '00:00:00') {
             leaveScanInOut = `Vào: ${leaveDayShiftDetail.startTime.substring(0, 5)}, Ra: ${leaveDayShiftDetail.endTime.substring(0, 5)}`;
+            // Middle day: full shift, so no late/early
+            leaveLateEarly = 'Đi trễ: 0 phút, Về sớm: 0 phút';
           } else {
             // Fallback to leave start/end times
             const leaveStartTime = new Date(leave.startDateTime);
             const leaveEndTime = new Date(leave.endDateTime);
             leaveScanInOut = `Vào: ${leaveStartTime.toTimeString().substring(0, 5)}, Ra: ${leaveEndTime.toTimeString().substring(0, 5)}`;
-          }
-          leaveLateEarly = 'Nghỉ phép';
-        }
-      }
-      
-      // Work days already calculated using common function above
-      
-        transformedWorkData.push({
-          stt: workSttCounter++,
-          shiftName: `${leave.leaveTypeName || 'Nghỉ phép'} (${leaveWorkShiftInfo?.shiftName || 'N/A'})`,
-          standard: `${leaveWorkHours.toFixed(2)}/${leaveWorkDays.toFixed(2)}`,
-          scanInOut: leaveScanInOut,
-          lateEarly: leaveLateEarly,
-          workHour: `${leaveWorkHours.toFixed(2)}/${leaveWorkDays.toFixed(2)}`
-        });
-      });
-    } else {
-      // Nếu có chấm công thực tế, vẫn cần hiển thị nghỉ phép cho các ngày giữa (full ca làm việc)
-      dayLeaveRequestsForWork.forEach(leave => {
-        const leaveStartDate = new Date(leave.startDateTime);
-        const leaveEndDate = new Date(leave.endDateTime);
-        const targetDate = new Date(fullDate);
-        
-        // Normalize dates to start of day for comparison
-        leaveStartDate.setHours(0, 0, 0, 0);
-        leaveEndDate.setHours(0, 0, 0, 0);
-        targetDate.setHours(0, 0, 0, 0);
-        
-        // Chỉ hiển thị nếu đây là ngày giữa của nghỉ phép nhiều ngày
-        const isStartDay = targetDate.getTime() === leaveStartDate.getTime();
-        const isEndDay = targetDate.getTime() === leaveEndDate.getTime();
-        const isMiddleDay = !isStartDay && !isEndDay && 
-                           targetDate.getTime() > leaveStartDate.getTime() && 
-                           targetDate.getTime() < leaveEndDate.getTime();
-        
-        if (isMiddleDay) {
-          // Ngày giữa - hiển thị full ca làm việc
-          const leaveWorkShiftId = leave.workShiftID;
-          const leaveWorkShiftInfo = workshifts.value.find(shift => shift.id === leaveWorkShiftId);
-          
-          if (leaveWorkShiftInfo && leaveWorkShiftInfo.shiftDetails) {
-            const selectedDate = new Date(fullDate);
-            const selectedDayOfWeek = selectedDate.getDay();
-            const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
-            const selectedDayName = dayNames[selectedDayOfWeek];
-            
-            const leaveDayShiftDetail = leaveWorkShiftInfo.shiftDetails.find(detail => detail.dayOfWeek === selectedDayName);
-            
-            if (leaveDayShiftDetail && leaveDayShiftDetail.startTime !== '00:00:00' && leaveDayShiftDetail.endTime !== '00:00:00') {
-              const startTime = new Date(`2000-01-01T${leaveDayShiftDetail.startTime}`);
-              const endTime = new Date(`2000-01-01T${leaveDayShiftDetail.endTime}`);
-              
-              // Calculate standard work hours excluding lunch break
-              let standardWorkHours = (endTime - startTime) / (1000 * 60 * 60);
-              if (leaveDayShiftDetail.breakStart && leaveDayShiftDetail.breakEnd && 
-                  leaveDayShiftDetail.breakStart !== '00:00:00' && leaveDayShiftDetail.breakEnd !== '00:00:00') {
-                const breakStart = new Date(`2000-01-01T${leaveDayShiftDetail.breakStart}`);
-                const breakEnd = new Date(`2000-01-01T${leaveDayShiftDetail.breakEnd}`);
-                const breakHours = (breakEnd - breakStart) / (1000 * 60 * 60);
-                standardWorkHours -= breakHours;
-              }
-              
-              // For middle day of leave, work hours = standard work hours (full shift)
-              const workHours = standardWorkHours
-              
-              // Calculate work days: chia cho ngày công chuẩn của ca
-              const divisor = standardWorkHours > 0 ? standardWorkHours : 8
-              const workDays = Math.round((workHours / divisor) * 100) / 100
-              
-              transformedWorkData.push({
-                stt: workSttCounter++,
-                shiftName: `${leave.leaveTypeName || 'Nghỉ phép'} (${leaveWorkShiftInfo.shiftName || 'N/A'})`,
-                standard: `${workHours.toFixed(2)}/${workDays.toFixed(2)}`,
-                scanInOut: `Vào: ${leaveDayShiftDetail.startTime.substring(0, 5)}, Ra: ${leaveDayShiftDetail.endTime.substring(0, 5)}`,
-                lateEarly: 'Nghỉ phép',
-                workHour: `${workHours.toFixed(2)}/${workDays.toFixed(2)}`
-              });
+            // If no shift details, still try to calculate if we have shift times
+            if (leaveShiftStart && leaveShiftEnd) {
+              const leaveStartTimeOnly = new Date(`2000-01-01T${leaveStartTime.toTimeString().substring(0, 8)}`);
+              const leaveEndTimeOnly = new Date(`2000-01-01T${leaveEndTime.toTimeString().substring(0, 8)}`);
+              const lateMinutes = Math.max(0, (leaveStartTimeOnly - leaveShiftStart) / (1000 * 60));
+              const earlyMinutes = Math.max(0, (leaveShiftEnd - leaveEndTimeOnly) / (1000 * 60));
+              leaveLateEarly = `Đi trễ: ${Math.round(lateMinutes)} phút, Về sớm: ${Math.round(earlyMinutes)} phút`;
+            } else {
+              leaveLateEarly = 'Đi trễ: 0 phút, Về sớm: 0 phút';
             }
           }
         }
+      }
+      
+      // Tìm dòng ca làm việc tương ứng trong transformedWorkData
+      // Tìm theo workShiftID để merge thông tin nghỉ phép vào dòng đã có
+      const existingWorkRow = transformedWorkData.find(work => 
+        work.workShiftID === leaveWorkShiftId
+      )
+      
+      // Tính công chuẩn (standard): giờ công chuẩn của ca / ngày công chuẩn
+      const standardWorkDays = leaveStandardWorkHours > 0 ? (leaveStandardWorkHours / 8) : 1; // Ngày công chuẩn = giờ công chuẩn / 8
+      const standardDisplay = `${leaveStandardWorkHours.toFixed(2)}/${standardWorkDays.toFixed(2)}`
+      
+      // Tính giờ/ngày công thực tế (workHour): giờ công thực tế / ngày công thực tế
+      const workHourDisplay = `${leaveWorkHours.toFixed(2)}/${leaveWorkDays.toFixed(2)}`
+      
+      if (existingWorkRow) {
+        // Cập nhật thông tin nghỉ phép vào dòng đã có (KHÔNG tạo dòng mới)
+        existingWorkRow.scanInOut = leaveScanInOut
+        existingWorkRow.lateEarly = leaveLateEarly
+        existingWorkRow.workHour = workHourDisplay // Giờ/ngày công thực tế
+        // Cập nhật standard: giờ công chuẩn của ca, không phải giờ công thực tế
+        existingWorkRow.standard = standardDisplay
+        // Đảm bảo shiftName không có "Phép năm" prefix
+        if (existingWorkRow.shiftName && !existingWorkRow.shiftName.includes('Phép năm')) {
+          // Giữ nguyên tên ca
+        } else {
+          existingWorkRow.shiftName = leaveWorkShiftInfo?.shiftName || 'N/A'
+        }
+      } else {
+        // Chỉ tạo dòng mới nếu chưa có ca làm việc nào với workShiftID này
+        // Và chỉ tạo nếu không có dòng nào khác với cùng workShiftID đã được tạo trong vòng lặp này
+        const alreadyAdded = transformedWorkData.some(work => work.workShiftID === leaveWorkShiftId)
+        if (!alreadyAdded) {
+              transformedWorkData.push({
+                stt: workSttCounter++,
+            shiftName: leaveWorkShiftInfo?.shiftName || 'N/A', // Dùng tên ca, KHÔNG thêm "Phép năm"
+            workShiftID: leaveWorkShiftId,
+            standard: standardDisplay, // Công chuẩn: giờ công chuẩn của ca
+            scanInOut: leaveScanInOut,
+            lateEarly: leaveLateEarly,
+            workHour: workHourDisplay // Giờ/ngày công thực tế
+          });
+          }
+        }
       });
-    }
+    
+    // Nếu có chấm công thực tế, vẫn cần hiển thị nghỉ phép cho các ngày giữa (full ca làm việc)
+    // LƯU Ý: Logic này đã được xử lý ở trên trong vòng lặp finalDayLeaveRequestsForWork.forEach,
+    // nên không cần xử lý lại ở đây để tránh tạo dòng trùng lặp
+    // Đoạn code này đã được loại bỏ để tránh tạo dòng "Phép năm (Ca Hành Chính)" trùng lặp
     
     // 3. Thêm ca làm việc đã phân nhưng chưa có attendance (không chấm công)
     const dayShiftAssignments = shiftAssignments.value.filter(sa => {
@@ -3204,14 +3710,19 @@ const loadDayModalData = async (employee, dayIdx) => {
             // scanInOut vẫn là 'Vào: --:--, Ra: --:--'
           }
           
+          // Kiểm tra xem đã có dòng với workShiftID này chưa (có thể đã được thêm từ nghỉ phép)
+          const existingRow = transformedWorkData.find(work => work.workShiftID === assignment.workShiftID)
+          if (!existingRow) {
           transformedWorkData.push({
             stt: workSttCounter++,
             shiftName: workShift.shiftName,
+              workShiftID: assignment.workShiftID, // Thêm workShiftID để có thể merge sau này
             standard: `${standardHours.toFixed(2)}/${standardDays.toFixed(2)}`,
             scanInOut: scanInOut,
             lateEarly: 'Chưa chấm công',
             workHour: '0.00/0.00'
           });
+          }
         }
       }
     });
@@ -3250,7 +3761,7 @@ const loadDayModalData = async (employee, dayIdx) => {
     console.error('Error details:', error.response?.data);
     console.error('Error status:', error.response?.status);
     dayModalError.value = error.message || 'Không thể tải dữ liệu chi tiết ngày công';
-    // Set empty data on error
+    // Đặt dữ liệu rỗng khi lỗi
     attendanceHistory.value = [];
     workHistory.value = [];
   } finally {
@@ -3265,7 +3776,7 @@ const handleShiftChange = async (item, newShiftId) => {
   }
 
   try {
-    // Set loading state
+    // Đặt trạng thái loading
     updatingShifts.value[item.attendanceId] = true;
 
     // Gọi API để update attendance shift
@@ -3401,7 +3912,9 @@ const handleCloseAllSheets = async () => {
 }
 
 // Load attendance data on component mount
-// Watch for location map modal to initialize map
+/**
+ * Theo dõi modal bản đồ vị trí để khởi tạo bản đồ
+ */
 let locationMap = null
 watch(showLocationMapModal, async (isOpen) => {
   if (isOpen && mapLocation.value.lat && mapLocation.value.lng) {
@@ -3514,11 +4027,11 @@ onMounted(async () => {
     const manager1Attendance = attendanceData.value.filter(att => att.employeeID === 'manager1-id');
     console.log('Manager1 attendance data:', manager1Attendance);
 
-    // Check if we might need pagination or if data is complete
+    // Kiểm tra xem có thể cần phân trang hoặc dữ liệu đã hoàn chỉnh
     if (leaveRequests.value && leaveRequests.value.length > 0) {
       console.log('Sample leave request:', leaveRequests.value[0]);
 
-      // Check date range of loaded data
+      // Kiểm tra khoảng ngày của dữ liệu đã tải
       const dates = leaveRequests.value.map(req => new Date(req.startDateTime));
       const minDate = new Date(Math.min(...dates));
       const maxDate = new Date(Math.max(...dates));
@@ -3639,7 +4152,7 @@ const personalAttendanceData = computed(() => {
   const year = selectedYear.value
   const month = selectedMonth.value - 1 // JavaScript months are 0-indexed
   
-  // Get all days in the selected month
+  // Lấy tất cả các ngày trong tháng đã chọn
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   
   // Generate attendance data for current user using the same logic as summary tab
@@ -3727,6 +4240,315 @@ const personalAttendanceData = computed(() => {
   return weeks
 })
 
+/**
+ * Tính toán thống kê chấm công cá nhân cho user hiện tại
+ * @returns {Object} Object chứa các thống kê: totalWorkDays, totalLeave, totalInsufficient, totalIncomplete, totalLate, totalDays
+ */
+const personalStatistics = computed(() => {
+  if (!currentUser.value) {
+    return {
+      totalWorkDays: 0,
+      totalLeave: 0,
+      totalInsufficient: 0,
+      totalIncomplete: 0,
+      totalAbsentWithoutLeave: 0,
+      totalDays: 0
+    }
+  }
+
+  const employeeId = currentUser.value.id
+  const monthStart = new Date(selectedYear.value, selectedMonth.value - 1, 1)
+  const monthEnd = new Date(selectedYear.value, selectedMonth.value, 0, 23, 59, 59)
+  const daysInMonth = new Date(selectedYear.value, selectedMonth.value, 0).getDate()
+
+  const stats = {
+    totalWorkDays: 0,
+    totalLeave: 0,
+    totalInsufficient: 0,
+    totalIncomplete: 0,
+    totalAbsentWithoutLeave: 0,
+    totalDays: daysInMonth
+  }
+
+  // Tính từ dữ liệu chấm công thực tế
+  if (attendanceList.value && attendanceList.value.length > 0) {
+    const employeeAttendance = attendanceList.value.filter(att => {
+      const attEmployeeId = att.employeeCode || att.employeeID || att.employeeId
+      return attEmployeeId === employeeId
+    })
+
+    // Nhóm các bản ghi chấm công theo ngày để xử lý trường hợp có nhiều bản ghi trong cùng một ngày
+    const attendanceByDate = new Map()
+    
+    employeeAttendance.forEach(att => {
+      const workDate = new Date(att.workDate)
+      workDate.setHours(0, 0, 0, 0)
+      
+      if (workDate >= monthStart && workDate <= monthEnd) {
+        const dateKey = workDate.getTime()
+        
+        // Nếu chưa có bản ghi cho ngày này, tạo mới
+        if (!attendanceByDate.has(dateKey)) {
+          attendanceByDate.set(dateKey, {
+            checkInTime: null,
+            checkOutTime: null,
+            workShiftID: null,
+            workDate: workDate,
+            records: []
+          })
+        }
+        
+        const dayData = attendanceByDate.get(dateKey)
+        dayData.records.push(att)
+        
+        // Lấy check-in và check-out từ các bản ghi (có thể từ các bản ghi khác nhau)
+        if (att.checkInTime && !dayData.checkInTime) {
+          dayData.checkInTime = att.checkInTime
+        }
+        if (att.checkOutTime && !dayData.checkOutTime) {
+          dayData.checkOutTime = att.checkOutTime
+        }
+        if (att.workShiftID && !dayData.workShiftID) {
+          dayData.workShiftID = att.workShiftID
+        }
+      }
+    })
+    
+    // Xử lý từng ngày
+    attendanceByDate.forEach((dayData, dateKey) => {
+      if (dayData.checkInTime && dayData.checkOutTime) {
+        // Có cả check-in và check-out
+        const attRecord = {
+          checkInTime: dayData.checkInTime,
+          checkOutTime: dayData.checkOutTime,
+          workShiftID: dayData.workShiftID,
+          workDate: dayData.workDate
+        }
+        
+        const result = calculateWorkDaysFromAttendanceData(attRecord)
+        if (result.actualWorkHours > 0) {
+          // Kiểm tra xem có đủ giờ công không
+          let isSufficient = false
+          
+          if (dayData.workShiftID) {
+            const workShift = workshifts.value.find(shift => shift.id === dayData.workShiftID)
+            if (workShift && workShift.shiftDetails) {
+              const dayOfWeek = dayData.workDate.getDay()
+              const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+              const currentDayName = dayNames[dayOfWeek]
+              const dayShiftDetail = workShift.shiftDetails.find(detail => detail.dayOfWeek === currentDayName)
+              
+              if (dayShiftDetail && dayShiftDetail.startTime !== '00:00:00' && dayShiftDetail.endTime !== '00:00:00') {
+                const shiftStart = new Date(`2000-01-01T${dayShiftDetail.startTime}`)
+                const shiftEnd = new Date(`2000-01-01T${dayShiftDetail.endTime}`)
+                const checkInTime = new Date(`2000-01-01T${dayData.checkInTime}`)
+                
+                // Tính giờ công chuẩn
+                let standardWorkHours = (shiftEnd - shiftStart) / (1000 * 60 * 60)
+                if (dayShiftDetail.breakStart && dayShiftDetail.breakEnd && 
+                    dayShiftDetail.breakStart !== '00:00:00' && dayShiftDetail.breakEnd !== '00:00:00') {
+                  const breakStart = new Date(`2000-01-01T${dayShiftDetail.breakStart}`)
+                  const breakEnd = new Date(`2000-01-01T${dayShiftDetail.breakEnd}`)
+                  const breakHours = (breakEnd - breakStart) / (1000 * 60 * 60)
+                  standardWorkHours -= breakHours
+                }
+                
+                // Kiểm tra đủ giờ công (cho phép sai số 0.1 giờ)
+                isSufficient = result.actualWorkHours >= (standardWorkHours - 0.1)
+              } else {
+                // Không có shift detail, tính theo giờ thực tế
+                isSufficient = result.actualWorkHours >= 7.9 // Gần 8 giờ
+              }
+            } else {
+              // Không có shift details, tính theo giờ thực tế
+              isSufficient = result.actualWorkHours >= 7.9
+            }
+          } else {
+            // Không có workShiftID, tính theo giờ thực tế
+            isSufficient = result.actualWorkHours >= 7.9
+          }
+          
+          // Phân loại ngày
+          if (isSufficient) {
+            stats.totalWorkDays += 1
+          } else {
+            stats.totalInsufficient += 1
+          }
+        }
+      } else if (dayData.checkInTime && !dayData.checkOutTime) {
+        // Chỉ có check-in, không có check-out
+        stats.totalIncomplete += 1
+      } else if (!dayData.checkInTime && dayData.checkOutTime) {
+        // Chỉ có check-out, không có check-in
+        stats.totalIncomplete += 1
+      }
+    })
+  }
+
+  // Tính từ đơn nghỉ phép đã duyệt
+  if (leaveRequests.value && leaveRequests.value.length > 0) {
+    const monthStartDate = new Date(monthStart)
+    monthStartDate.setHours(0, 0, 0, 0)
+    const monthEndDate = new Date(monthEnd)
+    monthEndDate.setHours(0, 0, 0, 0)
+
+    // Lấy danh sách các ngày đã có chấm công thực tế
+    const attendanceDates = new Set()
+    if (attendanceList.value && attendanceList.value.length > 0) {
+      const employeeAttendance = attendanceList.value.filter(att => {
+        const attEmployeeId = att.employeeCode || att.employeeID || att.employeeId
+        return attEmployeeId === employeeId
+      })
+      
+      employeeAttendance.forEach(att => {
+        if (att.checkInTime && att.checkOutTime) {
+          const workDate = new Date(att.workDate)
+          workDate.setHours(0, 0, 0, 0)
+          attendanceDates.add(workDate.getTime())
+        }
+      })
+    }
+
+    // Nhóm các đơn nghỉ phép theo ngày và chỉ lấy đơn dài nhất cho mỗi ngày
+    const dayLeaveMap = new Map()
+    
+    leaveRequests.value.forEach(leave => {
+      if (leave.employeeID !== employeeId) return
+      
+      const leaveStart = new Date(leave.startDateTime)
+      const leaveEnd = new Date(leave.endDateTime)
+      if (leaveStart > monthEndDate || leaveEnd < monthStartDate) return
+      
+      const leaveTypeName = (leave.leaveTypeName || '').toLowerCase()
+      const isPaidLeave = (leaveTypeName.includes('phép năm') || 
+                          leaveTypeName.includes('phép có lương')) &&
+                          !leaveTypeName.includes('nghỉ bù') &&
+                          !leaveTypeName.includes('bù')
+      
+      if (isPaidLeave && (leave.approveStatus === 'Đã duyệt' || leave.approveStatus === 'Approved')) {
+        const startDate = new Date(leaveStart > monthStartDate ? leaveStart : monthStartDate)
+        startDate.setHours(0, 0, 0, 0)
+        const endDate = new Date(leaveEnd < monthEndDate ? leaveEnd : monthEndDate)
+        endDate.setHours(0, 0, 0, 0)
+        
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          const dateKey = new Date(d)
+          dateKey.setHours(0, 0, 0, 0)
+          
+          if (dateKey >= monthStartDate && dateKey <= monthEndDate) {
+            if (!attendanceDates.has(dateKey.getTime())) {
+              const dayString = `${dateKey.getFullYear()}-${String(dateKey.getMonth() + 1).padStart(2, '0')}-${String(dateKey.getDate()).padStart(2, '0')}`
+              
+              const dayStart = new Date(dateKey.getFullYear(), dateKey.getMonth(), dateKey.getDate())
+              const dayEnd = new Date(dateKey.getFullYear(), dateKey.getMonth(), dateKey.getDate(), 23, 59, 59, 999)
+              
+              const requestStartOnDay = leaveStart > dayStart ? leaveStart : dayStart
+              const requestEndOnDay = leaveEnd < dayEnd ? leaveEnd : dayEnd
+              const dayDuration = requestEndOnDay - requestStartOnDay
+              
+              if (!dayLeaveMap.has(dayString) || dayLeaveMap.get(dayString).duration < dayDuration) {
+                dayLeaveMap.set(dayString, { leave, duration: dayDuration })
+              }
+            }
+          }
+        }
+      }
+    })
+    
+    // Đếm số ngày nghỉ phép
+    stats.totalLeave = dayLeaveMap.size
+  }
+
+  // Tính số ngày vắng không phép
+  // Logic: Vắng không phép = những ngày có phân ca nhưng không có chấm công và không có đơn nghỉ phép đã duyệt, và là ngày đã qua
+  // Tham khảo logic từ tab "Bảng tổng hợp công" (generateAttendanceForEmployee)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  // Lấy danh sách các ngày đã có chấm công
+  const attendanceDates = new Set()
+  if (attendanceList.value && attendanceList.value.length > 0) {
+    const employeeAttendance = attendanceList.value.filter(att => {
+      const attEmployeeId = att.employeeCode || att.employeeID || att.employeeId
+      return attEmployeeId === employeeId
+    })
+    
+    employeeAttendance.forEach(att => {
+      const workDate = new Date(att.workDate)
+      workDate.setHours(0, 0, 0, 0)
+      if (workDate >= monthStart && workDate <= monthEnd) {
+        attendanceDates.add(workDate.getTime())
+      }
+    })
+  }
+  
+  // Lấy danh sách các ngày có đơn nghỉ phép đã duyệt (tất cả loại nghỉ phép, không chỉ phép có lương)
+  const leaveDates = new Set()
+  if (leaveRequests.value && leaveRequests.value.length > 0) {
+    const monthStartDate = new Date(monthStart)
+    monthStartDate.setHours(0, 0, 0, 0)
+    const monthEndDate = new Date(monthEnd)
+    monthEndDate.setHours(0, 0, 0, 0)
+    
+    leaveRequests.value.forEach(leave => {
+      if (leave.employeeID !== employeeId) return
+      
+      const leaveStart = new Date(leave.startDateTime)
+      const leaveEnd = new Date(leave.endDateTime)
+      if (leaveStart > monthEndDate || leaveEnd < monthStartDate) return
+      
+      // Chỉ tính các đơn đã duyệt
+      if (leave.approveStatus === 'Đã duyệt' || leave.approveStatus === 'Approved') {
+        const startDate = new Date(leaveStart > monthStartDate ? leaveStart : monthStartDate)
+        startDate.setHours(0, 0, 0, 0)
+        const endDate = new Date(leaveEnd < monthEndDate ? leaveEnd : monthEndDate)
+        endDate.setHours(0, 0, 0, 0)
+        
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          const dateKey = new Date(d)
+          dateKey.setHours(0, 0, 0, 0)
+          
+          if (dateKey >= monthStartDate && dateKey <= monthEndDate) {
+            leaveDates.add(dateKey.getTime())
+          }
+        }
+      }
+    })
+  }
+  
+  // Lặp qua từng ngày trong tháng để kiểm tra vắng không phép
+  for (let day = 1; day <= daysInMonth; day++) {
+    const currentDate = new Date(selectedYear.value, selectedMonth.value - 1, day)
+    currentDate.setHours(0, 0, 0, 0)
+    
+    // Chỉ tính vắng không phép cho các ngày đã qua (từ đầu tháng đến ngày hiện tại)
+    const isPastOrToday = currentDate.getTime() <= today.getTime()
+    if (!isPastOrToday) continue
+    
+    // Kiểm tra xem ngày này có phân ca làm việc không
+    const hasShiftAssignment = shiftAssignments.value?.some(sa => {
+      const saDate = new Date(sa.workDate)
+      saDate.setHours(0, 0, 0, 0)
+      return sa.employeeID === employeeId && saDate.getTime() === currentDate.getTime()
+    })
+    
+    if (!hasShiftAssignment) continue // Không có phân ca thì không tính vắng không phép
+    
+    // Kiểm tra xem ngày này có chấm công không
+    const hasAttendance = attendanceDates.has(currentDate.getTime())
+    
+    // Kiểm tra xem ngày này có đơn nghỉ phép đã duyệt không
+    const hasLeave = leaveDates.has(currentDate.getTime())
+    
+    // Nếu có phân ca nhưng không có chấm công và không có đơn nghỉ phép -> vắng không phép
+    if (!hasAttendance && !hasLeave) {
+      stats.totalAbsentWithoutLeave += 1
+    }
+  }
+
+  return stats
+})
+
 // Personal Overtime Data
 const personalOvertimeData = computed(() => {
   if (!currentUser.value) return []
@@ -3734,7 +4556,7 @@ const personalOvertimeData = computed(() => {
   const year = selectedYear.value
   const month = selectedMonth.value - 1 // JavaScript months are 0-indexed
   
-  // Get all days in the selected month
+  // Lấy tất cả các ngày trong tháng đã chọn
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   
   // Filter overtime requests for current user only
@@ -3819,24 +4641,19 @@ const personalOvertimeData = computed(() => {
               return total + hours
             }, 0)
             
-            // Phân loại theo hình thức tăng ca (overtimeTypeName)
-            const overtimeType = approvedOvertime[0].overtimeTypeName || ''
-            let statusClass = 'overtime'
+            // Phân loại theo hình thức tăng ca - sử dụng cùng logic với tab "Bảng công tăng ca"
+            // Sử dụng overtimeFormName và overtimeFormID thay vì overtimeTypeName
+            const firstRequest = approvedOvertime[0]
+            let statusClass = 'paid' // Mặc định là tính lương nếu không xác định được
             
-            console.log(`Overtime type for day ${day}: "${overtimeType}"`)
-            
-            // Phân loại theo hình thức tăng ca
-            if (overtimeType.toLowerCase().includes('nghỉ bù') || overtimeType.toLowerCase().includes('compensatory') || overtimeType.toLowerCase().includes('bù')) {
-              statusClass = 'compensatory'  // Tăng ca nghỉ bù - màu xanh lá
-              console.log(`Classified as compensatory (nghỉ bù): ${statusClass}`)
-            } else if (overtimeType.toLowerCase().includes('tính lương') || overtimeType.toLowerCase().includes('paid') || overtimeType.toLowerCase().includes('lương')) {
+            // Sử dụng logic giống getOvertimeType trong tab overtime
+            if (firstRequest.overtimeFormName?.toLowerCase().includes('tính lương') || firstRequest.overtimeFormID === 1) {
               statusClass = 'paid'  // Tăng ca tính lương - màu tím
-              console.log(`Classified as paid (tính lương): ${statusClass}`)
-            } else if (overtimeType.toLowerCase().includes('thường') || overtimeType.toLowerCase().includes('normal') || overtimeType.toLowerCase().includes('regular')) {
-              statusClass = 'overtime'  // Tăng ca thường - màu tím
-              console.log(`Classified as regular overtime: ${statusClass}`)
+            } else if (firstRequest.overtimeFormName?.toLowerCase().includes('nghỉ bù') || firstRequest.overtimeFormID === 2) {
+              statusClass = 'compensatory'  // Tăng ca nghỉ bù - màu xanh lá
             } else {
-              console.log(`Unknown overtime type, using default: ${statusClass}`)
+              // Nếu không xác định được, mặc định là tính lương
+              statusClass = 'paid'
             }
             
             dayData.overtime = {
@@ -3879,6 +4696,66 @@ const personalOvertimeData = computed(() => {
   return weeks
 })
 
+/**
+ * Tính toán thống kê tăng ca cá nhân
+ */
+const personalOvertimeStatistics = computed(() => {
+  if (!currentUser.value || !personalOvertimeData.value || personalOvertimeData.value.length === 0) {
+    return {
+      totalCompensatoryDays: 0,
+      totalPaidDays: 0,
+      totalOvertimeDays: 0,
+      totalOvertimeHours: 0,
+      totalOvertimeHoursWithCoeff: 0,
+      totalOvertimeDaysWithCoeff: 0
+    }
+  }
+
+  const allDays = personalOvertimeData.value.flat().filter(d => d.isCurrentMonth && d.overtime && d.overtime.requests)
+  
+  let totalCompensatoryDays = 0
+  let totalPaidDays = 0
+  let totalOvertimeHours = 0
+  let totalOvertimeHoursWithCoeff = 0
+
+  allDays.forEach(dayData => {
+    if (dayData.overtime && dayData.overtime.requests) {
+      // Đếm số ngày theo loại
+      if (dayData.overtime.class === 'compensatory') {
+        totalCompensatoryDays += 1
+      } else if (dayData.overtime.class === 'paid') {
+        totalPaidDays += 1
+      }
+      
+      // Tính tổng giờ tăng ca
+      dayData.overtime.requests.forEach(ot => {
+        const startTime = new Date(ot.startDateTime)
+        const endTime = new Date(ot.endDateTime)
+        const hours = (endTime - startTime) / (1000 * 60 * 60)
+        const coefficient = ot.coefficient || 1
+        
+        totalOvertimeHours += hours
+        totalOvertimeHoursWithCoeff += hours * coefficient
+      })
+    }
+  })
+
+  // Tổng ngày tăng ca = tổng giờ tăng ca / 8 (không tính hệ số)
+  const totalOvertimeDays = Math.round((totalOvertimeHours / 8) * 100) / 100
+
+  // Tổng ngày tăng ca có hệ số = tổng giờ tăng ca có hệ số / 8
+  const totalOvertimeDaysWithCoeff = Math.round((totalOvertimeHoursWithCoeff / 8) * 100) / 100
+
+  return {
+    totalCompensatoryDays,
+    totalPaidDays,
+    totalOvertimeDays,
+    totalOvertimeHours: Math.round(totalOvertimeHours * 10) / 10,
+    totalOvertimeHoursWithCoeff: Math.round(totalOvertimeHoursWithCoeff * 10) / 10,
+    totalOvertimeDaysWithCoeff
+  }
+})
+
 const getPersonalCellClass = (statusClass) => {
   // Use the same class mapping as summary tab + overtime types
   const classMap = {
@@ -3917,7 +4794,6 @@ const getPersonalOvertimeCellTitle = (dayData) => {
   if (!dayData.overtime || dayData.overtime.class === 'empty') return ''
   
   const statusMap = {
-    'overtime': 'Tăng ca thường',
     'compensatory': 'Tăng ca nghỉ bù',
     'paid': 'Tăng ca tính lương'
   }
@@ -3925,7 +4801,11 @@ const getPersonalOvertimeCellTitle = (dayData) => {
   return `${dayData.overtime.time} - ${statusMap[dayData.overtime.class] || 'Tăng ca'}`
 }
 
-// Helper function to get employee full name (similar to ProfileView.vue)
+/**
+ * Hàm tiện ích để lấy tên đầy đủ của nhân viên (tương tự như ProfileView.vue)
+ * @param {Object} employee - Đối tượng nhân viên
+ * @returns {String} Tên đầy đủ của nhân viên
+ */
 const getEmployeeFullName = (employee) => {
   if (!employee) return null
   if (employee.fullName) return employee.fullName
@@ -4596,7 +5476,7 @@ const tourSteps = computed(() => {
                         <div class="stat-icon">
                           <i class="fas fa-check-circle"></i>
                         </div>
-                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'work').length }}</div>
+                        <div class="stat-number">{{ personalStatistics.totalWorkDays }}</div>
                         <div class="stat-label">Ngày đi làm</div>
                       </div>
                     </div>
@@ -4605,7 +5485,7 @@ const tourSteps = computed(() => {
                         <div class="stat-icon">
                           <i class="fas fa-calendar-times"></i>
                         </div>
-                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'leave').length }}</div>
+                        <div class="stat-number">{{ personalStatistics.totalLeave }}</div>
                         <div class="stat-label">Nghỉ phép</div>
                       </div>
                     </div>
@@ -4614,7 +5494,7 @@ const tourSteps = computed(() => {
                         <div class="stat-icon">
                           <i class="fas fa-clock"></i>
                         </div>
-                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'insufficient').length }}</div>
+                        <div class="stat-number">{{ personalStatistics.totalInsufficient }}</div>
                         <div class="stat-label">Chưa đủ giờ</div>
                       </div>
                     </div>
@@ -4623,17 +5503,17 @@ const tourSteps = computed(() => {
                         <div class="stat-icon">
                           <i class="fas fa-exclamation-triangle"></i>
                         </div>
-                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'incomplete').length }}</div>
-                        <div class="stat-label">Quên checkin/checkout</div>
+                        <div class="stat-number">{{ personalStatistics.totalIncomplete }}</div>
+                        <div class="stat-label">Quên chấm công</div>
                       </div>
                     </div>
                     <div class="col-md-2">
                       <div class="stat-card stat-card-secondary">
                         <div class="stat-icon">
-                          <i class="fas fa-hourglass-half"></i>
+                          <i class="fas fa-user-times"></i>
                         </div>
-                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth && d.attendance?.class === 'late').length }}</div>
-                        <div class="stat-label">Đi trễ</div>
+                        <div class="stat-number">{{ personalStatistics.totalAbsentWithoutLeave }}</div>
+                        <div class="stat-label">Vắng không phép</div>
                       </div>
                     </div>
                     <div class="col-md-2">
@@ -4641,7 +5521,7 @@ const tourSteps = computed(() => {
                         <div class="stat-icon">
                           <i class="fas fa-calendar-alt"></i>
                         </div>
-                        <div class="stat-number">{{ personalAttendanceData.flat().filter(d => d.isCurrentMonth).length }}</div>
+                        <div class="stat-number">{{ personalStatistics.totalDays }}</div>
                         <div class="stat-label">Tổng ngày</div>
                       </div>
                     </div>
@@ -4697,10 +5577,6 @@ const tourSteps = computed(() => {
                     <span class="legend-color" style="background:#9c27b0"></span>
                     <span class="legend-text">Tăng ca tính lương</span>
                   </div>
-                  <div class="legend-item-compact">
-                    <span class="legend-color" style="background:#6c757d"></span>
-                    <span class="legend-text">Tăng ca thường</span>
-                  </div>
                 </div>
               </div>
             </div>
@@ -4742,62 +5618,41 @@ const tourSteps = computed(() => {
                   </h6>
                 </div>
                 <div class="card-body">
-                  <div class="row text-center">
-                    <div class="col-md-2">
-                      <div class="stat-card stat-card-success">
-                        <div class="stat-icon">
-                          <i class="fas fa-exchange-alt"></i>
-                        </div>
-                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth && d.overtime?.class === 'compensatory').length }}</div>
-                        <div class="stat-label">Tăng ca nghỉ bù</div>
-                      </div>
-                    </div>
-                    <div class="col-md-2">
-                      <div class="stat-card stat-card-purple">
-                        <div class="stat-icon">
-                          <i class="fas fa-dollar-sign"></i>
-                        </div>
-                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth && d.overtime?.class === 'paid').length }}</div>
-                        <div class="stat-label">Tăng ca tính lương</div>
-                      </div>
-                    </div>
-                    <div class="col-md-2">
-                      <div class="stat-card stat-card-secondary">
-                        <div class="stat-icon">
-                          <i class="fas fa-clock"></i>
-                        </div>
-                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth && d.overtime?.class === 'overtime').length }}</div>
-                        <div class="stat-label">Tăng ca thường</div>
-                      </div>
-                    </div>
-                    <div class="col-md-2">
-                      <div class="stat-card stat-card-info">
-                        <div class="stat-icon">
-                          <i class="fas fa-calendar-check"></i>
-                        </div>
-                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth && (d.overtime?.class === 'overtime' || d.overtime?.class === 'compensatory' || d.overtime?.class === 'paid')).length }}</div>
-                        <div class="stat-label">Tổng ngày tăng ca</div>
-                      </div>
-                    </div>
-                    <div class="col-md-2">
-                      <div class="stat-card stat-card-primary">
-                        <div class="stat-icon">
-                          <i class="fas fa-calendar-alt"></i>
-                        </div>
-                        <div class="stat-number">{{ personalOvertimeData.flat().filter(d => d.isCurrentMonth).length }}</div>
-                        <div class="stat-label">Tổng ngày</div>
-                      </div>
-                    </div>
-                    <div class="col-md-2">
+                  <div class="row text-center g-3">
+                    <div class="col-md-3">
                       <div class="stat-card stat-card-warning">
                         <div class="stat-icon">
                           <i class="fas fa-hourglass-end"></i>
                         </div>
-                        <div class="stat-number">{{ (personalOvertimeData.flat().filter(d => d.isCurrentMonth && (d.overtime?.class === 'overtime' || d.overtime?.class === 'compensatory' || d.overtime?.class === 'paid')).reduce((total, d) => {
-                          const hours = parseFloat(d.overtime?.time?.replace('h', '') || '0')
-                          return total + hours
-                        }, 0)).toFixed(1) }}h</div>
+                        <div class="stat-number">{{ personalOvertimeStatistics.totalOvertimeHours.toFixed(1) }}h</div>
                         <div class="stat-label">Tổng giờ tăng ca</div>
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <div class="stat-card stat-card-primary">
+                        <div class="stat-icon">
+                          <i class="fas fa-hourglass-half"></i>
+                        </div>
+                        <div class="stat-number">{{ personalOvertimeStatistics.totalOvertimeHoursWithCoeff.toFixed(1) }}h</div>
+                        <div class="stat-label">Tổng giờ tăng ca có hệ số</div>
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <div class="stat-card stat-card-info">
+                        <div class="stat-icon">
+                          <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="stat-number">{{ personalOvertimeStatistics.totalOvertimeDays.toFixed(2) }}</div>
+                        <div class="stat-label">Tổng ngày tăng ca</div>
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <div class="stat-card stat-card-secondary">
+                        <div class="stat-icon">
+                          <i class="fas fa-calendar-day"></i>
+                        </div>
+                        <div class="stat-number">{{ personalOvertimeStatistics.totalOvertimeDaysWithCoeff.toFixed(2) }}</div>
+                        <div class="stat-label">Tổng ngày tăng ca có hệ số</div>
                       </div>
                     </div>
                   </div>
@@ -5336,9 +6191,10 @@ const tourSteps = computed(() => {
           <div v-if="filteredAttendanceHistory.length > 0" data-tour="attendance-history">
             <DataTable :columns="attendanceColumnsNoActions" :data="filteredAttendanceHistory">
               <template #shiftName="{ item }">
-                <!-- Chỉ cho phép đổi ca nếu không phải nghỉ phép và có attendanceId -->
+                <!-- Chỉ cho phép đổi ca nếu không phải nghỉ phép, có attendanceId, và không phải tab bảng công cá nhân -->
+                <!-- Kiểm tra nếu selectedEmployee là currentUser thì không cho sửa ca làm -->
                 <select 
-                  v-if="item.attendanceId && !item.shiftName?.includes('Nghỉ phép') && !item.shiftName?.includes('Phép năm') && !item.shiftName?.includes('Nghỉ bù')"
+                  v-if="item.attendanceId && !item.shiftName?.includes('Nghỉ phép') && !item.shiftName?.includes('Phép năm') && !item.shiftName?.includes('Nghỉ bù') && selectedEmployee?.id !== currentUser?.id"
                   class="form-select-enhanced form-select-sm"
                   :value="item.workShiftID || ''"
                   @change="handleShiftChange(item, $event.target.value)"
@@ -7595,6 +8451,10 @@ const tourSteps = computed(() => {
   border: 1px solid #e9ecef;
   position: relative;
   overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .stat-card::before {
@@ -7695,6 +8555,13 @@ const tourSteps = computed(() => {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  line-height: 1.3;
+  min-height: 2.6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  word-break: break-word;
+  text-align: center;
 }
 
 /* Enhanced Calendar Styles */

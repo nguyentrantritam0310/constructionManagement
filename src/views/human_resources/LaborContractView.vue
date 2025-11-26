@@ -48,10 +48,10 @@
           <div v-if="activeTab === 'allContracts'" class="col-md-2">
             <select class="form-control" v-model="statusFilter">
               <option value="">Tất cả trạng thái duyệt</option>
+              <option value="Created">Tạo mới</option>
               <option value="Pending">Chờ duyệt</option>
               <option value="Approved">Đã duyệt</option>
               <option value="Rejected">Từ chối</option>
-              <option value="Returned">Trả lại</option>
             </select>
           </div>
           <div v-if="activeTab === 'allContracts'" class="col-md-2">
@@ -322,16 +322,6 @@
     <!-- Import Excel Modal -->
     <ModalDialog v-model:show="showImportModal" title="Nhập hợp đồng lao động từ Excel" size="lg" data-tour="import-modal">
       <div class="p-4">
-        <div class="alert alert-info">
-          <h6><i class="fas fa-info-circle me-2"></i>Hướng dẫn nhập Excel</h6>
-          <p class="mb-2">File Excel bao gồm các sheet sau:</p>
-          <ul class="mb-0">
-            <li><strong>Dữ liệu nhập:</strong> Thông tin hợp đồng lao động</li>
-            <li><strong>Loại hợp đồng:</strong> Tra cứu ID của các loại hợp đồng</li>
-            <li><strong>Hướng dẫn:</strong> Chi tiết về cách điền dữ liệu</li>
-          </ul>
-        </div>
-
         <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
           Tải file mẫu
         </ActionButton>
@@ -378,8 +368,9 @@
       @complete="handleTourComplete" 
     />
     <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+      :message="chatbotMessage" 
       title="Trợ lý AI"
+      :auto-show="showChatbotMessage"
       @guide-click="startTour"
     />
   </div>
@@ -428,7 +419,8 @@ const {
   submitContractForApproval,
   approveContract,
   rejectContract,
-  returnContract
+  returnContract,
+  createMultipleContracts
 } = useContract()
 const { employees, fetchAllEmployees } = useEmployee()
 const { showMessage } = useGlobalMessage()
@@ -549,11 +541,16 @@ const formatContractForSubmit = (data) => {
     contractTypeID: parseInt(data.contractTypeID),
     employeeID: data.employeeID,
     startDate: new Date(data.startDate).toISOString(),
-    endDate: new Date(data.endDate).toISOString(),
     contractSalary: parseFloat(data.contractSalary) || 0,
     insuranceSalary: parseFloat(data.insuranceSalary) || 0,
     approveStatus: parseInt(data.approveStatus) || 0,
     allowances: []
+  }
+
+  // Only include endDate if it has a value (not null, undefined, or empty string)
+  // For indeterminate term contracts, endDate will not be included
+  if (data.endDate !== null && data.endDate !== undefined && data.endDate !== '') {
+    formattedData.endDate = new Date(data.endDate).toISOString()
   }
 
   // Only add allowances if they exist and have valid data
@@ -644,9 +641,23 @@ const getDaysToExpireIcon = (days) => {
   return 'fas fa-calendar-alt'
 }
 
+// Helper function to check if approveStatus indicates approved
+const isApproved = (approveStatus) => {
+  if (!approveStatus) return false
+  if (typeof approveStatus === 'string') {
+    return approveStatus === 'Đã duyệt' || approveStatus === 'Approved'
+  }
+  if (typeof approveStatus === 'number') {
+    return approveStatus === 2
+  }
+  return false
+}
+
 const expiredContracts = computed(() => {
   return contractsData.value.filter(c => 
-    c.daysToExpire <= 10 && c.employeeStatus === 'Active'
+    c.daysToExpire <= 10 && 
+    c.employeeStatus === 'Active' &&
+    isApproved(c.approveStatus)
   )
 })
 
@@ -851,6 +862,8 @@ const selectedDetailItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
 const showTourGuide = ref(false)
+const showChatbotMessage = ref(false)
+const chatbotMessage = ref('Xin chào! Tôi có thể giúp gì cho bạn?')
 
 // Filter variables
 const searchQuery = ref('')
@@ -878,14 +891,35 @@ const filteredContractsData = computed(() => {
   // Apply status filter (approve status)
   if (statusFilter.value) {
     const statusMap = {
+      'Created': 0,
       'Pending': 1,
       'Approved': 2,
-      'Rejected': 3,
-      'Returned': 4
+      'Rejected': 3
     }
     const statusValue = statusMap[statusFilter.value]
-    if (statusValue) {
-      result = result.filter(contract => contract.approveStatus === statusValue)
+    if (statusValue !== undefined) {
+      result = result.filter(contract => {
+        // Handle both number and string approveStatus
+        const contractStatus = contract.approveStatus
+        if (typeof contractStatus === 'number') {
+          return contractStatus === statusValue
+        }
+        if (typeof contractStatus === 'string') {
+          // Map string values to numbers for comparison
+          const stringStatusMap = {
+            'Tạo mới': 0,
+            'Chờ duyệt': 1,
+            'Đã duyệt': 2,
+            'Từ chối': 3,
+            'Created': 0,
+            'Pending': 1,
+            'Approved': 2,
+            'Rejected': 3
+          }
+          return stringStatusMap[contractStatus] === statusValue
+        }
+        return false
+      })
     }
   }
 
@@ -972,6 +1006,9 @@ const downloadExcelTemplate = async () => {
     { header: 'Ngày kết thúc', key: 'endDate', width: 20 },
     { header: 'Lương hợp đồng', key: 'contractSalary', width: 20 },
     { header: 'Lương bảo hiểm', key: 'insuranceSalary', width: 20 },
+    { header: 'Phụ cấp ăn trưa', key: 'allowanceLunch', width: 18 },
+    { header: 'Phụ cấp xăng xe', key: 'allowanceGas', width: 18 },
+    { header: 'Phụ cấp điện thoại', key: 'allowancePhone', width: 20 },
   ]
   dataSheet.columns = headers
 
@@ -980,12 +1017,15 @@ const downloadExcelTemplate = async () => {
   // Add example row
   dataSheet.addRow({
     contractNumber: 'HD001',
-    contractTypeID: '1',
+    contractTypeID: '2',
     employeeID: 'EMP001',
     startDate: '2025-01-01',
     endDate: '2025-12-31',
     contractSalary: '15000000',
-    insuranceSalary: '15000000'
+    insuranceSalary: '15000000',
+    allowanceLunch: '500000',
+    allowanceGas: '',
+    allowancePhone: ''
   })
 
   // --- Sheet 2: Loại hợp đồng ---
@@ -1000,10 +1040,11 @@ const downloadExcelTemplate = async () => {
 
   // Add example contract types
   contractTypeSheet.addRows([
-    { id: '1', name: 'Hợp đồng lao động xác định thời hạn' },
-    { id: '2', name: 'Hợp đồng lao động không xác định thời hạn' },
-    { id: '3', name: 'Hợp đồng thử việc' },
+    { id: '1', name: 'Hợp đồng thử việc' },
+    { id: '2', name: 'Hợp đồng lao động xác định thời hạn' },
+    { id: '3', name: 'Hợp đồng lao động không xác định thời hạn' },
   ])
+
 
   // --- Sheet 3: Hướng dẫn ---
   const instructionSheet = workbook.addWorksheet('Hướng dẫn')
@@ -1026,9 +1067,12 @@ const downloadExcelTemplate = async () => {
     { column: 'ID Loại hợp đồng', description: 'ID của loại hợp đồng (tra cứu trong sheet "Loại hợp đồng").', required: 'Có', example: '1' },
     { column: 'Mã nhân viên', description: 'Mã định danh của nhân viên trong hệ thống.', required: 'Có', example: 'EMP001' },
     { column: 'Ngày bắt đầu', description: 'Ngày bắt đầu hợp đồng (định dạng: YYYY-MM-DD).', required: 'Có', example: '2025-01-01' },
-    { column: 'Ngày kết thúc', description: 'Ngày kết thúc hợp đồng (định dạng: YYYY-MM-DD).', required: 'Có', example: '2025-12-31' },
+    { column: 'Ngày kết thúc', description: 'Ngày kết thúc hợp đồng (định dạng: YYYY-MM-DD). Bỏ qua cột này nếu là hợp đồng thử việc (sẽ tự động tính thêm 2 tháng) hoặc hợp đồng không xác định thời hạn (không có ngày kết thúc).', required: 'Tùy loại hợp đồng', example: '2025-12-31' },
     { column: 'Lương hợp đồng', description: 'Mức lương theo hợp đồng (VND).', required: 'Có', example: '15000000' },
     { column: 'Lương bảo hiểm', description: 'Mức lương đóng bảo hiểm (VND).', required: 'Có', example: '15000000' },
+    { column: 'Phụ cấp ăn trưa', description: 'Giá trị phụ cấp ăn trưa (VND). Có thể để trống nếu không có phụ cấp này.', required: 'Không', example: '500000' },
+    { column: 'Phụ cấp xăng xe', description: 'Giá trị phụ cấp xăng xe (VND). Có thể để trống nếu không có phụ cấp này.', required: 'Không', example: '300000' },
+    { column: 'Phụ cấp điện thoại', description: 'Giá trị phụ cấp điện thoại (VND). Có thể để trống nếu không có phụ cấp này.', required: 'Không', example: '200000' },
   ])
 
   // Auto-fit columns for instruction sheet
@@ -1045,53 +1089,375 @@ const downloadExcelTemplate = async () => {
   saveAs(new Blob([buf]), 'Mau_Nhap_Hop_Dong_Lao_Dong.xlsx')
 }
 
-const processImport = () => {
+const processImport = async () => {
   if (!file.value) {
-    alert('Vui lòng chọn một file Excel.')
+    showMessage('Vui lòng chọn một file Excel.', 'error')
     return
   }
 
+  // Show chatbot message when starting import
+  chatbotMessage.value = 'Đang xử lý import dữ liệu hợp đồng. Do dữ liệu có thể nhiều nên quá trình sẽ cần thời gian, vui lòng đợi...'
+  showChatbotMessage.value = true
+
+  try {
   const reader = new FileReader()
   reader.onload = async (e) => {
     try {
       const data = new Uint8Array(e.target.result)
       const workbook = XLSX.read(data, { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
+        
+        // Find the data sheet (prefer "Dữ liệu nhập", fallback to first sheet)
+        let sheetName = workbook.SheetNames.find(name => name.includes('Dữ liệu nhập') || name.includes('Dữ liệu'))
+        if (!sheetName) {
+          sheetName = workbook.SheetNames[0]
+        }
+        
       const worksheet = workbook.Sheets[sheetName]
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
       if (jsonData.length === 0) {
-        alert('File Excel không có dữ liệu.')
+          showMessage('File Excel không có dữ liệu.', 'error')
+          showChatbotMessage.value = false
+          chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
         return
       }
 
-      const contractsToCreate = jsonData.map(row => ({
-        contractNumber: row['Số hợp đồng'],
-        contractTypeID: row['ID Loại hợp đồng'],
-        employeeID: row['Mã nhân viên'],
-        startDate: row['Ngày bắt đầu'],
-        endDate: row['Ngày kết thúc'],
-        contractSalary: row['Lương hợp đồng'],
-        insuranceSalary: row['Lương bảo hiểm'],
+        // Fetch allowances to map name to ID
+        let allowancesList = []
+        try {
+          allowancesList = await contractService.getAllowances()
+        } catch (error) {
+          console.error('Error fetching allowances:', error)
+        }
+
+        // Fetch contract types to identify contract type
+        let contractTypesList = []
+        try {
+          contractTypesList = await contractService.getContractTypes()
+        } catch (error) {
+          console.error('Error fetching contract types:', error)
+        }
+
+        // Helper function to check if contract type is probation
+        const isProbationContract = (contractTypeID) => {
+          const contractType = contractTypesList.find(ct => 
+            (ct.id || ct.ID)?.toString() === contractTypeID?.toString()
+          )
+          if (!contractType) return false
+          const typeName = (contractType.contractTypeName || contractType.ContractTypeName || '').toLowerCase()
+          return typeName.includes('thử việc') || typeName.includes('thu viec')
+        }
+
+        // Helper function to check if contract type is indeterminate term
+        const isIndeterminateTermContract = (contractTypeID) => {
+          const contractType = contractTypesList.find(ct => 
+            (ct.id || ct.ID)?.toString() === contractTypeID?.toString()
+          )
+          if (!contractType) return false
+          const typeName = (contractType.contractTypeName || contractType.ContractTypeName || '').toLowerCase()
+          return typeName.includes('không xác định') || typeName.includes('khong xac dinh')
+        }
+
+        // Helper function to calculate end date (startDate + months)
+        const calculateEndDate = (startDate, months) => {
+          if (!startDate) return null
+          const date = new Date(startDate)
+          if (isNaN(date.getTime())) return null
+          date.setMonth(date.getMonth() + parseInt(months))
+          return date.toISOString().split('T')[0]
+        }
+
+        // Create mapping from allowance name to ID (case-insensitive, handle variations)
+        const allowanceNameToID = {}
+        if (allowancesList && allowancesList.length > 0) {
+          allowancesList.forEach(allowance => {
+            const name = allowance.allowanceName || allowance.AllowanceName || ''
+            const id = allowance.id || allowance.ID
+            if (name && id) {
+              // Normalize name: lowercase, remove diacritics for matching
+              const normalizedName = name.toLowerCase().trim()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+                .replace(/\s+/g, ' ') // Normalize spaces
+              allowanceNameToID[normalizedName] = id
+              // Also keep original lowercase for exact match
+              allowanceNameToID[name.toLowerCase().trim()] = id
+            }
+          })
+        }
+
+        // Helper function to find allowance ID by name
+        const findAllowanceID = (searchName) => {
+          if (!searchName || searchName.toString().trim() === '') return null
+          
+          const normalizedSearch = searchName.toString().toLowerCase().trim()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+          
+          // Try normalized match first
+          if (allowanceNameToID[normalizedSearch]) {
+            return allowanceNameToID[normalizedSearch]
+          }
+          
+          // Try exact lowercase match
+          if (allowanceNameToID[searchName.toString().toLowerCase().trim()]) {
+            return allowanceNameToID[searchName.toString().toLowerCase().trim()]
+          }
+          
+          // Try partial match
+          for (const [key, value] of Object.entries(allowanceNameToID)) {
+            if (key.includes(normalizedSearch) || normalizedSearch.includes(key)) {
+              return value
+            }
+          }
+          
+          return null
+        }
+
+        // Map Excel columns to contract data
+        const contractsToCreate = []
+        const errors = []
+        
+        jsonData.forEach((row, index) => {
+          try {
+            // Process allowances from Excel - map by name
+            const allowances = []
+            
+            // Process "Phụ cấp ăn trưa"
+            const allowanceLunchValue = row['Phụ cấp ăn trưa'] || row['allowanceLunch'] || ''
+            if (allowanceLunchValue && allowanceLunchValue.toString().trim() !== '') {
+              const value = parseFloat(allowanceLunchValue)
+              if (!isNaN(value) && value >= 0) {
+                const allowanceID = findAllowanceID('Phụ cấp ăn trưa')
+                if (allowanceID) {
+                  allowances.push({ allowanceID: allowanceID, value: value })
+                } else {
+                  errors.push(`Dòng ${index + 2}: Không tìm thấy phụ cấp "Phụ cấp ăn trưa" trong hệ thống`)
+                }
+              } else {
+                errors.push(`Dòng ${index + 2}: Giá trị "Phụ cấp ăn trưa" không hợp lệ: ${allowanceLunchValue}`)
+              }
+            }
+            
+            // Process "Phụ cấp xăng xe"
+            const allowanceGasValue = row['Phụ cấp xăng xe'] || row['allowanceGas'] || ''
+            if (allowanceGasValue && allowanceGasValue.toString().trim() !== '') {
+              const value = parseFloat(allowanceGasValue)
+              if (!isNaN(value) && value >= 0) {
+                const allowanceID = findAllowanceID('Phụ cấp xăng xe')
+                if (allowanceID) {
+                  allowances.push({ allowanceID: allowanceID, value: value })
+                } else {
+                  errors.push(`Dòng ${index + 2}: Không tìm thấy phụ cấp "Phụ cấp xăng xe" trong hệ thống`)
+                }
+              } else {
+                errors.push(`Dòng ${index + 2}: Giá trị "Phụ cấp xăng xe" không hợp lệ: ${allowanceGasValue}`)
+              }
+            }
+            
+            // Process "Phụ cấp điện thoại"
+            const allowancePhoneValue = row['Phụ cấp điện thoại'] || row['allowancePhone'] || ''
+            if (allowancePhoneValue && allowancePhoneValue.toString().trim() !== '') {
+              const value = parseFloat(allowancePhoneValue)
+              if (!isNaN(value) && value >= 0) {
+                const allowanceID = findAllowanceID('Phụ cấp điện thoại')
+                if (allowanceID) {
+                  allowances.push({ allowanceID: allowanceID, value: value })
+                } else {
+                  errors.push(`Dòng ${index + 2}: Không tìm thấy phụ cấp "Phụ cấp điện thoại" trong hệ thống`)
+                }
+              } else {
+                errors.push(`Dòng ${index + 2}: Giá trị "Phụ cấp điện thoại" không hợp lệ: ${allowancePhoneValue}`)
+              }
+            }
+
+            const contractTypeID = row['ID Loại hợp đồng'] || row['contractTypeID'] || ''
+            const startDate = row['Ngày bắt đầu'] || row['startDate'] || ''
+            const endDateFromExcel = row['Ngày kết thúc'] || row['endDate'] || ''
+
+            // Determine contract type
+            const isProbation = isProbationContract(contractTypeID)
+            const isIndeterminate = isIndeterminateTermContract(contractTypeID)
+
+            // Process endDate based on contract type
+            let processedEndDate = null
+            if (isProbation) {
+              // For probation contracts: ignore Excel endDate, calculate startDate + 2 months
+              if (!startDate) {
+                errors.push(`Dòng ${index + 2}: Hợp đồng thử việc cần có ngày bắt đầu để tự động tính ngày kết thúc`)
+                return
+              }
+              processedEndDate = calculateEndDate(startDate, 2)
+              if (!processedEndDate) {
+                errors.push(`Dòng ${index + 2}: Ngày bắt đầu không hợp lệ để tính ngày kết thúc`)
+                return
+              }
+            } else if (isIndeterminate) {
+              // For indeterminate term contracts: ignore Excel endDate, set to null
+              processedEndDate = null
+            } else {
+              // For other contract types: use endDate from Excel
+              if (!endDateFromExcel) {
+                errors.push(`Dòng ${index + 2}: Thiếu ngày kết thúc`)
+                return
+              }
+              processedEndDate = endDateFromExcel
+            }
+
+            const contractData = {
+              contractNumber: row['Số hợp đồng'] || row['contractNumber'] || '',
+              contractTypeID: contractTypeID,
+              employeeID: row['Mã nhân viên'] || row['employeeID'] || '',
+              startDate: startDate,
+              endDate: processedEndDate,
+              contractSalary: row['Lương hợp đồng'] || row['contractSalary'] || '',
+              insuranceSalary: row['Lương bảo hiểm'] || row['insuranceSalary'] || '',
         approveStatus: 0, // Default to Created
-        allowances: [] // Empty allowances for now
-      })).filter(contract => contract.contractNumber && contract.contractTypeID && contract.employeeID && contract.startDate && contract.endDate && contract.contractSalary && contract.insuranceSalary)
+              allowances: allowances
+            }
 
-      if (contractsToCreate.length === 0) {
-        alert('Không tìm thấy dữ liệu hợp lệ trong file.')
+            // Validate required fields
+            if (!contractData.contractNumber || !contractData.contractNumber.trim()) {
+              errors.push(`Dòng ${index + 2}: Thiếu số hợp đồng`)
+              return
+            }
+            if (!contractData.contractTypeID) {
+              errors.push(`Dòng ${index + 2}: Thiếu ID loại hợp đồng`)
+              return
+            }
+            if (!contractData.employeeID || !contractData.employeeID.trim()) {
+              errors.push(`Dòng ${index + 2}: Thiếu mã nhân viên`)
+              return
+            }
+            if (!contractData.startDate) {
+              errors.push(`Dòng ${index + 2}: Thiếu ngày bắt đầu`)
+              return
+            }
+            if (!contractData.contractSalary) {
+              errors.push(`Dòng ${index + 2}: Thiếu lương hợp đồng`)
+              return
+            }
+            if (!contractData.insuranceSalary) {
+              errors.push(`Dòng ${index + 2}: Thiếu lương bảo hiểm`)
         return
       }
 
-      await Promise.all(contractsToCreate.map(contract => createContract(contract)))
+            // Validate dates
+            const startDateObj = new Date(contractData.startDate)
+            if (isNaN(startDateObj.getTime())) {
+              errors.push(`Dòng ${index + 2}: Ngày bắt đầu không hợp lệ: ${contractData.startDate}`)
+              return
+            }
 
-      alert(`Đã nhập thành công ${contractsToCreate.length} hợp đồng lao động.`)
+            // Only validate endDate if it's not null (i.e., not indeterminate term contract)
+            if (contractData.endDate !== null && contractData.endDate !== undefined && contractData.endDate !== '') {
+              const endDateObj = new Date(contractData.endDate)
+              if (isNaN(endDateObj.getTime())) {
+                errors.push(`Dòng ${index + 2}: Ngày kết thúc không hợp lệ: ${contractData.endDate}`)
+                return
+              }
+
+              if (startDateObj >= endDateObj) {
+                errors.push(`Dòng ${index + 2}: Ngày bắt đầu phải nhỏ hơn ngày kết thúc`)
+                return
+              }
+            }
+
+            // Validate contractTypeID
+            const contractTypeIDNum = parseInt(contractData.contractTypeID)
+            if (isNaN(contractTypeIDNum) || contractTypeIDNum <= 0) {
+              errors.push(`Dòng ${index + 2}: ID loại hợp đồng không hợp lệ: ${contractData.contractTypeID}`)
+              return
+            }
+
+            // Validate salaries
+            const contractSalary = parseFloat(contractData.contractSalary)
+            if (isNaN(contractSalary) || contractSalary < 0) {
+              errors.push(`Dòng ${index + 2}: Lương hợp đồng không hợp lệ: ${contractData.contractSalary}`)
+              return
+            }
+
+            const insuranceSalary = parseFloat(contractData.insuranceSalary)
+            if (isNaN(insuranceSalary) || insuranceSalary < 0) {
+              errors.push(`Dòng ${index + 2}: Lương bảo hiểm không hợp lệ: ${contractData.insuranceSalary}`)
+              return
+            }
+
+            // Format the contract data
+            const formattedContract = formatContractForSubmit({
+              ...contractData,
+              contractTypeID: contractTypeIDNum,
+              contractSalary: contractSalary,
+              insuranceSalary: insuranceSalary,
+              allowances: allowances
+            })
+
+            contractsToCreate.push(formattedContract)
+          } catch (error) {
+            errors.push(`Dòng ${index + 2}: ${error.message}`)
+          }
+        })
+        
+        // If there are validation errors, show them
+        if (errors.length > 0) {
+          const errorMessage = `Có ${errors.length} lỗi validation:\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n... và ${errors.length - 10} lỗi khác` : ''}`
+          showMessage(errorMessage, 'error')
+          chatbotMessage.value = 'Có lỗi validation trong dữ liệu. Vui lòng kiểm tra lại file Excel.'
+          setTimeout(() => {
+            showChatbotMessage.value = false
+            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+          }, 3000)
+          return
+        }
+
+        if (contractsToCreate.length === 0) {
+          showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error')
+          chatbotMessage.value = 'Không tìm thấy dữ liệu hợp lệ trong file.'
+          setTimeout(() => {
+            showChatbotMessage.value = false
+            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+          }, 3000)
+          return
+        }
+
+        // Create multiple contracts
+        try {
+          await createMultipleContracts(contractsToCreate)
+          showMessage(`Đã thêm thành công ${contractsToCreate.length} hợp đồng lao động.`, 'success')
+          chatbotMessage.value = `Đã hoàn thành! Đã thêm thành công ${contractsToCreate.length} hợp đồng lao động vào hệ thống.`
+        } catch (error) {
+          // Error message already shown by createMultipleContracts
+          console.error('Error creating contracts:', error)
+          chatbotMessage.value = 'Có lỗi xảy ra trong quá trình import. Vui lòng kiểm tra lại dữ liệu.'
+        } finally {
       file.value = null
       showImportModal.value = false
+          await fetchAllContracts()
+          // Hide chatbot message after a delay
+          setTimeout(() => {
+            showChatbotMessage.value = false
+            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+          }, 3000)
+        }
     } catch (error) {
-      alert('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.')
+        console.error('Lỗi khi xử lý file Excel:', error)
+        const errorMessage = error.message || 'Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.'
+        showMessage(errorMessage, 'error')
+        chatbotMessage.value = 'Có lỗi xảy ra trong quá trình import. Vui lòng kiểm tra lại dữ liệu.'
+        setTimeout(() => {
+          showChatbotMessage.value = false
+          chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+        }, 3000)
     }
   }
   reader.readAsArrayBuffer(file.value)
+  } catch (error) {
+    console.error('Lỗi khi đọc file:', error)
+    showMessage('Có lỗi xảy ra khi đọc file', 'error')
+    showChatbotMessage.value = false
+    chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+  }
 }
 
 // Delete confirmation dialog

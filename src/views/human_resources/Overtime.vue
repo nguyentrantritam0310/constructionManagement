@@ -240,7 +240,28 @@ const filteredOvertimeRequests = computed(() => {
     }
     const statusValue = statusMap[statusFilter.value]
     if (statusValue !== undefined) {
-      result = result.filter(request => request.approveStatus === statusValue || request.approveStatus?.toString() === statusValue.toString())
+      result = result.filter(request => {
+        // Handle both number and string approveStatus
+        const requestStatus = request.approveStatus
+        if (typeof requestStatus === 'number') {
+          return requestStatus === statusValue
+        }
+        if (typeof requestStatus === 'string') {
+          // Map string values to numbers for comparison
+          const stringStatusMap = {
+            'Tạo mới': 0,
+            'Chờ duyệt': 1,
+            'Đã duyệt': 2,
+            'Từ chối': 3,
+            'Created': 0,
+            'Pending': 1,
+            'Approved': 2,
+            'Rejected': 3
+          }
+          return stringStatusMap[requestStatus] === statusValue
+        }
+        return false
+      })
     }
   }
 

@@ -26,6 +26,7 @@ const {
     fetchAllEmployees,
     fetchAllRoles,
     createEmployee,
+    createMultipleEmployees,
     updateEmployee,
     deleteEmployee,
     formatEmployeeForSubmit
@@ -88,10 +89,19 @@ const handleEmployeeSubmit = async (data) => {
     }
 }
 
-const handleDeleteEmployee = async (id) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) {
+const handleDeleteEmployee = (id) => {
+    employeeToDelete.value = id
+    showDeleteConfirmModal.value = true
+}
+
+const confirmDeleteEmployee = async () => {
+    if (!employeeToDelete.value) {
         return
     }
+    
+    const id = employeeToDelete.value
+    showDeleteConfirmModal.value = false
+    employeeToDelete.value = null
     
     try {
         await deleteEmployee(id)
@@ -100,6 +110,11 @@ const handleDeleteEmployee = async (id) => {
     } catch (err) {
         showMessage(`Lỗi: ${err.message || 'Có lỗi xảy ra khi xóa nhân viên'}`, 'error')
     }
+}
+
+const cancelDeleteEmployee = () => {
+    showDeleteConfirmModal.value = false
+    employeeToDelete.value = null
 }
 
 onMounted(async () => {
@@ -146,6 +161,10 @@ const familyFormMode = ref('create')
 const showFilter = ref(false)
 const showImportModal = ref(false)
 const showTourGuide = ref(false)
+const showChatbotMessage = ref(false)
+const chatbotMessage = ref('Xin chào! Tôi có thể giúp gì cho bạn?')
+const showDeleteConfirmModal = ref(false)
+const employeeToDelete = ref(null)
 
 // Filter variables
 const searchQuery = ref('')
@@ -264,17 +283,36 @@ const handleFamilyRelationSubmit = async (data) => {
     }
 }
 
-const handleDeleteFamilyRelation = async (relationId) => {
-    if (confirm('Bạn có chắc chắn muốn xóa quan hệ gia đình này?')) {
-        try {
-            await deleteFamilyRelation(relationId, selectedEmployee.value.id)
-            showMessage('Xóa quan hệ gia đình thành công!', 'success')
-            await fetchFamilyRelationsByEmployeeId(selectedEmployee.value.id)
-            selectedRelations.value = familyRelations.value
-        } catch (err) {
-            showMessage(`Lỗi: ${err.message}`, 'error')
-        }
+const showDeleteFamilyConfirmModal = ref(false)
+const familyRelationToDelete = ref(null)
+
+const handleDeleteFamilyRelation = (relationId) => {
+    familyRelationToDelete.value = relationId
+    showDeleteFamilyConfirmModal.value = true
+}
+
+const confirmDeleteFamilyRelation = async () => {
+    if (!familyRelationToDelete.value) {
+        return
     }
+    
+    const relationId = familyRelationToDelete.value
+    showDeleteFamilyConfirmModal.value = false
+    familyRelationToDelete.value = null
+    
+    try {
+        await deleteFamilyRelation(relationId, selectedEmployee.value.id)
+        showMessage('Xóa quan hệ gia đình thành công!', 'success')
+        await fetchFamilyRelationsByEmployeeId(selectedEmployee.value.id)
+        selectedRelations.value = familyRelations.value
+    } catch (err) {
+        showMessage(`Lỗi: ${err.message}`, 'error')
+    }
+}
+
+const cancelDeleteFamilyRelation = () => {
+    showDeleteFamilyConfirmModal.value = false
+    familyRelationToDelete.value = null
 }
 
 const paginatedEmployees = computed(() => {
@@ -346,7 +384,21 @@ const exportToExcel = async () => {
 
     worksheet.columns = columns.map(c => ({ header: c.label, key: c.key, width: 15 }))
 
-    employeesData.value.forEach(row => {
+    // Process data to remove HTML from employeeName
+    const exportData = employeesData.value.map(row => {
+        // Extract plain text from employeeName (remove HTML tags)
+        // Or use firstName + lastName directly
+        const plainEmployeeName = row.firstName && row.lastName 
+            ? `${row.firstName} ${row.lastName}`.trim()
+            : (row.employeeName || '').replace(/<[^>]*>/g, '').trim()
+        
+        return {
+            ...row,
+            employeeName: plainEmployeeName
+        }
+    })
+
+    exportData.forEach(row => {
         worksheet.addRow(row)
     })
 
@@ -511,29 +563,155 @@ const startTour = () => {
 }
 
 // Import Excel functions
-const fileInput = ref(null)
+const selectedFile = ref(null)
 
-const downloadExcelTemplate = () => {
+const downloadExcelTemplate = async () => {
+  // Ensure roles are loaded before creating template
+  if (!roles.value || roles.value.length === 0) {
+    await fetchAllRoles()
+  }
+
   const workbook = new ExcelJS.Workbook()
-  const worksheet = workbook.addWorksheet('Employees')
-  
-  worksheet.columns = columns.map(c => ({ header: c.label, key: c.key, width: 15 }))
-  
-  applyHeaderStyle(worksheet.getRow(1))
-  
-  const buf = workbook.xlsx.writeBuffer()
-  saveAs(new Blob([buf]), 'Employee_Template.xlsx')
+
+  // --- Sheet 1: Dữ liệu nhập ---
+  const dataSheet = workbook.addWorksheet('Dữ liệu nhập')
+  const headers = [
+    { header: 'Mã nhân viên', key: 'employeeCode', width: 20 },
+    { header: 'Họ và tên đệm', key: 'lastName', width: 25 },
+    { header: 'Tên', key: 'firstName', width: 20 },
+    { header: 'Ngày sinh', key: 'birthday', width: 15 },
+    { header: 'Email', key: 'email', width: 30 },
+    { header: 'Số điện thoại', key: 'phone', width: 15 },
+    { header: 'Ngày vào làm', key: 'joinDate', width: 15 },
+    { header: 'Giới tính', key: 'gender', width: 12 },
+    { header: 'Chức danh', key: 'roleID', width: 15 },
+    { header: 'Trạng thái', key: 'status', width: 15 },
+  ]
+  dataSheet.columns = headers
+
+  // Style header
+  dataSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  })
+
+  // Add example row
+  dataSheet.addRow({
+    employeeCode: 'NV001',
+    lastName: 'Nguyễn Văn',
+    firstName: 'An',
+    birthday: '1990-01-15',
+    email: 'nguyenvanan@example.com',
+    phone: '0912345678',
+    joinDate: '2024-01-01',
+    gender: 'Nam',
+    roleID: 1,
+    status: 0
+  })
+
+  // --- Sheet 2: Hướng dẫn ---
+  const instructionSheet = workbook.addWorksheet('Hướng dẫn')
+  instructionSheet.columns = [
+    { header: 'Tên cột', key: 'column', width: 20 },
+    { header: 'Mô tả', key: 'description', width: 50 },
+    { header: 'Bắt buộc', key: 'required', width: 15 },
+    { header: 'Ví dụ', key: 'example', width: 30 },
+  ]
+
+  // Style header for instruction sheet
+  instructionSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } }
+  })
+
+  // Add instruction data
+  instructionSheet.addRows([
+    { column: 'Mã nhân viên', description: 'Mã định danh duy nhất cho nhân viên. Chỉ chứa chữ cái, số, dấu gạch ngang và gạch dưới, độ dài 1-20 ký tự.', required: 'Có', example: 'NV001' },
+    { column: 'Họ và tên đệm', description: 'Họ và tên đệm của nhân viên. Chỉ chứa chữ cái, dấu tiếng Việt và khoảng trắng, độ dài 1-50 ký tự.', required: 'Có', example: 'Nguyễn Văn' },
+    { column: 'Tên', description: 'Tên của nhân viên. Chỉ chứa chữ cái và dấu tiếng Việt, độ dài 1-30 ký tự.', required: 'Có', example: 'An' },
+    { column: 'Ngày sinh', description: 'Ngày sinh của nhân viên. Định dạng YYYY-MM-DD.', required: 'Có', example: '1990-01-15' },
+    { column: 'Email', description: 'Địa chỉ email của nhân viên. Phải đúng định dạng email.', required: 'Có', example: 'nguyenvanan@example.com' },
+    { column: 'Số điện thoại', description: 'Số điện thoại Việt Nam. 10 số, bắt đầu bằng 0.', required: 'Có', example: '0912345678' },
+    { column: 'Ngày vào làm', description: 'Ngày nhân viên bắt đầu làm việc. Định dạng YYYY-MM-DD.', required: 'Có', example: '2024-01-01' },
+    { column: 'Giới tính', description: 'Giới tính của nhân viên. Chỉ nhận giá trị: Nam, Nữ, Khác.', required: 'Có', example: 'Nam' },
+    { column: 'Chức danh', description: 'ID của chức danh trong hệ thống. Là một số nguyên dương. Xem sheet "Danh sách chức danh" để tra cứu ID phù hợp.', required: 'Có', example: '1' },
+    { column: 'Trạng thái', description: 'Trạng thái làm việc của nhân viên. 0 = Đang làm việc, 1 = Nghỉ việc, 2 = Nghỉ thai sản. Mặc định là 0.', required: 'Không', example: '0' },
+  ])
+
+  // Auto-fit columns for instruction sheet
+  instructionSheet.columns.forEach(column => {
+    let maxLength = 0
+    column.eachCell({ includeEmpty: true }, cell => {
+      const val = cell.value ? cell.value.toString() : ''
+      maxLength = Math.max(maxLength, val.length)
+    })
+    column.width = Math.max(column.width, maxLength + 2)
+  })
+
+  // --- Sheet 3: Danh sách chức danh ---
+  const rolesSheet = workbook.addWorksheet('Danh sách chức danh')
+  rolesSheet.columns = [
+    { header: 'ID', key: 'id', width: 10 },
+    { header: 'Tên chức danh', key: 'roleName', width: 30 },
+  ]
+
+  // Style header for roles sheet
+  rolesSheet.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  })
+
+  // Add roles data
+  if (roles.value && roles.value.length > 0) {
+    roles.value.forEach(role => {
+      rolesSheet.addRow({
+        id: role.id || role.ID,
+        roleName: role.roleName || role.RoleName
+      })
+    })
+  } else {
+    // If roles not loaded, add a note
+    rolesSheet.addRow({
+      id: 'N/A',
+      roleName: 'Vui lòng tải lại file sau khi hệ thống đã tải danh sách chức danh'
+    })
+  }
+
+  // Style data rows for roles sheet
+  rolesSheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber !== 1) {
+      row.eachCell(cell => {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' }
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+      })
+    }
+  })
+
+  // Generate and download file
+  const buf = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buf]), 'Mau_Nhap_Nhan_Vien.xlsx')
 }
 
 const handleFileSelect = (event) => {
-  fileInput.value = event.target.files[0]
+  const target = event.target
+  if (target && target.files) {
+    selectedFile.value = target.files[0]
+  }
 }
 
 const handleImportExcel = async () => {
-  if (!fileInput.value) {
+  if (!selectedFile.value) {
     showMessage('Vui lòng chọn file Excel', 'error')
     return
   }
+  
+  // Show chatbot message when starting import
+  chatbotMessage.value = 'Đang xử lý import dữ liệu. Do dữ liệu có thể nhiều nên quá trình sẽ cần thời gian, vui lòng đợi...'
+  showChatbotMessage.value = true
   
   try {
     const reader = new FileReader()
@@ -541,23 +719,148 @@ const handleImportExcel = async () => {
       try {
         const data = new Uint8Array(e.target.result)
         const workbook = XLSX.read(data, { type: 'array' })
-        const sheetName = workbook.SheetNames[0]
+        
+        // Find the data sheet (prefer "Dữ liệu nhập", fallback to first sheet)
+        let sheetName = workbook.SheetNames.find(name => name.includes('Dữ liệu nhập') || name.includes('Dữ liệu'))
+        if (!sheetName) {
+          sheetName = workbook.SheetNames[0]
+        }
+        
         const worksheet = workbook.Sheets[sheetName]
         const jsonData = XLSX.utils.sheet_to_json(worksheet)
         
-        // Process import data here
-        // This is a placeholder - you'll need to implement the actual import logic
-        showMessage('Nhập dữ liệu thành công!', 'success')
+        if (jsonData.length === 0) {
+          showMessage('File Excel không có dữ liệu.', 'error')
+          showChatbotMessage.value = false
+          return
+        }
+
+        // Map Excel columns to employee data
+        const employeesToCreate = []
+        const errors = []
+        
+        jsonData.forEach((row, index) => {
+          try {
+            // Map column names (handle both Vietnamese and English)
+            const employeeData = {
+              employeeCode: row['Mã nhân viên'] || row['employeeCode'] || '',
+              lastName: row['Họ và tên đệm'] || row['lastName'] || '',
+              firstName: row['Tên'] || row['firstName'] || '',
+              birthday: row['Ngày sinh'] || row['birthday'] || '',
+              email: row['Email'] || row['email'] || '',
+              phone: row['Số điện thoại'] || row['phone'] || '',
+              joinDate: row['Ngày vào làm'] || row['joinDate'] || '',
+              gender: row['Giới tính'] || row['gender'] || '',
+              roleID: row['Chức danh'] || row['roleID'] || '',
+              status: row['Trạng thái'] !== undefined ? row['Trạng thái'] : (row['status'] !== undefined ? row['status'] : 0)
+            }
+
+            // Validate required fields before formatting
+            if (!employeeData.employeeCode || !employeeData.employeeCode.trim()) {
+              errors.push(`Dòng ${index + 2}: Thiếu mã nhân viên`)
+              return
+            }
+            if (!employeeData.lastName || !employeeData.lastName.trim()) {
+              errors.push(`Dòng ${index + 2}: Thiếu họ và tên đệm`)
+              return
+            }
+            if (!employeeData.firstName || !employeeData.firstName.trim()) {
+              errors.push(`Dòng ${index + 2}: Thiếu tên`)
+              return
+            }
+            if (!employeeData.email || !employeeData.email.trim()) {
+              errors.push(`Dòng ${index + 2}: Thiếu email`)
+              return
+            }
+            if (!employeeData.phone || !employeeData.phone.trim()) {
+              errors.push(`Dòng ${index + 2}: Thiếu số điện thoại`)
+              return
+            }
+            if (!employeeData.roleID) {
+              errors.push(`Dòng ${index + 2}: Thiếu chức danh`)
+              return
+            }
+            if (!employeeData.birthday) {
+              errors.push(`Dòng ${index + 2}: Thiếu ngày sinh`)
+              return
+            }
+            if (!employeeData.joinDate) {
+              errors.push(`Dòng ${index + 2}: Thiếu ngày vào làm`)
+              return
+            }
+            if (!employeeData.gender || !employeeData.gender.trim()) {
+              errors.push(`Dòng ${index + 2}: Thiếu giới tính`)
+              return
+            }
+
+            // Format the employee data using formatEmployeeForSubmit
+            // This will also validate dates and roleID
+            const formattedEmployee = formatEmployeeForSubmit(employeeData)
+            employeesToCreate.push(formattedEmployee)
+          } catch (error) {
+            errors.push(`Dòng ${index + 2}: ${error.message}`)
+          }
+        })
+        
+        // If there are validation errors, show them
+        if (errors.length > 0) {
+          const errorMessage = `Có ${errors.length} lỗi validation:\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n... và ${errors.length - 10} lỗi khác` : ''}`
+          showMessage(errorMessage, 'error')
+          chatbotMessage.value = 'Có lỗi validation trong dữ liệu. Vui lòng kiểm tra lại file Excel.'
+          setTimeout(() => {
+            showChatbotMessage.value = false
+            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+          }, 3000)
+          return
+        }
+
+        if (employeesToCreate.length === 0) {
+          showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error')
+          chatbotMessage.value = 'Không tìm thấy dữ liệu hợp lệ trong file.'
+          setTimeout(() => {
+            showChatbotMessage.value = false
+            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+          }, 3000)
+          return
+        }
+
+        // Create multiple employees
+        try {
+          await createMultipleEmployees(employeesToCreate)
+          showMessage(`Đã thêm thành công ${employeesToCreate.length} nhân viên.`, 'success')
+          chatbotMessage.value = `Đã hoàn thành! Đã thêm thành công ${employeesToCreate.length} nhân viên vào hệ thống.`
+        } catch (error) {
+          // Error message already shown by createMultipleEmployees
+          console.error('Error creating employees:', error)
+          chatbotMessage.value = 'Có lỗi xảy ra trong quá trình import. Vui lòng kiểm tra lại dữ liệu.'
+          // Don't throw here, let the user see the error message
+        } finally {
+          // Hide chatbot message after a delay
+          setTimeout(() => {
+            showChatbotMessage.value = false
+            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+          }, 3000)
+        }
+        selectedFile.value = null
         showImportModal.value = false
         await fetchAllEmployees()
       } catch (error) {
         console.error('Lỗi khi xử lý file Excel:', error)
-        showMessage('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.', 'error')
+        const errorMessage = error.message || 'Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.'
+        showMessage(errorMessage, 'error')
+        chatbotMessage.value = 'Có lỗi xảy ra trong quá trình import. Vui lòng kiểm tra lại dữ liệu.'
+        setTimeout(() => {
+          showChatbotMessage.value = false
+          chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
+        }, 3000)
       }
     }
-    reader.readAsArrayBuffer(fileInput.value)
+    reader.readAsArrayBuffer(selectedFile.value)
   } catch (error) {
+    console.error('Lỗi khi đọc file:', error)
     showMessage('Có lỗi xảy ra khi đọc file', 'error')
+    showChatbotMessage.value = false
+    chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
   }
 }
 
@@ -786,13 +1089,16 @@ const handleImportExcel = async () => {
                 <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
                     Tải file mẫu
                 </ActionButton>
-                <div class="mt-3">
-                    <input type="file" ref="fileInput" @change="handleFileSelect" accept=".xlsx,.xls" class="form-control" />
-                </div>
-                <div class="mt-3 text-end">
-                    <ActionButton type="primary" icon="fas fa-upload me-2" @click="handleImportExcel" :disabled="!fileInput">
-                        Nhập dữ liệu
-                    </ActionButton>
+
+                <hr class="my-4">
+
+                <h5>Tải lên file đã điền</h5>
+                <div class="input-group">
+                    <input type="file" @change="handleFileSelect" accept=".xlsx, .xls" class="form-control">
+                    <button class="btn btn-primary" @click="handleImportExcel" :disabled="!selectedFile">
+                        <i class="fas fa-upload me-2"></i>
+                        Xử lý
+                    </button>
                 </div>
             </div>
         </ModalDialog>
@@ -807,10 +1113,55 @@ const handleImportExcel = async () => {
             @complete="handleTourComplete" 
         />
         <AIChatbotButton 
-            message="Xin chào! Tôi có thể giúp gì cho bạn?" 
+            :message="chatbotMessage" 
             title="Trợ lý AI"
+            :auto-show="showChatbotMessage"
             @guide-click="startTour"
         />
+        
+        <!-- Delete Employee Confirmation Modal -->
+        <ModalDialog 
+            :show="showDeleteConfirmModal" 
+            title="Xác nhận xóa" 
+            size="sm"
+            @update:show="cancelDeleteEmployee"
+        >
+            <div class="text-center py-3">
+                <i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 3rem;"></i>
+                <p class="mb-0">Bạn có chắc chắn muốn xóa nhân viên này?</p>
+            </div>
+            <div class="d-flex justify-content-center gap-2 mt-3">
+                <button class="btn btn-secondary" @click="cancelDeleteEmployee">
+                    Hủy
+                </button>
+                <button class="btn btn-danger" @click="confirmDeleteEmployee">
+                    <i class="fas fa-trash me-2"></i>
+                    Xóa
+                </button>
+            </div>
+        </ModalDialog>
+        
+        <!-- Delete Family Relation Confirmation Modal -->
+        <ModalDialog 
+            :show="showDeleteFamilyConfirmModal" 
+            title="Xác nhận xóa" 
+            size="sm"
+            @update:show="cancelDeleteFamilyRelation"
+        >
+            <div class="text-center py-3">
+                <i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 3rem;"></i>
+                <p class="mb-0">Bạn có chắc chắn muốn xóa quan hệ gia đình này?</p>
+            </div>
+            <div class="d-flex justify-content-center gap-2 mt-3">
+                <button class="btn btn-secondary" @click="cancelDeleteFamilyRelation">
+                    Hủy
+                </button>
+                <button class="btn btn-danger" @click="confirmDeleteFamilyRelation">
+                    <i class="fas fa-trash me-2"></i>
+                    Xóa
+                </button>
+            </div>
+        </ModalDialog>
     </div>
 </template>
 

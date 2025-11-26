@@ -116,14 +116,35 @@ const filteredAdjustmentData = computed(() => {
   // Apply status filter
   if (statusFilter.value) {
     const statusMap = {
+      'Created': 0,
       'Pending': 1,
       'Approved': 2,
-      'Rejected': 3,
-      'Returned': 4
+      'Rejected': 3
     }
     const statusValue = statusMap[statusFilter.value]
-    if (statusValue) {
-      result = result.filter(adjustment => adjustment.approveStatus === statusValue)
+    if (statusValue !== undefined) {
+      result = result.filter(adjustment => {
+        // Handle both number and string approveStatus
+        const adjustmentStatus = adjustment.approveStatus
+        if (typeof adjustmentStatus === 'number') {
+          return adjustmentStatus === statusValue
+        }
+        if (typeof adjustmentStatus === 'string') {
+          // Map string values to numbers for comparison
+          const stringStatusMap = {
+            'Tạo mới': 0,
+            'Chờ duyệt': 1,
+            'Đã duyệt': 2,
+            'Từ chối': 3,
+            'Created': 0,
+            'Pending': 1,
+            'Approved': 2,
+            'Rejected': 3
+          }
+          return stringStatusMap[adjustmentStatus] === statusValue
+        }
+        return false
+      })
     }
   }
 
@@ -667,10 +688,10 @@ const startTour = () => {
           <div class="col-md-2">
             <select class="form-control" v-model="statusFilter">
               <option value="">Tất cả trạng thái</option>
+              <option value="Created">Tạo mới</option>
               <option value="Pending">Chờ duyệt</option>
               <option value="Approved">Đã duyệt</option>
               <option value="Rejected">Từ chối</option>
-              <option value="Returned">Trả lại</option>
             </select>
           </div>
           <div class="col-md-2">

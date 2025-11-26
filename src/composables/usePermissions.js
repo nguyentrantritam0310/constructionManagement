@@ -13,7 +13,7 @@ export function usePermissions() {
       'technician': ['view_own', 'create', 'submit_own'], // Nhân viên kỹ thuật: xem/sửa đơn của mình, gửi duyệt
       'hr_employee': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_hr'], // Nhân viên HCNS: xem tất cả, tạo/sửa/xóa, gửi duyệt, duyệt đơn của kỹ thuật
       'hr_manager': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_manager'], // Trưởng phòng HCNS: xem tất cả, tạo/sửa/xóa, gửi duyệt, duyệt đơn của nhân viên HCNS
-      'director': ['view', 'approve_director'] // Giám đốc: chỉ xem và duyệt đơn của trưởng phòng HCNS
+      'director': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_director', 'approve_team', 'approve_hr', 'approve_manager'] // Giám đốc: toàn quyền
     },
     
     // Trang tăng ca
@@ -23,7 +23,7 @@ export function usePermissions() {
       'technician': ['view_own', 'create', 'submit_own'],
       'hr_employee': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_hr'],
       'hr_manager': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_manager'],
-      'director': ['view', 'approve_director']
+      'director': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_director', 'approve_team', 'approve_hr', 'approve_manager'] // Giám đốc: toàn quyền
     },
     
     // Trang hợp đồng (chỉ HCNS tạo)
@@ -33,7 +33,7 @@ export function usePermissions() {
       'technician': ['view_own'],
       'hr_employee': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_hr'],
       'hr_manager': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_manager'],
-      'director': ['view', 'approve_director']
+      'director': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_director', 'approve_team', 'approve_hr', 'approve_manager'] // Giám đốc: toàn quyền
     },
     
     // Trang khoản cộng trừ (chỉ HCNS tạo)
@@ -43,49 +43,49 @@ export function usePermissions() {
       'technician': ['view_own'],
       'hr_employee': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_hr'],
       'hr_manager': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_manager'],
-      'director': ['view', 'approve_director']
+      'director': ['view', 'create', 'edit', 'delete', 'submit_all', 'approve_director', 'approve_team', 'approve_hr', 'approve_manager'] // Giám đốc: toàn quyền
     },
     
     // Trang nhân sự
     'human-resources': {
       'hr_employee': ['view', 'create', 'edit'],
       'hr_manager': ['view', 'create', 'edit', 'delete', 'approve'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete', 'approve'] // Giám đốc: toàn quyền
     },
     
     // Trang chấm công
     'attendance-summary': {
       'hr_employee': ['view'],
       'hr_manager': ['view', 'create', 'edit', 'approve'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'approve'] // Giám đốc: toàn quyền
     },
     
     // Trang phép năm
     'annual-leave': {
       'hr_employee': ['view', 'create', 'edit'],
       'hr_manager': ['view', 'create', 'edit', 'delete', 'approve'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete', 'approve'] // Giám đốc: toàn quyền
     },
     
     // Trang thiết lập ca
     'shift-setup': {
       'hr_employee': ['view', 'create', 'edit'],
       'hr_manager': ['view', 'create', 'edit', 'delete', 'approve'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete', 'approve'] // Giám đốc: toàn quyền
     },
     
     // Trang phân ca nhân viên
     'shift-assignment': {
       'hr_employee': ['view', 'create', 'edit'],
       'hr_manager': ['view', 'create', 'edit', 'delete', 'approve'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete', 'approve'] // Giám đốc: toàn quyền
     },
     
     // Trang bảng lương
     'salary-table': {
       'hr_employee': ['view', 'create', 'edit'],
       'hr_manager': ['view', 'create', 'edit', 'delete', 'approve'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete', 'approve'] // Giám đốc: toàn quyền
     },
     
     // Trang quản lý công trình
@@ -95,7 +95,7 @@ export function usePermissions() {
       'manager': ['view', 'create', 'edit', 'delete'],
       'hr_employee': ['view'], // Nhân viên HCNS: chỉ xem
       'hr_manager': ['view'], // Trưởng phòng HCNS: chỉ xem
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang kế hoạch thi công
@@ -105,7 +105,7 @@ export function usePermissions() {
       'manager': ['view', 'create', 'edit', 'delete'],
       'hr_employee': ['view'], // Nhân viên HCNS: chỉ xem
       'hr_manager': ['view'], // Trưởng phòng HCNS: chỉ xem
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang báo cáo kỹ thuật
@@ -113,7 +113,7 @@ export function usePermissions() {
       'worker': ['view_own', 'create'],
       'technician': ['view_own', 'create'],
       'manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang lập kế hoạch vật tư
@@ -121,53 +121,53 @@ export function usePermissions() {
       'worker': ['view_own', 'create'],
       'technician': ['view_own', 'create'],
       'manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang quản lý vật tư
     'material-management': {
       'manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang nhập kho
     'warehouse-entry': {
       'manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang xuất kho
     'stock-out': {
       'manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang quản lý công trình (của manager)
     'task-status': {
       'manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang báo cáo sự cố thi công
     'incident-report': {
       'manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang phê duyệt đề xuất
     'proposal-approval': {
-      'director': ['view', 'approve'] // Giám đốc: xem và duyệt
+      'director': ['view', 'approve', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang dự báo thời tiết
     'weather-forecast': {
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     },
     
     // Trang quản lý phân quyền
     'permission-management': {
       'hr_manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view'] // Giám đốc: chỉ xem
+      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     }
   }
 
@@ -206,16 +206,17 @@ export function usePermissions() {
   const canEditItem = (page, item) => {
     if (!item || !canView(page)) return false
     
-    // Giám đốc chỉ xem, không được sửa/xóa
-    if (currentUser.value?.role === 'director') {
-      return false
+    // Giám đốc có toàn quyền - có thể sửa mọi thứ
+    if (currentUser.value?.role === 'director' && hasPermission(page, 'edit')) {
+      // Với các trang có approval workflow, giám đốc vẫn có thể sửa ở mọi trạng thái
+      return true
     }
     
     // Check approval status for specific pages - only allow edit if status is "Tạo mới"
     const statusRestrictedPages = ['leave', 'overtime', 'personnel-contract', 'payroll-adjustment']
     if (statusRestrictedPages.includes(page)) {
       // Only allow edit if approveStatus is "Tạo mới"
-      if (item.approveStatus !== 'Tạo mới') {
+      if (item.approveStatus !== 'Tạo mới' && item.approveStatus !== 0 && item.approveStatus !== '0') {
         return false
       }
     }
@@ -234,16 +235,17 @@ export function usePermissions() {
   const canDeleteItem = (page, item) => {
     if (!item || !canView(page)) return false
     
-    // Giám đốc chỉ xem, không được sửa/xóa
-    if (currentUser.value?.role === 'director') {
-      return false
+    // Giám đốc có toàn quyền - có thể xóa mọi thứ
+    if (currentUser.value?.role === 'director' && hasPermission(page, 'delete')) {
+      // Giám đốc có thể xóa ở mọi trạng thái
+      return true
     }
     
     // Check approval status for specific pages - only allow delete if status is "Tạo mới"
     const statusRestrictedPages = ['leave', 'overtime', 'personnel-contract', 'payroll-adjustment']
     if (statusRestrictedPages.includes(page)) {
       // Only allow delete if approveStatus is "Tạo mới"
-      if (item.approveStatus !== 'Tạo mới') {
+      if (item.approveStatus !== 'Tạo mới' && item.approveStatus !== 0 && item.approveStatus !== '0') {
         return false
       }
     }
@@ -277,16 +279,21 @@ export function usePermissions() {
       return false
     }
     
-    // Giám đốc chỉ xem, không được gửi duyệt
-    if (currentUser.value?.role === 'director') {
-      console.log('Failed: Director can only view')
+    // Chỉ cho phép submit nếu status là "Tạo mới"
+    // Không phân biệt role - tất cả mọi người đều phải tuân theo quy tắc này
+    const isCreatedStatus = item.approveStatus === 'Tạo mới' || 
+                           item.approveStatus === 0 || 
+                           item.approveStatus === '0'
+    
+    if (!isCreatedStatus) {
+      console.log('Failed: Status is not "Tạo mới" - cannot submit')
       return false
     }
     
-    // Only allow submit if status is "Tạo mới"
-    if (item.approveStatus !== 'Tạo mới') {
-      console.log('Failed: Status is not "Tạo mới"')
-      return false
+    // Giám đốc có thể gửi duyệt các đơn mới tạo (chưa được duyệt)
+    if (currentUser.value?.role === 'director' && hasPermission(page, 'submit_all')) {
+      console.log('Director can submit new items')
+      return true
     }
     
     // Check if user can submit own items
@@ -310,9 +317,21 @@ export function usePermissions() {
   const canApproveItem = (page, item) => {
     if (!item || !canView(page)) return false
     
-    // Only allow approve if status is "Chờ duyệt"
-    if (item.approveStatus !== 'Chờ duyệt' && item.approveStatus !== 'Pending') {
+    // Chỉ cho phép duyệt khi status là "Chờ duyệt" (Pending)
+    // Không phân biệt role - tất cả đều phải tuân theo quy tắc này
+    const isPendingStatus = item.approveStatus === 'Chờ duyệt' || 
+                           item.approveStatus === 'Pending' || 
+                           item.approveStatus === 1 || 
+                           item.approveStatus === '1'
+    
+    if (!isPendingStatus) {
       return false
+    }
+    
+    // Giám đốc có thể duyệt các đơn ở trạng thái "Chờ duyệt"
+    // (Giám đốc là cấp duyệt cuối cùng)
+    if (currentUser.value?.role === 'director' && hasPermission(page, 'approve_director')) {
+      return true
     }
     
     // Người cùng cấp với người submit không được duyệt/từ chối/trả lại

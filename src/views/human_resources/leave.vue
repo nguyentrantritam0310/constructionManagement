@@ -6,6 +6,9 @@ import { useLeaveRequest } from '../../composables/useLeaveRequest'
 import { useUser } from '../../composables/useUser'
 import { useAuth } from '../../composables/useAuth'
 import { usePermissions } from '../../composables/usePermissions'
+import { useGlobalMessage } from '../../composables/useGlobalMessage'
+import { useLeaveType } from '../../composables/useLeaveType'
+import { useWorkShift } from '../../composables/useWorkShift'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import LeaveForm from '@/components/common/leave/LeaveForm.vue'
@@ -24,6 +27,7 @@ const {
   loading,
   fetchLeaveRequests,
   createLeaveRequest,
+  createMultipleLeaveRequests,
   updateLeaveRequest,
   deleteLeaveRequest,
   submitLeaveRequestForApproval,
@@ -33,6 +37,9 @@ const {
 } = useLeaveRequest()
 
 const { fetchUsers } = useUser()
+const { showMessage } = useGlobalMessage()
+const { leaveTypes, fetchLeaveTypes } = useLeaveType()
+const { workshifts, fetchWorkShifts } = useWorkShift()
 
 // Auth composable for role checking
 const { currentUser, refreshUserInfo } = useAuth()
@@ -131,7 +138,28 @@ const filteredLeaveRequests = computed(() => {
     }
     const statusValue = statusMap[statusFilter.value]
     if (statusValue !== undefined) {
-      result = result.filter(request => request.approveStatus === statusValue)
+      result = result.filter(request => {
+        // Handle both number and string approveStatus
+        const requestStatus = request.approveStatus
+        if (typeof requestStatus === 'number') {
+          return requestStatus === statusValue
+        }
+        if (typeof requestStatus === 'string') {
+          // Map string values to numbers for comparison
+          const stringStatusMap = {
+            'Tạo mới': 0,
+            'Chờ duyệt': 1,
+            'Đã duyệt': 2,
+            'Từ chối': 3,
+            'Created': 0,
+            'Pending': 1,
+            'Approved': 2,
+            'Rejected': 3
+          }
+          return stringStatusMap[requestStatus] === statusValue
+        }
+        return false
+      })
     }
   }
 
@@ -360,6 +388,8 @@ const getStatusText = (status) => {
 }
 
 const file = ref(null)
+const showChatbotMessage = ref(false)
+const chatbotMessage = ref('')
 
 const handleFileUpload = (event) => {
   const target = event.target
@@ -369,6 +399,14 @@ const handleFileUpload = (event) => {
 }
 
 const downloadExcelTemplate = async () => {
+  // Fetch data if not already loaded
+  if (!leaveTypes.value || leaveTypes.value.length === 0) {
+    await fetchLeaveTypes()
+  }
+  if (!workshifts.value || workshifts.value.length === 0) {
+    await fetchWorkShifts()
+  }
+
   const workbook = new ExcelJS.Workbook()
 
   // --- Sheet 1: Dữ liệu ---
@@ -394,14 +432,58 @@ const downloadExcelTemplate = async () => {
   // Add example row
   dataSheet.addRow({
     employeeID: 'EMP001',
-    leaveTypeName: 'Nghỉ phép năm',
-    workShiftName: 'Ca ngày',
+    leaveTypeName: leaveTypes.value.length > 0 ? leaveTypes.value[0].leaveTypeName : 'Nghỉ phép năm',
+    workShiftName: workshifts.value.length > 0 ? workshifts.value[0].shiftName : 'Ca ngày',
     startDateTime: '2025-01-15 08:00:00',
     endDateTime: '2025-01-15 17:00:00',
     reason: 'Nghỉ phép cá nhân'
   })
 
-  // --- Sheet 2: Hướng dẫn ---
+  // --- Sheet 2: Danh sách loại nghỉ phép ---
+  if (leaveTypes.value && leaveTypes.value.length > 0) {
+    const leaveTypeSheet = workbook.addWorksheet('Danh sách loại nghỉ phép')
+    leaveTypeSheet.columns = [
+      { header: 'ID', key: 'id', width: 10 },
+      { header: 'Tên loại nghỉ phép', key: 'leaveTypeName', width: 30 },
+    ]
+    
+    leaveTypeSheet.getRow(1).eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    })
+
+    leaveTypes.value.forEach(lt => {
+      leaveTypeSheet.addRow({
+        id: lt.id,
+        leaveTypeName: lt.leaveTypeName
+      })
+    })
+  }
+
+  // --- Sheet 3: Danh sách ca làm việc ---
+  if (workshifts.value && workshifts.value.length > 0) {
+    const workShiftSheet = workbook.addWorksheet('Danh sách ca làm việc')
+    workShiftSheet.columns = [
+      { header: 'ID', key: 'id', width: 10 },
+      { header: 'Tên ca làm việc', key: 'shiftName', width: 30 },
+    ]
+    
+    workShiftSheet.getRow(1).eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    })
+
+    workshifts.value.forEach(ws => {
+      workShiftSheet.addRow({
+        id: ws.id,
+        shiftName: ws.shiftName
+      })
+    })
+  }
+
+  // --- Sheet 4: Hướng dẫn ---
   const instructionSheet = workbook.addWorksheet('Hướng dẫn')
   instructionSheet.columns = [
     { header: 'Tên cột', key: 'column', width: 30 },
@@ -419,8 +501,8 @@ const downloadExcelTemplate = async () => {
   // Add instruction data
   instructionSheet.addRows([
     { column: 'Mã nhân viên', description: 'Mã định danh của nhân viên trong hệ thống.', required: 'Có', example: 'EMP001' },
-    { column: 'Loại nghỉ phép', description: 'Loại nghỉ phép được áp dụng.', required: 'Có', example: 'Nghỉ phép năm' },
-    { column: 'Ca làm việc', description: 'Ca làm việc của nhân viên.', required: 'Không', example: 'Ca ngày' },
+    { column: 'Loại nghỉ phép', description: 'Tên loại nghỉ phép (xem sheet "Danh sách loại nghỉ phép").', required: 'Có', example: 'Nghỉ phép năm' },
+    { column: 'Ca làm việc', description: 'Tên ca làm việc (xem sheet "Danh sách ca làm việc"). Có thể để trống.', required: 'Không', example: 'Ca ngày' },
     { column: 'Ngày bắt đầu', description: 'Ngày và giờ bắt đầu nghỉ phép (định dạng: YYYY-MM-DD HH:mm:ss).', required: 'Có', example: '2025-01-15 08:00:00' },
     { column: 'Ngày kết thúc', description: 'Ngày và giờ kết thúc nghỉ phép (định dạng: YYYY-MM-DD HH:mm:ss).', required: 'Có', example: '2025-01-15 17:00:00' },
     { column: 'Lý do', description: 'Lý do nghỉ phép.', required: 'Có', example: 'Nghỉ phép cá nhân' },
@@ -441,10 +523,22 @@ const downloadExcelTemplate = async () => {
   saveAs(new Blob([buf]), 'Mau_Nhap_Don_Nghi_Phep.xlsx')
 }
 
-const processImport = () => {
+const processImport = async () => {
   if (!file.value) {
-    alert('Vui lòng chọn một file Excel.')
+    showMessage('Vui lòng chọn một file Excel.', 'warning')
     return
+  }
+
+  // Show chatbot message
+  showChatbotMessage.value = true
+  chatbotMessage.value = 'Đang xử lý file Excel. Quá trình này có thể mất thời gian do dữ liệu nhiều, vui lòng đợi...'
+
+  // Fetch data if not already loaded
+  if (!leaveTypes.value || leaveTypes.value.length === 0) {
+    await fetchLeaveTypes()
+  }
+  if (!workshifts.value || workshifts.value.length === 0) {
+    await fetchWorkShifts()
   }
 
   const reader = new FileReader()
@@ -457,31 +551,118 @@ const processImport = () => {
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
       if (jsonData.length === 0) {
-        alert('File Excel không có dữ liệu.')
+        showChatbotMessage.value = false
+        showMessage('File Excel không có dữ liệu.', 'error')
         return
       }
 
-      const leaveRequestsToCreate = jsonData.map(row => ({
-        employeeID: row['Mã nhân viên'],
-        leaveTypeName: row['Loại nghỉ phép'],
-        workShiftName: row['Ca làm việc'],
-        startDateTime: row['Ngày bắt đầu'],
-        endDateTime: row['Ngày kết thúc'],
-        reason: row['Lý do'],
-      })).filter(request => request.employeeID && request.leaveTypeName && request.startDateTime && request.endDateTime && request.reason)
+      // Validation errors
+      const validationErrors = []
+      const leaveRequestsToCreate = []
+
+      jsonData.forEach((row, index) => {
+        const rowNum = index + 2 // +2 because Excel rows start at 1 and we skip header
+        const employeeID = row['Mã nhân viên']?.toString().trim()
+        const leaveTypeName = row['Loại nghỉ phép']?.toString().trim()
+        const workShiftName = row['Ca làm việc']?.toString().trim() || null
+        const startDateTime = row['Ngày bắt đầu']?.toString().trim()
+        const endDateTime = row['Ngày kết thúc']?.toString().trim()
+        const reason = row['Lý do']?.toString().trim()
+
+        // Validate required fields
+        if (!employeeID) {
+          validationErrors.push(`Dòng ${rowNum}: Mã nhân viên là bắt buộc`)
+          return
+        }
+        if (!leaveTypeName) {
+          validationErrors.push(`Dòng ${rowNum}: Loại nghỉ phép là bắt buộc`)
+          return
+        }
+        if (!startDateTime) {
+          validationErrors.push(`Dòng ${rowNum}: Ngày bắt đầu là bắt buộc`)
+          return
+        }
+        if (!endDateTime) {
+          validationErrors.push(`Dòng ${rowNum}: Ngày kết thúc là bắt buộc`)
+          return
+        }
+        if (!reason) {
+          validationErrors.push(`Dòng ${rowNum}: Lý do là bắt buộc`)
+          return
+        }
+
+        // Validate date format
+        const startDate = new Date(startDateTime)
+        const endDate = new Date(endDateTime)
+        if (isNaN(startDate.getTime())) {
+          validationErrors.push(`Dòng ${rowNum}: Ngày bắt đầu không hợp lệ (${startDateTime})`)
+          return
+        }
+        if (isNaN(endDate.getTime())) {
+          validationErrors.push(`Dòng ${rowNum}: Ngày kết thúc không hợp lệ (${endDateTime})`)
+          return
+        }
+        if (startDate >= endDate) {
+          validationErrors.push(`Dòng ${rowNum}: Ngày bắt đầu phải trước ngày kết thúc`)
+          return
+        }
+
+        // Validate leave type exists
+        const leaveType = leaveTypes.value.find(lt => lt.leaveTypeName === leaveTypeName)
+        if (!leaveType) {
+          validationErrors.push(`Dòng ${rowNum}: Loại nghỉ phép "${leaveTypeName}" không tồn tại trong hệ thống`)
+          return
+        }
+
+        // Validate work shift exists (if provided)
+        let workShiftID = null
+        if (workShiftName) {
+          const workShift = workshifts.value.find(ws => ws.shiftName === workShiftName)
+          if (!workShift) {
+            validationErrors.push(`Dòng ${rowNum}: Ca làm việc "${workShiftName}" không tồn tại trong hệ thống`)
+            return
+          }
+          workShiftID = workShift.id
+        }
+
+        leaveRequestsToCreate.push({
+          employeeID,
+          leaveTypeID: leaveType.id,
+          workShiftID,
+          startDateTime: startDate.toISOString(),
+          endDateTime: endDate.toISOString(),
+          reason
+        })
+      })
+
+      if (validationErrors.length > 0) {
+        showChatbotMessage.value = false
+        const errorMessage = `Có ${validationErrors.length} lỗi validation:\n${validationErrors.slice(0, 10).join('\n')}${validationErrors.length > 10 ? `\n... và ${validationErrors.length - 10} lỗi khác` : ''}`
+        showMessage(errorMessage, 'error')
+        return
+      }
 
       if (leaveRequestsToCreate.length === 0) {
-        alert('Không tìm thấy dữ liệu hợp lệ trong file.')
+        showChatbotMessage.value = false
+        showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error')
         return
       }
 
-      await Promise.all(leaveRequestsToCreate.map(request => createLeaveRequest(request)))
+      // Import leave requests
+      await createMultipleLeaveRequests(leaveRequestsToCreate)
 
-      alert(`Đã nhập thành công ${leaveRequestsToCreate.length} đơn nghỉ phép.`)
+      showChatbotMessage.value = false
+      chatbotMessage.value = `Đã nhập thành công ${leaveRequestsToCreate.length} đơn nghỉ phép.`
+      setTimeout(() => {
+        showChatbotMessage.value = false
+      }, 3000)
+
       file.value = null
       showImportModal.value = false
     } catch (error) {
-      alert('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.')
+      console.error('Lỗi khi xử lý file Excel:', error)
+      showChatbotMessage.value = false
+      showMessage('Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.', 'error')
     }
   }
   reader.readAsArrayBuffer(file.value)
@@ -554,7 +735,9 @@ const exportToExcel = async () => {
 onMounted(async () => {
   await Promise.all([
     fetchLeaveRequests(),
-    fetchUsers()
+    fetchUsers(),
+    fetchLeaveTypes(),
+    fetchWorkShifts()
   ])
 })
 
@@ -857,6 +1040,8 @@ defineExpose({
 
   <!-- AI Chatbot Assistant Button -->
   <AIChatbotButton 
+    :autoShow="showChatbotMessage"
+    :message="chatbotMessage"
     @guide-click="startTour"
   />
 </template>

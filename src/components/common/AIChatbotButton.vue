@@ -48,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 
 const props = defineProps({
   message: {
@@ -58,12 +58,23 @@ const props = defineProps({
   title: {
     type: String,
     default: 'Trợ lý AI'
+  },
+  autoShow: {
+    type: Boolean,
+    default: false
   }
 })
 
 const emit = defineEmits(['guide-click'])
 
 const showChatBubble = ref(false)
+
+// Watch for autoShow prop changes
+watch(() => props.autoShow, (newVal) => {
+  if (newVal) {
+    showChatBubble.value = true
+  }
+}, { immediate: true })
 
 // Close chat bubble when clicking outside
 onMounted(() => {

@@ -151,6 +151,45 @@ export function useContract() {
         }
     }
 
+    const createMultipleContracts = async (contractsToCreate) => {
+        try {
+            loading.value = true
+            error.value = null
+
+            // Create contracts one by one to get detailed error messages
+            const results = []
+            const errors = []
+            
+            for (let i = 0; i < contractsToCreate.length; i++) {
+                try {
+                    const result = await contractService.createContract(contractsToCreate[i])
+                    results.push(result)
+                } catch (err) {
+                    const contractInfo = `${contractsToCreate[i].contractNumber || 'N/A'} - ${contractsToCreate[i].employeeID || 'N/A'}`
+                    const errorDetails = err.response?.data?.errors || err.response?.data?.message || err.response?.data?.title || err.message || 'Lỗi không xác định'
+                    errors.push(`${contractInfo}: ${JSON.stringify(errorDetails)}`)
+                    console.error(`Error creating contract ${contractInfo}:`, err.response?.data || err)
+                }
+            }
+
+            if (errors.length > 0) {
+                const errorMessage = `Đã tạo ${results.length}/${contractsToCreate.length} hợp đồng. Có ${errors.length} lỗi:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n... và ${errors.length - 5} lỗi khác` : ''}`
+                error.value = errorMessage
+                throw new Error(errorMessage)
+            }
+
+            await fetchAllContracts() // Fetch only once after all creations
+            return true
+        } catch (err) {
+            console.error('Error in createMultipleContracts:', err)
+            const errorMessage = err.message || err.response?.data?.message || err.response?.data?.title || 'Không thể tạo hàng loạt hợp đồng.'
+            error.value = errorMessage
+            throw new Error(errorMessage)
+        } finally {
+            loading.value = false
+        }
+    }
+
     return {
         contracts,
         loading,
@@ -162,6 +201,7 @@ export function useContract() {
         submitContractForApproval,
         approveContract,
         rejectContract,
-        returnContract
+        returnContract,
+        createMultipleContracts
     }
 }

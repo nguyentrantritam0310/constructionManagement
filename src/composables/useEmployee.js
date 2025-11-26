@@ -74,6 +74,46 @@ export function useEmployee() {
     }
   }
 
+  // Create multiple employees
+  const createMultipleEmployees = async (employees) => {
+    try {
+      loading.value = true
+      error.value = null
+
+      // Create employees one by one to get detailed error messages
+      const results = []
+      const errors = []
+      
+      for (let i = 0; i < employees.length; i++) {
+        try {
+          const result = await employeeService.createEmployee(employees[i])
+          results.push(result)
+        } catch (err) {
+          const employeeInfo = `${employees[i].Id || employees[i].employeeCode || 'N/A'} - ${employees[i].firstName} ${employees[i].lastName}`
+          const errorDetails = err.response?.data?.errors || err.response?.data?.message || err.response?.data?.title || err.message || 'Lỗi không xác định'
+          errors.push(`${employeeInfo}: ${JSON.stringify(errorDetails)}`)
+          console.error(`Error creating employee ${employeeInfo}:`, err.response?.data || err)
+        }
+      }
+
+      if (errors.length > 0) {
+        const errorMessage = `Đã tạo ${results.length}/${employees.length} nhân viên. Có ${errors.length} lỗi:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n... và ${errors.length - 5} lỗi khác` : ''}`
+        error.value = errorMessage
+        throw new Error(errorMessage)
+      }
+
+      await fetchAllEmployees() // Fetch only once after all creations
+      return true
+    } catch (err) {
+      console.error('Error in createMultipleEmployees:', err)
+      const errorMessage = err.message || err.response?.data?.message || err.response?.data?.title || 'Không thể tạo hàng loạt nhân viên.'
+      error.value = errorMessage
+      throw new Error(errorMessage)
+    } finally {
+      loading.value = false
+    }
+  }
+
   // Update employee
   const updateEmployee = async (employeeData) => {
     try {
@@ -149,22 +189,51 @@ export function useEmployee() {
       statusValue = parseInt(employeeData.status) || 0
     }
     
+    // Validate and format dates
+    if (!employeeData.birthday) {
+      throw new Error('Ngày sinh là bắt buộc')
+    }
+    const birthdayDate = new Date(employeeData.birthday)
+    if (isNaN(birthdayDate.getTime())) {
+      throw new Error(`Ngày sinh không hợp lệ: ${employeeData.birthday}`)
+    }
+    
+    if (!employeeData.joinDate) {
+      throw new Error('Ngày vào làm là bắt buộc')
+    }
+    const joinDate = new Date(employeeData.joinDate)
+    if (isNaN(joinDate.getTime())) {
+      throw new Error(`Ngày vào làm không hợp lệ: ${employeeData.joinDate}`)
+    }
+    
+    // Validate roleID
+    const roleID = parseInt(employeeData.roleID)
+    if (isNaN(roleID) || roleID <= 0) {
+      throw new Error(`Chức danh không hợp lệ: ${employeeData.roleID}`)
+    }
+    
+    // Validate employeeCode/Id
+    const employeeCode = employeeData.employeeCode || employeeData.id
+    if (!employeeCode || employeeCode.trim() === '') {
+      throw new Error('Mã nhân viên là bắt buộc')
+    }
+    
     const formattedData = {
-      employeeCode: employeeData.employeeCode || employeeData.id, // Use ID as fallback
-      firstName: employeeData.firstName,
-      lastName: employeeData.lastName,
-      birthday: new Date(employeeData.birthday).toISOString(),
-      joinDate: new Date(employeeData.joinDate).toISOString(),
-      phone: employeeData.phone,
-      email: employeeData.email,
-      gender: employeeData.gender,
-      roleID: parseInt(employeeData.roleID),
+      Id: employeeCode.trim(), // Backend expects 'Id' with capital I
+      firstName: employeeData.firstName?.trim() || '',
+      lastName: employeeData.lastName?.trim() || '',
+      birthday: birthdayDate.toISOString(),
+      joinDate: joinDate.toISOString(),
+      phone: employeeData.phone?.trim() || '',
+      email: employeeData.email?.trim() || '',
+      gender: employeeData.gender?.trim() || '',
+      roleID: roleID,
       password: employeeData.password || '123456789', // Default password if not provided
       status: statusValue
     }
     
-    // Include ID for update operations
-    if (employeeData.id) {
+    // Include ID for update operations (but use Id for create)
+    if (employeeData.id && employeeData.id !== employeeCode) {
       formattedData.id = employeeData.id
     }
     
@@ -180,6 +249,7 @@ export function useEmployee() {
     fetchAllRoles,
     getEmployeeById,
     createEmployee,
+    createMultipleEmployees,
     updateEmployee,
     deleteEmployee,
     formatEmployeeData,

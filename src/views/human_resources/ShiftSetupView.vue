@@ -630,9 +630,6 @@ const startTour = () => {
         <ActionButton type="success" icon="fas fa-file-export me-2" @click="exportToExcel">
           Xuất Excel
         </ActionButton>
-        <ActionButton type="info" icon="fas fa-file-import me-2" @click="showImportModal = true">
-          Nhập Excel
-        </ActionButton>
       </div>
       <div class="d-flex gap-2" v-else-if="activeTab === 'machine'" data-tour="toolbar-machine">
         <ActionButton type="primary" icon="fas fa-plus me-2" @click="showCreateFormAttendanceMachine = true">
