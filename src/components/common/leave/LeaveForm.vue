@@ -8,8 +8,11 @@ import { useEmployee } from '@/composables/useEmployee'
 import { useAuth } from '@/composables/useAuth'
 import { useLeaveRequest } from '@/composables/useLeaveRequest'
 import { useOvertimeRequest } from '@/composables/useOvertimeRequest'
+import { useOvertimeForm } from '@/composables/useOvertimeForm'
 import { useShiftAssignment } from '@/composables/useShiftAssignment'
+import { attendanceDataService } from '@/services/attendanceDataService'
 import { isApprovedStatus } from '@/constants/status.js'
+import DataTable from '../DataTable.vue'
 
 const props = defineProps({
     mode: { type: String, required: true, validator: v => ['create', 'update', 'detail'].includes(v) },
@@ -29,6 +32,7 @@ const { workshifts, fetchWorkShifts } = useWorkShift()
 const { leaveTypes, fetchLeaveTypes } = useLeaveType()
 const { leaveRequests, fetchLeaveRequests } = useLeaveRequest()
 const { overtimeRequests, fetchOvertimeRequests } = useOvertimeRequest()
+const { overtimeForms, fetchOvertimeForms } = useOvertimeForm()
 const { getShiftAssignmentsByDateRange } = useShiftAssignment()
 
 // Form data
@@ -53,6 +57,9 @@ const shiftAssignmentsInRange = ref([])
 // Overlap confirmation modal state
 const showOverlapConfirmModal = ref(false)
 const overlappingRequests = ref([])
+const overlappingOvertimeRequests = ref([])
+const overlappingShiftTimes = ref([])
+const overlapModalType = ref('') // 'leave', 'overtime', 'shift', or combinations
 const pendingSubmitData = ref(null)
 
 // Helper function to validate all days have shift assignments
@@ -723,6 +730,205 @@ const validateForm = () => {
     return validations.every(v => v === true)
 }
 
+/**
+ * Kiểm tra overlap với các đơn tăng ca đã duyệt
+ * @param {String} startDateTime - Thời gian bắt đầu đơn nghỉ phép
+ * @param {String} endDateTime - Thời gian kết thúc đơn nghỉ phép
+ * @param {String} employeeID - ID nhân viên
+ * @returns {Array} Danh sách đơn tăng ca trùng
+ */
+const checkOverlappingOvertimeRequests = (startDateTime, endDateTime, employeeID) => {
+    if (!overtimeRequests.value || overtimeRequests.value.length === 0) {
+        return []
+    }
+    
+    const leaveStart = new Date(startDateTime)
+    const leaveEnd = new Date(endDateTime)
+    
+    if (isNaN(leaveStart.getTime()) || isNaN(leaveEnd.getTime())) {
+        return []
+    }
+    
+    // Filter approved overtime requests for the same employee
+    const approvedRequests = overtimeRequests.value.filter(request => 
+        (request.employeeID === employeeID || String(request.employeeID) === String(employeeID)) && 
+        isApprovedStatus(request.approveStatus)
+    )
+    
+    const overlapping = []
+    
+    approvedRequests.forEach(request => {
+        const overtimeStart = new Date(request.startDateTime)
+        const overtimeEnd = new Date(request.endDateTime)
+        
+        // Check if there's an overlap
+        // Overlap exists if: (leaveStart < overtimeEnd) && (leaveEnd > overtimeStart)
+        if (leaveStart < overtimeEnd && leaveEnd > overtimeStart) {
+            // Get overtime form name
+            const overtimeForm = overtimeForms.value.find(form => form.id === request.overtimeFormID)
+            const overtimeFormName = overtimeForm ? overtimeForm.overtimeFormName : 'N/A'
+            
+            overlapping.push({
+                voucherCode: request.voucherCode,
+                startDateTime: request.startDateTime,
+                endDateTime: request.endDateTime,
+                overtimeFormName: overtimeFormName
+            })
+        }
+    })
+    
+    return overlapping
+}
+
+/**
+ * Kiểm tra overlap với ca làm việc có dữ liệu chấm công
+ * @param {String} startDateTime - Thời gian bắt đầu đơn nghỉ phép
+ * @param {String} endDateTime - Thời gian kết thúc đơn nghỉ phép
+ * @param {String} employeeID - ID nhân viên
+ * @returns {Promise<Array>} Danh sách ca làm việc trùng
+ */
+const checkOverlappingShiftTimes = async (startDateTime, endDateTime, employeeID) => {
+    if (!employeeID || !startDateTime || !endDateTime) {
+        return []
+    }
+    
+    const leaveStart = new Date(startDateTime)
+    const leaveEnd = new Date(endDateTime)
+    
+    if (isNaN(leaveStart.getTime()) || isNaN(leaveEnd.getTime())) {
+        return []
+    }
+    
+    // Lấy các phân ca làm việc trong khoảng thời gian của đơn nghỉ phép
+    const startDateOnly = new Date(leaveStart)
+    startDateOnly.setHours(0, 0, 0, 0)
+    const endDateOnly = new Date(leaveEnd)
+    endDateOnly.setHours(23, 59, 59, 999)
+    
+    const shiftAssignmentsInRange = await getShiftAssignmentsByDateRange(
+        startDateOnly.toISOString(),
+        endDateOnly.toISOString()
+    )
+    
+    // Lọc chỉ các phân ca của nhân viên hiện tại
+    const employeeShiftAssignments = shiftAssignmentsInRange.filter(assignment => 
+        (assignment.employeeID === employeeID || String(assignment.employeeID) === String(employeeID))
+    )
+    
+    // Lấy thông tin nhân viên để lấy employeeCode
+    const selectedEmployee = employees.value.find(emp => 
+        emp.id === employeeID || 
+        String(emp.id) === String(employeeID) ||
+        emp.employeeCode === employeeID ||
+        String(emp.employeeCode) === String(employeeID)
+    )
+    
+    // EmployeeCode là field chính để identify employee trong attendance data
+    const employeeCode = selectedEmployee?.id || selectedEmployee?.employeeCode || String(employeeID)
+    
+    // Lấy dữ liệu chấm công trong khoảng thời gian
+    let attendanceInRange = []
+    try {
+        attendanceInRange = await attendanceDataService.getAttendanceDataByDateRange(
+            startDateOnly.toISOString().split('T')[0],
+            endDateOnly.toISOString().split('T')[0]
+        )
+    } catch (error) {
+        console.error("Error fetching attendance data for overlap check:", error)
+        // Continue even if attendance data fetch fails
+    }
+    
+    // Lọc chỉ dữ liệu chấm công của nhân viên hiện tại
+    const employeeAttendance = attendanceInRange.filter(att => {
+        const attEmployeeCode = att.employeeCode || att.EmployeeCode
+        const hasCheckInOut = att.checkInTime || att.CheckInTime || att.checkOutTime || att.CheckOutTime
+        
+        // So sánh employeeCode với nhiều cách khác nhau
+        const matchesEmployee = attEmployeeCode && (
+            String(attEmployeeCode) === String(employeeCode) ||
+            String(attEmployeeCode) === String(employeeID) ||
+            attEmployeeCode === employeeCode ||
+            attEmployeeCode === employeeID
+        )
+        
+        return matchesEmployee && hasCheckInOut
+    })
+    
+    const overlapping = []
+    
+    // Helper function to parse time string (HH:mm:ss or HH:mm)
+    const parseTimeString = (timeStr) => {
+        if (!timeStr) return { hours: 0, minutes: 0 }
+        const parts = String(timeStr).split(':').map(Number)
+        return { hours: parts[0] || 0, minutes: parts[1] || 0 }
+    }
+    
+    // KIỂM TRA TẤT CẢ DỮ LIỆU CHẤM CÔNG TRONG KHOẢNG THỜI GIAN NGHỈ PHÉP
+    for (const att of employeeAttendance) {
+        let attDate = null
+        if (att.workDate) {
+            attDate = new Date(att.workDate)
+        } else if (att.WorkDate) {
+            attDate = new Date(att.WorkDate)
+        } else if (att.date) {
+            attDate = new Date(att.date)
+        }
+        
+        if (!attDate || isNaN(attDate.getTime())) {
+            continue
+        }
+        
+        // Lấy thời gian check-in và check-out từ dữ liệu chấm công
+        const checkInTime = att.checkInTime || att.CheckInTime
+        const checkOutTime = att.checkOutTime || att.CheckOutTime
+        
+        if (!checkInTime && !checkOutTime) {
+            continue
+        }
+        
+        // Tính thời gian bắt đầu và kết thúc của ca làm việc dựa trên check-in/out
+        let attStartTime = null
+        let attEndTime = null
+        
+        if (checkInTime) {
+            const timeParts = parseTimeString(checkInTime)
+            attStartTime = new Date(attDate)
+            attStartTime.setHours(timeParts.hours, timeParts.minutes, 0, 0)
+        }
+        
+        if (checkOutTime) {
+            const timeParts = parseTimeString(checkOutTime)
+            attEndTime = new Date(attDate)
+            attEndTime.setHours(timeParts.hours, timeParts.minutes, 0, 0)
+        } else if (checkInTime) {
+            // Nếu chỉ có check-in, giả sử ca làm việc kết thúc sau 8 giờ
+            const timeParts = parseTimeString(checkInTime)
+            attEndTime = new Date(attDate)
+            attEndTime.setHours((timeParts.hours || 0) + 8, timeParts.minutes || 0, 0, 0)
+        }
+        
+        // Kiểm tra overlap với đơn nghỉ phép
+        // Overlap exists if: (leaveStart < attEndTime) && (leaveEnd > attStartTime)
+        if (attStartTime && attEndTime) {
+            const hasTimeOverlap = leaveStart < attEndTime && leaveEnd > attStartTime
+            
+            if (hasTimeOverlap) {
+                const shiftName = att.shiftName || att.ShiftName || 'N/A'
+                overlapping.push({
+                    workDate: attDate.toLocaleDateString('vi-VN'),
+                    shiftName: shiftName,
+                    startTime: attStartTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                    endTime: attEndTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                    hasAttendance: true,
+                    shiftAssignmentID: att.workShiftID || att.WorkShiftID || null
+                })
+            }
+        }
+    }
+    
+    return overlapping
+}
+
 // Function to check for overlapping leave requests
 const checkOverlappingLeaveRequests = (startDateTime, endDateTime, employeeID) => {
     if (!leaveRequests.value || leaveRequests.value.length === 0) {
@@ -765,7 +971,7 @@ const checkOverlappingLeaveRequests = (startDateTime, endDateTime, employeeID) =
     return overlapping
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
     // Validate form trước khi submit
     if (!validateForm()) {
         // Scroll đến trường đầu tiên có lỗi
@@ -787,20 +993,75 @@ const handleSubmit = () => {
         endDateTime: formatDateTimeToISO(formData.value.endDateTime)
     }
     
-    // Check for overlapping leave requests
-    const overlaps = checkOverlappingLeaveRequests(
-        formData.value.startDateTime,
-        formData.value.endDateTime,
-        formData.value.employeeID
-    )
-    
-    if (overlaps.length > 0) {
-        // Store pending submit data and show confirmation modal
-        pendingSubmitData.value = submitData
-        overlappingRequests.value = overlaps
-        showOverlapConfirmModal.value = true
-    } else {
-        // No overlap, submit directly
+    try {
+        // Check for overlapping overtime requests first (blocks creation)
+        const overtimeOverlaps = checkOverlappingOvertimeRequests(
+            formData.value.startDateTime,
+            formData.value.endDateTime,
+            formData.value.employeeID
+        )
+        
+        // Check for overlapping shift times with attendance data (blocks creation)
+        const shiftOverlaps = await checkOverlappingShiftTimes(
+            formData.value.startDateTime,
+            formData.value.endDateTime,
+            formData.value.employeeID
+        )
+        
+        // Check for overlapping leave requests (allows confirmation)
+        const leaveOverlaps = checkOverlappingLeaveRequests(
+            formData.value.startDateTime,
+            formData.value.endDateTime,
+            formData.value.employeeID
+        )
+        
+        // If there are overtime or shift overlaps, block creation
+        if (overtimeOverlaps.length > 0 || shiftOverlaps.length > 0) {
+            // Store all overlaps for display
+            overlappingOvertimeRequests.value = overtimeOverlaps
+            overlappingShiftTimes.value = shiftOverlaps
+            overlappingRequests.value = leaveOverlaps
+            
+            // Determine modal type
+            const hasOvertime = overtimeOverlaps.length > 0
+            const hasShift = shiftOverlaps.length > 0
+            const hasLeave = leaveOverlaps.length > 0
+            
+            if (hasOvertime && hasShift && hasLeave) {
+                overlapModalType.value = 'all'
+            } else if (hasOvertime && hasShift) {
+                overlapModalType.value = 'overtime-shift'
+            } else if (hasOvertime && hasLeave) {
+                overlapModalType.value = 'overtime-leave'
+            } else if (hasShift && hasLeave) {
+                overlapModalType.value = 'shift-leave'
+            } else if (hasOvertime) {
+                overlapModalType.value = 'overtime'
+            } else if (hasShift) {
+                overlapModalType.value = 'shift'
+            }
+            
+            // Show modal (no confirm button - blocks creation)
+            showOverlapConfirmModal.value = true
+            return
+        }
+        
+        // If only leave overlaps, show confirmation modal (allows creation after confirmation)
+        if (leaveOverlaps.length > 0) {
+            pendingSubmitData.value = submitData
+            overlappingRequests.value = leaveOverlaps
+            overlappingOvertimeRequests.value = []
+            overlappingShiftTimes.value = []
+            overlapModalType.value = 'leave'
+            showOverlapConfirmModal.value = true
+            return
+        }
+        
+        // No overlaps, submit directly
+        emit('submit', submitData)
+    } catch (error) {
+        console.error('Error checking overlaps:', error)
+        // If error occurs, still allow submission (fallback)
         emit('submit', submitData)
     }
 }
@@ -811,6 +1072,9 @@ const handleOverlapConfirm = () => {
         showOverlapConfirmModal.value = false
         pendingSubmitData.value = null
         overlappingRequests.value = []
+        overlappingOvertimeRequests.value = []
+        overlappingShiftTimes.value = []
+        overlapModalType.value = ''
     }
 }
 
@@ -818,11 +1082,14 @@ const handleOverlapCancel = () => {
     showOverlapConfirmModal.value = false
     pendingSubmitData.value = null
     overlappingRequests.value = []
+    overlappingOvertimeRequests.value = []
+    overlappingShiftTimes.value = []
+    overlapModalType.value = ''
 }
 
 const handleClose = () => emit('close')
 
-const handleSubmitForApproval = () => {
+const handleSubmitForApproval = async () => {
     // Validate form trước khi submit
     if (!validateForm()) {
         // Scroll đến trường đầu tiên có lỗi
@@ -834,17 +1101,148 @@ const handleSubmitForApproval = () => {
         return
     }
     
-    // Convert datetime-local to proper format for API
-    // Use formatDateTimeToISO to preserve local time without UTC conversion
-    const submitData = {
-        ...formData.value,
-        voucherCode: formData.value.voucherCode.trim(),
-        reason: formData.value.reason.trim(),
-        startDateTime: formatDateTimeToISO(formData.value.startDateTime),
-        endDateTime: formatDateTimeToISO(formData.value.endDateTime)
+    try {
+        // Check for overlapping overtime requests first (blocks creation)
+        const overtimeOverlaps = checkOverlappingOvertimeRequests(
+            formData.value.startDateTime,
+            formData.value.endDateTime,
+            formData.value.employeeID
+        )
+        
+        // Check for overlapping shift times with attendance data (blocks creation)
+        const shiftOverlaps = await checkOverlappingShiftTimes(
+            formData.value.startDateTime,
+            formData.value.endDateTime,
+            formData.value.employeeID
+        )
+        
+        // Check for overlapping leave requests
+        const leaveOverlaps = checkOverlappingLeaveRequests(
+            formData.value.startDateTime,
+            formData.value.endDateTime,
+            formData.value.employeeID
+        )
+        
+        // If there are overtime or shift overlaps, block submission
+        if (overtimeOverlaps.length > 0 || shiftOverlaps.length > 0) {
+            // Store all overlaps for display
+            overlappingOvertimeRequests.value = overtimeOverlaps
+            overlappingShiftTimes.value = shiftOverlaps
+            overlappingRequests.value = leaveOverlaps
+            
+            // Determine modal type
+            const hasOvertime = overtimeOverlaps.length > 0
+            const hasShift = shiftOverlaps.length > 0
+            const hasLeave = leaveOverlaps.length > 0
+            
+            if (hasOvertime && hasShift && hasLeave) {
+                overlapModalType.value = 'all'
+            } else if (hasOvertime && hasShift) {
+                overlapModalType.value = 'overtime-shift'
+            } else if (hasOvertime && hasLeave) {
+                overlapModalType.value = 'overtime-leave'
+            } else if (hasShift && hasLeave) {
+                overlapModalType.value = 'shift-leave'
+            } else if (hasOvertime) {
+                overlapModalType.value = 'overtime'
+            } else if (hasShift) {
+                overlapModalType.value = 'shift'
+            }
+            
+            // Show modal (no confirm button - blocks submission)
+            showOverlapConfirmModal.value = true
+            return
+        }
+        
+        // If only leave overlaps, also block for submit-for-approval (to be consistent)
+        if (leaveOverlaps.length > 0) {
+            overlappingRequests.value = leaveOverlaps
+            overlappingOvertimeRequests.value = []
+            overlappingShiftTimes.value = []
+            overlapModalType.value = 'leave'
+            showOverlapConfirmModal.value = true
+            return
+        }
+        
+        // Convert datetime-local to proper format for API
+        // Use formatDateTimeToISO to preserve local time without UTC conversion
+        const submitData = {
+            ...formData.value,
+            voucherCode: formData.value.voucherCode.trim(),
+            reason: formData.value.reason.trim(),
+            startDateTime: formatDateTimeToISO(formData.value.startDateTime),
+            endDateTime: formatDateTimeToISO(formData.value.endDateTime)
+        }
+        emit('submit-for-approval', submitData.voucherCode)
+    } catch (error) {
+        console.error('Error checking overlaps:', error)
+        // If error occurs, still allow submission (fallback)
+        const submitData = {
+            ...formData.value,
+            voucherCode: formData.value.voucherCode.trim(),
+            reason: formData.value.reason.trim(),
+            startDateTime: formatDateTimeToISO(formData.value.startDateTime),
+            endDateTime: formatDateTimeToISO(formData.value.endDateTime)
+        }
+        emit('submit-for-approval', submitData.voucherCode)
     }
-    emit('submit-for-approval', submitData.voucherCode)
 }
+
+// Computed properties for DataTable data
+const overtimeRequestsTableData = computed(() => {
+    return overlappingOvertimeRequests.value.map((request, index) => ({
+        id: request.voucherCode || index,
+        voucherCode: request.voucherCode,
+        overtimeFormName: request.overtimeFormName || 'N/A',
+        startDateTime: new Date(request.startDateTime).toLocaleString('vi-VN'),
+        endDateTime: new Date(request.endDateTime).toLocaleString('vi-VN')
+    }))
+})
+
+const shiftTimesTableData = computed(() => {
+    return overlappingShiftTimes.value.map((shift, index) => ({
+        id: shift.shiftAssignmentID || index,
+        workDate: shift.workDate,
+        shiftName: shift.shiftName,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+        hasAttendance: shift.hasAttendance ? 'Có' : 'Không',
+        status: shift.hasAttendance ? 'Có dữ liệu chấm công' : 'N/A'
+    }))
+})
+
+const leaveRequestsTableData = computed(() => {
+    return overlappingRequests.value.map((request, index) => ({
+        id: request.voucherCode || index,
+        voucherCode: request.voucherCode,
+        leaveTypeName: request.leaveTypeName || 'N/A',
+        startDateTime: new Date(request.startDateTime).toLocaleString('vi-VN'),
+        endDateTime: new Date(request.endDateTime).toLocaleString('vi-VN')
+    }))
+})
+
+// Columns for DataTable
+const overtimeRequestsColumns = computed(() => [
+    { key: 'voucherCode', label: 'Số phiếu' },
+    { key: 'overtimeFormName', label: 'Hình thức tăng ca' },
+    { key: 'startDateTime', label: 'Từ ngày' },
+    { key: 'endDateTime', label: 'Đến ngày' }
+])
+
+const shiftTimesColumns = computed(() => [
+    { key: 'workDate', label: 'Ngày' },
+    { key: 'shiftName', label: 'Ca làm việc' },
+    { key: 'startTime', label: 'Giờ bắt đầu' },
+    { key: 'endTime', label: 'Giờ kết thúc' },
+    { key: 'status', label: 'Trạng thái' }
+])
+
+const leaveRequestsColumns = computed(() => [
+    { key: 'voucherCode', label: 'Số phiếu' },
+    { key: 'leaveTypeName', label: 'Loại nghỉ phép' },
+    { key: 'startDateTime', label: 'Từ ngày' },
+    { key: 'endDateTime', label: 'Đến ngày' }
+])
 
 // Load data on mount
 onMounted(async () => {
@@ -854,7 +1252,8 @@ onMounted(async () => {
             fetchWorkShifts(),
             fetchLeaveTypes(),
             fetchLeaveRequests(), // Load leave requests for calculations
-            fetchOvertimeRequests() // Load overtime requests for calculations
+            fetchOvertimeRequests(), // Load overtime requests for calculations
+            fetchOvertimeForms() // Load overtime forms for overlap display
         ])
         
         // Auto-set employeeID cho technician/worker khi tạo mới
@@ -1222,49 +1621,88 @@ watch([() => formData.value.employeeID, () => formData.value.startDateTime, () =
     <!-- Overlap Confirmation Modal -->
     <ModalDialog 
         v-model:show="showOverlapConfirmModal" 
-        title="Cảnh báo: Đơn nghỉ phép trùng lặp" 
-        size="md"
+        :title="overlapModalType === 'leave' ? 'Cảnh báo: Đơn nghỉ phép trùng lặp' : 'Cảnh báo: Không thể tạo đơn nghỉ phép'" 
+        :size="overlapModalType === 'leave' ? 'md' : 'xl'"
+        scrollable
     >
         <div class="p-3">
-            <div class="alert alert-warning mb-3">
+            <!-- Warning message based on overlap type -->
+            <div v-if="overlapModalType === 'leave'" class="alert alert-warning mb-3">
                 <i class="fas fa-exclamation-triangle me-2"></i>
                 Đơn nghỉ phép này trùng lặp với {{ overlappingRequests.length }} đơn nghỉ phép đã duyệt khác.
             </div>
-            
-            <div class="mb-3">
-                <strong>Danh sách đơn trùng lặp:</strong>
-                <ul class="list-group mt-2">
-                    <li 
-                        v-for="(request, index) in overlappingRequests" 
-                        :key="index"
-                        class="list-group-item"
-                    >
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <strong>Số phiếu:</strong> {{ request.voucherCode }}<br>
-                                <strong>Loại nghỉ phép:</strong> {{ request.leaveTypeName }}<br>
-                                <strong>Từ ngày:</strong> {{ new Date(request.startDateTime).toLocaleString('vi-VN') }}<br>
-                                <strong>Đến ngày:</strong> {{ new Date(request.endDateTime).toLocaleString('vi-VN') }}
-                            </div>
-                        </div>
-                    </li>
-                </ul>
+            <div v-else class="alert alert-danger mb-3">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Đơn nghỉ phép này trùng với đơn tăng ca đã duyệt hoặc ca làm việc đã có dữ liệu chấm công. Không thể tạo đơn.</strong>
             </div>
             
-            <div class="alert alert-info">
+            <!-- Overtime Requests Table -->
+            <div v-if="(overlapModalType === 'overtime' || overlapModalType === 'overtime-leave' || overlapModalType === 'overtime-shift' || overlapModalType === 'all') && overlappingOvertimeRequests.length > 0" class="mb-4">
+                <h6 class="mb-3">
+                    <i class="fas fa-clock me-2"></i>
+                    Danh sách đơn tăng ca trùng lặp ({{ overlappingOvertimeRequests.length }})
+                </h6>
+                <DataTable 
+                    :columns="overtimeRequestsColumns" 
+                    :data="overtimeRequestsTableData"
+                />
+            </div>
+            
+            <!-- Shift Times Table -->
+            <div v-if="(overlapModalType === 'shift' || overlapModalType === 'shift-leave' || overlapModalType === 'overtime-shift' || overlapModalType === 'all') && overlappingShiftTimes.length > 0" class="mb-4">
+                <h6 class="mb-3">
+                    <i class="fas fa-clock me-2"></i>
+                    Danh sách ca làm việc có dữ liệu chấm công ({{ overlappingShiftTimes.length }})
+                </h6>
+                <DataTable 
+                    :columns="shiftTimesColumns" 
+                    :data="shiftTimesTableData"
+                />
+            </div>
+            
+            <!-- Leave Requests Table -->
+            <div v-if="(overlapModalType === 'leave' || overlapModalType === 'overtime-leave' || overlapModalType === 'shift-leave' || overlapModalType === 'all') && overlappingRequests.length > 0" class="mb-4">
+                <h6 class="mb-3">
+                    <i class="fas fa-calendar-times me-2"></i>
+                    Danh sách đơn nghỉ phép trùng lặp ({{ overlappingRequests.length }})
+                </h6>
+                <DataTable 
+                    :columns="leaveRequestsColumns" 
+                    :data="leaveRequestsTableData"
+                />
+            </div>
+            
+            <!-- Info message -->
+            <div v-if="overlapModalType === 'leave'" class="alert alert-info mt-3 mb-0">
                 <small>
                     <i class="fas fa-info-circle me-1"></i>
                     Lưu ý: Hệ thống sẽ tính theo đơn có thời gian nghỉ dài hơn trong mỗi ngày.
                 </small>
             </div>
+            <div v-else class="alert alert-info mt-3 mb-0">
+                <small>
+                    <i class="fas fa-info-circle me-1"></i>
+                    Vui lòng kiểm tra và điều chỉnh thời gian đơn nghỉ phép để tránh trùng lặp.
+                </small>
+            </div>
             
+            <!-- Buttons -->
             <div class="d-flex justify-content-end gap-2 mt-3">
-                <button type="button" class="btn btn-secondary" @click="handleOverlapCancel">
-                    Hủy
-                </button>
-                <button type="button" class="btn btn-warning" @click="handleOverlapConfirm">
-                    Xác nhận tạo đơn
-                </button>
+                <!-- If only leave overlaps, show cancel and confirm buttons -->
+                <template v-if="overlapModalType === 'leave'">
+                    <button type="button" class="btn btn-secondary" @click="handleOverlapCancel">
+                        Hủy
+                    </button>
+                    <button type="button" class="btn btn-warning" @click="handleOverlapConfirm">
+                        Xác nhận tạo đơn
+                    </button>
+                </template>
+                <!-- If overtime or shift overlaps, only show close button (blocks creation) -->
+                <template v-else>
+                    <button type="button" class="btn btn-secondary" @click="handleOverlapCancel">
+                        Đóng
+                    </button>
+                </template>
             </div>
         </div>
     </ModalDialog>

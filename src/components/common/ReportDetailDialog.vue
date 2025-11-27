@@ -39,13 +39,17 @@ const statusLogsPerPage = 4
 const currentStatusPage = ref(1)
 
 const paginatedStatusLogs = computed(() => {
+  const statusLogs = getStatusLogs(props.report)
+  if (!statusLogs || statusLogs.length === 0) return []
   const start = (currentStatusPage.value - 1) * statusLogsPerPage
   const end = start + statusLogsPerPage
-  return props.report.statusLogs.slice(start, end)
+  return statusLogs.slice(start, end)
 })
 
 const totalStatusPages = computed(() => {
-  return Math.ceil(props.report.statusLogs.length / statusLogsPerPage)
+  const statusLogs = getStatusLogs(props.report)
+  if (!statusLogs || statusLogs.length === 0) return 0
+  return Math.ceil(statusLogs.length / statusLogsPerPage)
 })
 
 const handleStatusPageChange = (page) => {
@@ -60,16 +64,64 @@ const formatDate = (date) => {
 const getStatusLabel = (status) => {
   switch (status) {
     case 0:
-      return 'Pending'
+      return 'Chờ duyệt'
     case 1:
-      return 'Approved'
+      return 'Đã duyệt'
     case 2:
-      return 'Rejected'
+      return 'Đã từ chối'
     case 3:
-      return 'Completed'
+      return 'Hoàn thành'
     default:
       return 'Không xác định'
   }
+}
+
+// Hàm lấy statusLogs an toàn (xử lý cả camelCase và PascalCase)
+const getStatusLogs = (report) => {
+  return report.statusLogs || report.StatusLogs || []
+}
+
+// Hàm lấy status hiện tại của report
+const getReportStatus = (report) => {
+  const statusLogs = getStatusLogs(report)
+  
+  if (!statusLogs || !Array.isArray(statusLogs) || statusLogs.length === 0) {
+    return 0 // Mặc định là Pending nếu không có statusLogs
+  }
+  
+  // Lấy status từ log đầu tiên (đã được sắp xếp theo ngày giảm dần từ backend)
+  const firstLog = statusLogs[0]
+  if (!firstLog) {
+    return 0
+  }
+  
+  // Thử nhiều cách để lấy status
+  let status = firstLog.status ?? firstLog.Status ?? 0
+  
+  // Nếu status là string, thử parse
+  if (typeof status === 'string') {
+    // Xử lý enum string như "Pending", "Approved", etc.
+    const statusMap = {
+      'Pending': 0,
+      'Approved': 1,
+      'Rejected': 2,
+      'Completed': 3,
+      '0': 0,
+      '1': 1,
+      '2': 2,
+      '3': 3
+    }
+    status = statusMap[status] ?? parseInt(status, 10)
+  }
+  
+  // Đảm bảo status là số hợp lệ
+  const statusNumber = typeof status === 'number' ? status : parseInt(status, 10)
+  
+  if (isNaN(statusNumber) || statusNumber < 0 || statusNumber > 3) {
+    return 0 // Mặc định là Pending
+  }
+  
+  return statusNumber
 }
 
 const handleStatusAction = (action) => {
@@ -138,19 +190,48 @@ const hasAttachments = computed(() => {
 })
 
 const getLatestStatusLog = computed(() => {
-  if (!props.report.statusLogs || props.report.statusLogs.length === 0) return null
-  return props.report.statusLogs[0] // Assuming logs are ordered by date descending
+  const statusLogs = getStatusLogs(props.report)
+  if (!statusLogs || statusLogs.length === 0) return null
+  return statusLogs[0] // Assuming logs are ordered by date descending
 })
 
 const getStatusNoteLabel = computed(() => {
-  const status = getLatestStatusLog.value?.status
+  const log = getLatestStatusLog.value
+  if (!log) return null
+  const status = getLogStatus(log)
   if (status === 1) return 'Giải pháp đề xuất'
   if (status === 2) return 'Lý do từ chối'
   return null
 })
 
+// Helper function để lấy status từ log an toàn
+const getLogStatus = (log) => {
+  if (!log) return 0
+  let status = log.status ?? log.Status ?? 0
+  
+  // Nếu status là string, thử parse
+  if (typeof status === 'string') {
+    const statusMap = {
+      'Pending': 0,
+      'Approved': 1,
+      'Rejected': 2,
+      'Completed': 3,
+      '0': 0,
+      '1': 1,
+      '2': 2,
+      '3': 3
+    }
+    status = statusMap[status] ?? parseInt(status, 10)
+  }
+  
+  const statusNumber = typeof status === 'number' ? status : parseInt(status, 10)
+  return isNaN(statusNumber) || statusNumber < 0 || statusNumber > 3 ? 0 : statusNumber
+}
+
 const getStatusIcon = (status) => {
-  switch (status) {
+  // Nếu status là object (log), lấy status từ nó
+  const statusNum = typeof status === 'object' ? getLogStatus(status) : status
+  switch (statusNum) {
     case 0:
       return 'fa-clock text-warning'
     case 1:
@@ -165,7 +246,9 @@ const getStatusIcon = (status) => {
 }
 
 const getStatusText = (status) => {
-  switch (status) {
+  // Nếu status là object (log), lấy status từ nó
+  const statusNum = typeof status === 'object' ? getLogStatus(status) : status
+  switch (statusNum) {
     case 0:
       return 'Chờ xử lý'
     case 1:
@@ -180,8 +263,7 @@ const getStatusText = (status) => {
 }
 
 const canResubmit = computed(() => {
-  const currentStatus = props.report.statusLogs[0]?.status
-  return currentStatus === 2 // Rejected
+  return getReportStatus(props.report) === 2 // Rejected
 })
 
 const handleResubmit = () => {
@@ -193,8 +275,13 @@ const handleEdit = () => {
 }
 
 const canEdit = computed(() => {
-  const currentStatus = props.report.statusLogs[0]?.status
+  const currentStatus = getReportStatus(props.report)
   return currentStatus === 0 || currentStatus === 2 // Pending or Rejected
+})
+
+// Kiểm tra xem có thể duyệt/từ chối không (chỉ khi status là Pending)
+const canApproveOrReject = computed(() => {
+  return getReportStatus(props.report) === 0 // Chỉ khi Chờ duyệt
 })
 </script>
 
@@ -228,7 +315,7 @@ const canEdit = computed(() => {
           </div>
           <div class="d-flex align-items-center gap-2 mt-3 mt-md-0">
             <span class="text-muted small"><i class="fas fa-info-circle me-1"></i>Trạng thái:</span>
-            <StatusBadge :status="getStatusLabel(report.statusLogs[0].status)" />
+            <StatusBadge :status="getStatusLabel(getReportStatus(report))" />
           </div>
         </div>
       </div>
@@ -242,12 +329,12 @@ const canEdit = computed(() => {
       </div>
 
       <!-- Status Note Section -->
-      <div v-if="getLatestStatusLog && (getLatestStatusLog.status === 1 || getLatestStatusLog.status === 2)"
+      <div v-if="getLatestStatusLog && (() => { const s = getLogStatus(getLatestStatusLog); return s === 1 || s === 2; })()"
         class="row mb-3">
         <div class="col-12">
           <div class="text-muted small mb-1">
             <i class="fas"
-              :class="getLatestStatusLog.status === 1 ? 'fa-check-circle text-success' : 'fa-times-circle text-danger'"></i>
+              :class="(() => { const s = getLogStatus(getLatestStatusLog); return s === 1 ? 'fa-check-circle text-success' : 'fa-times-circle text-danger'; })()"></i>
             {{ getStatusNoteLabel }}
           </div>
           <div class="bg-light rounded p-3 status-note">
@@ -288,19 +375,19 @@ const canEdit = computed(() => {
               <i class="fas fa-history me-1"></i>Lịch sử trạng thái
             </div>
             <div class="text-muted small">
-              Hiển thị {{ paginatedStatusLogs.length }} trên {{ report.statusLogs.length }} trạng thái
+              Hiển thị {{ paginatedStatusLogs.length }} trên {{ getStatusLogs(report).length }} trạng thái
             </div>
           </div>
           <div class="status-timeline">
             <div v-for="(log, index) in paginatedStatusLogs" :key="log.id" class="status-timeline-item"
               :class="{ 'is-latest': index === 0 && currentStatusPage === 1 }">
               <div class="status-timeline-icon">
-                <i class="fas" :class="getStatusIcon(log.status)"></i>
+                <i class="fas" :class="getStatusIcon(log)"></i>
               </div>
               <div class="status-timeline-content">
                 <div class="status-timeline-header">
-                  <span class="status-badge" :class="getStatusLabel(log.status).toLowerCase()">
-                    {{ getStatusText(log.status) }}
+                  <span class="status-badge" :class="getStatusLabel(getLogStatus(log)).toLowerCase()">
+                    {{ getStatusText(log) }}
                   </span>
                   <span class="status-date">
                     <i class="fas fa-clock me-1"></i>
@@ -315,7 +402,7 @@ const canEdit = computed(() => {
           </div>
           <!-- Pagination -->
           <div v-if="totalStatusPages > 1" class="d-flex justify-content-center mt-3">
-            <Pagination :total-items="report.statusLogs.length" :items-per-page="statusLogsPerPage"
+            <Pagination :total-items="getStatusLogs(report).length" :items-per-page="statusLogsPerPage"
               :current-page="currentStatusPage" @update:currentPage="handleStatusPageChange" />
           </div>
         </div>
@@ -355,10 +442,18 @@ const canEdit = computed(() => {
             </button>
           </template>
           <template v-else>
-            <button class="btn btn-outline-danger" @click="handleStatusAction('reject')">
+            <button 
+              v-if="canApproveOrReject"
+              class="btn btn-outline-danger" 
+              @click="handleStatusAction('reject')"
+            >
               <i class="fas fa-times-circle me-1"></i> Từ chối
             </button>
-            <button class="btn btn-primary" @click="handleStatusAction('approve')">
+            <button 
+              v-if="canApproveOrReject"
+              class="btn btn-primary" 
+              @click="handleStatusAction('approve')"
+            >
               <i class="fas fa-check-circle me-1"></i> Duyệt
             </button>
           </template>

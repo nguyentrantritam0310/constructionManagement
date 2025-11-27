@@ -31,6 +31,8 @@ import { usePermissions } from '../../composables/usePermissions'
 // Services - Các service xử lý API và business logic
 import api from '../../api'
 import { attendanceDataService } from '../../services/attendanceDataService'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
 
 // ============================================================================
 // KHỞI TẠO COMPOSABLES
@@ -2487,7 +2489,8 @@ const attendanceDataColumns = [
   { key: 'shift', label: 'Ca làm việc' },
   { key: 'date', label: 'Ngày làm' },
   { key: 'scanTime', label: 'Giờ quét' },
-  { key: 'location', label: 'Máy chấm công' },
+  { key: 'machine', label: 'Máy chấm công' },
+  { key: 'location', label: 'Vị trí' },
   { key: 'type', label: 'Loại công' }
 ];
 
@@ -2692,20 +2695,537 @@ const goToCurrentMonth = () => {
   selectedYear.value = now.getFullYear()
 }
 
-const exportDetailToExcel = () => {
-  // TODO: Implement Excel export
+const exportDetailToExcel = async () => {
+  if (!processedDetailData.value || processedDetailData.value.length === 0) {
+    showMessage('Không có dữ liệu để xuất Excel!', 'warning')
+    return
+  }
+  
+  try {
+    showMessage('Đang xuất Excel...', 'info')
+    
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Bảng công chi tiết')
+    
+    const title = `BẢNG CÔNG CHI TIẾT THÁNG ${selectedMonth.value}/${selectedYear.value}`
+    const headers = detailColumns.map(col => col.label)
+    
+    // Add title
+    const titleRow = worksheet.addRow([title])
+    worksheet.mergeCells(1, 1, 1, headers.length)
+    const titleCell = worksheet.getCell(1, 1)
+    
+    // Style title cell
+    titleCell.font = { 
+      size: 16, 
+      bold: true, 
+      color: { argb: 'FF212529' },
+      name: 'Arial'
+    }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE9ECEF' }
+    }
+    titleCell.border = {
+      top: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      left: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      bottom: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      right: { style: 'thin', color: { argb: 'FFADB5BD' } }
+    }
+    titleRow.height = 30
+    
+    // Add empty row for spacing
+    worksheet.addRow([])
+    
+    // Add headers
+    const headerRow = worksheet.addRow(headers)
+    headerRow.height = 25
+    
+    // Style header cells
+    headerRow.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        left: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        bottom: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        right: { style: 'thin', color: { argb: 'FFADB5BD' } }
+      }
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF1F3F5' }
+      }
+      cell.font = { 
+        bold: true, 
+        size: 10,
+        color: { argb: 'FF212529' },
+        name: 'Arial'
+      }
+      cell.alignment = { 
+        horizontal: 'center', 
+        vertical: 'middle', 
+        wrapText: true 
+      }
+    })
+    
+    // Add data rows
+    processedDetailData.value.forEach((item) => {
+      const row = detailColumns.map(col => {
+        const value = item[col.key]
+        // Format values for display
+        if (col.key === 'late' || col.key === 'early') {
+          return value > 0 ? value : 'Đúng giờ'
+        }
+        if (col.key === 'hours') {
+          return typeof value === 'number' ? value : (value || 0)
+        }
+        if (col.key === 'days') {
+          return typeof value === 'number' ? value : (value || 0)
+        }
+        if (col.key === 'checkInTime' || col.key === 'checkOutTime') {
+          return value ? (typeof value === 'string' ? value.substring(0, 5) : value) : '-'
+        }
+        return value ?? ''
+      })
+      
+      const dataRow = worksheet.addRow(row)
+      dataRow.height = 18
+      
+      // Style cells
+      dataRow.eachCell((cell, colNumber) => {
+        const col = detailColumns[colNumber - 1]
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          left: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          bottom: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          right: { style: 'thin', color: { argb: 'FFDEE2E6' } }
+        }
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' }
+        }
+        cell.font = {
+          size: 9,
+          name: 'Arial',
+          color: { argb: 'FF212529' },
+          bold: false
+        }
+        
+        // Alignment and number format
+        if (colNumber === 1) { // STT column
+          cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        } else if (col && (col.key === 'hours' || col.key === 'days' || col.key === 'late' || col.key === 'early')) {
+          // Number columns
+          if (typeof cell.value === 'number') {
+            cell.numFmt = col.key === 'hours' || col.key === 'days' ? '0.00' : '0'
+          }
+          cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        } else {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' }
+        }
+      })
+    })
+    
+    // Auto-fit columns
+    worksheet.columns.forEach((column, index) => {
+      const col = detailColumns[index]
+      if (col) {
+        let maxWidth = col.label.length + 2
+        processedDetailData.value.forEach(item => {
+          const value = item[col.key]
+          if (value !== null && value !== undefined) {
+            let valueLength
+            if (col.key === 'late' || col.key === 'early') {
+              valueLength = value > 0 ? String(value).length + 6 : 9 // "Đúng giờ" length
+            } else {
+              valueLength = String(value).length
+            }
+            if (valueLength > maxWidth) {
+              maxWidth = valueLength
+            }
+          }
+        })
+        column.width = Math.min(Math.max(maxWidth, 12), 30)
+      } else {
+        column.width = 12
+      }
+    })
+    
+    // Freeze header row
+    worksheet.views = [
+      {
+        state: 'frozen',
+        ySplit: 2,
+        activeCell: 'A3',
+        showGridLines: true
+      }
+    ]
+    
+    // Generate buffer and download
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const fileName = `BangCongChiTiet_${selectedYear.value}_${selectedMonth.value}.xlsx`
+    
+    saveAs(blob, fileName)
+    showMessage('Xuất Excel thành công!', 'success')
+  } catch (error) {
+    console.error('Error exporting to Excel:', error)
+    showMessage(`Lỗi khi xuất Excel: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
+  }
 }
 
 const printDetailReport = () => {
-  // TODO: Implement print report
+  if (!processedDetailData.value || processedDetailData.value.length === 0) {
+    showMessage('Không có dữ liệu để in!', 'warning')
+    return
+  }
+  
+  try {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      showMessage('Không thể mở cửa sổ in. Vui lòng cho phép popup!', 'error')
+      return
+    }
+    
+    const currentDate = new Date().toLocaleDateString('vi-VN')
+    const headers = detailColumns.map(col => col.label).join('</th><th>')
+    
+    const formatValue = (item, col) => {
+      const value = item[col.key]
+      if (value === null || value === undefined) return ''
+      
+      if (col.key === 'late' || col.key === 'early') {
+        return value > 0 ? `${value} phút` : 'Đúng giờ'
+      }
+      if (col.key === 'hours') {
+        return typeof value === 'number' ? `${value}h` : (value || '0h')
+      }
+      if (col.key === 'days') {
+        return typeof value === 'number' ? value : (value || 0)
+      }
+      if (col.key === 'checkInTime' || col.key === 'checkOutTime') {
+        return value ? (typeof value === 'string' ? value.substring(0, 5) : value) : '-'
+      }
+      return value
+    }
+    
+    const rows = processedDetailData.value.map(item => {
+      const cells = detailColumns.map(col => {
+        const value = formatValue(item, col)
+        return `<td>${value}</td>`
+      }).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Báo cáo bảng công chi tiết tháng ${selectedMonth.value}/${selectedYear.value}</title>
+        <style>
+          @page { size: A4 landscape; margin: 1cm; }
+          body { font-family: Arial, sans-serif; margin: 10px; font-size: 10px; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .title { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
+          .subtitle { font-size: 12px; color: #666; }
+          .table-container { overflow-x: auto; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9px; }
+          th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: center; }
+          th { background-color: #f1f3f5; font-weight: bold; position: sticky; top: 0; }
+          td { white-space: nowrap; }
+          .number { text-align: right; }
+          .footer { margin-top: 20px; text-align: right; font-size: 10px; color: #666; }
+          @media print { 
+            body { margin: 0; }
+            .table-container { overflow: visible; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">BẢNG CÔNG CHI TIẾT THÁNG ${selectedMonth.value}/${selectedYear.value}</div>
+        </div>
+        
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>${headers}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="footer">
+          <div>Ngày in: ${currentDate}</div>
+          <div>Tổng số bản ghi: ${processedDetailData.value.length}</div>
+        </div>
+      </body>
+      </html>
+    `)
+    
+    printWindow.document.close()
+    
+    // Wait for content to load before printing
+    printWindow.onload = () => {
+      printWindow.focus()
+      printWindow.print()
+    }
+  } catch (error) {
+    console.error('Error printing report:', error)
+    showMessage(`Lỗi khi in báo cáo: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
+  }
 }
 
-const exportAttendanceToExcel = () => {
-  // TODO: Implement Excel export
+const exportAttendanceToExcel = async () => {
+  if (!attendanceData.value || attendanceData.value.length === 0) {
+    showMessage('Không có dữ liệu để xuất Excel!', 'warning')
+    return
+  }
+  
+  try {
+    showMessage('Đang xuất Excel...', 'info')
+    
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Dữ liệu chấm công')
+    
+    const title = `DỮ LIỆU CHẤM CÔNG THÁNG ${selectedMonth.value}/${selectedYear.value}`
+    const headers = attendanceDataColumns.map(col => col.label)
+    
+    // Add title
+    const titleRow = worksheet.addRow([title])
+    worksheet.mergeCells(1, 1, 1, headers.length)
+    const titleCell = worksheet.getCell(1, 1)
+    
+    // Style title cell
+    titleCell.font = { 
+      size: 16, 
+      bold: true, 
+      color: { argb: 'FF212529' },
+      name: 'Arial'
+    }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE9ECEF' }
+    }
+    titleCell.border = {
+      top: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      left: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      bottom: { style: 'thin', color: { argb: 'FFADB5BD' } },
+      right: { style: 'thin', color: { argb: 'FFADB5BD' } }
+    }
+    titleRow.height = 30
+    
+    // Add empty row for spacing
+    worksheet.addRow([])
+    
+    // Add headers
+    const headerRow = worksheet.addRow(headers)
+    headerRow.height = 25
+    
+    // Style header cells
+    headerRow.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        left: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        bottom: { style: 'thin', color: { argb: 'FFADB5BD' } },
+        right: { style: 'thin', color: { argb: 'FFADB5BD' } }
+      }
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF1F3F5' }
+      }
+      cell.font = { 
+        bold: true, 
+        size: 10,
+        color: { argb: 'FF212529' },
+        name: 'Arial'
+      }
+      cell.alignment = { 
+        horizontal: 'center', 
+        vertical: 'middle', 
+        wrapText: true 
+      }
+    })
+    
+    // Add data rows
+    attendanceData.value.forEach((item) => {
+      const row = attendanceDataColumns.map(col => {
+        const value = item[col.key]
+        return value ?? ''
+      })
+      
+      const dataRow = worksheet.addRow(row)
+      dataRow.height = 18
+      
+      // Style cells
+      dataRow.eachCell((cell, colNumber) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          left: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          bottom: { style: 'thin', color: { argb: 'FFDEE2E6' } },
+          right: { style: 'thin', color: { argb: 'FFDEE2E6' } }
+        }
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' }
+        }
+        cell.font = {
+          size: 9,
+          name: 'Arial',
+          color: { argb: 'FF212529' },
+          bold: false
+        }
+        
+        // Alignment
+        if (colNumber === 1) { // STT column
+          cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        } else {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' }
+        }
+      })
+    })
+    
+    // Auto-fit columns
+    worksheet.columns.forEach((column, index) => {
+      const col = attendanceDataColumns[index]
+      if (col) {
+        let maxWidth = col.label.length + 2
+        attendanceData.value.forEach(item => {
+          const value = item[col.key]
+          if (value !== null && value !== undefined) {
+            const valueLength = String(value).length
+            if (valueLength > maxWidth) {
+              maxWidth = valueLength
+            }
+          }
+        })
+        column.width = Math.min(Math.max(maxWidth, 12), 30)
+      } else {
+        column.width = 12
+      }
+    })
+    
+    // Freeze header row
+    worksheet.views = [
+      {
+        state: 'frozen',
+        ySplit: 2,
+        activeCell: 'A3',
+        showGridLines: true
+      }
+    ]
+    
+    // Generate buffer and download
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const fileName = `DuLieuChamCong_${selectedYear.value}_${selectedMonth.value}.xlsx`
+    
+    saveAs(blob, fileName)
+    showMessage('Xuất Excel thành công!', 'success')
+  } catch (error) {
+    console.error('Error exporting to Excel:', error)
+    showMessage(`Lỗi khi xuất Excel: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
+  }
 }
 
 const printAttendanceReport = () => {
-  // TODO: Implement print report
+  if (!attendanceData.value || attendanceData.value.length === 0) {
+    showMessage('Không có dữ liệu để in!', 'warning')
+    return
+  }
+  
+  try {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      showMessage('Không thể mở cửa sổ in. Vui lòng cho phép popup!', 'error')
+      return
+    }
+    
+    const currentDate = new Date().toLocaleDateString('vi-VN')
+    const headers = attendanceDataColumns.map(col => col.label).join('</th><th>')
+    
+    const rows = attendanceData.value.map(item => {
+      const cells = attendanceDataColumns.map(col => {
+        const value = item[col.key] ?? ''
+        return `<td>${value}</td>`
+      }).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Báo cáo dữ liệu chấm công tháng ${selectedMonth.value}/${selectedYear.value}</title>
+        <style>
+          @page { size: A4 landscape; margin: 1cm; }
+          body { font-family: Arial, sans-serif; margin: 10px; font-size: 10px; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .title { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
+          .subtitle { font-size: 12px; color: #666; }
+          .table-container { overflow-x: auto; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9px; }
+          th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: center; }
+          th { background-color: #f1f3f5; font-weight: bold; position: sticky; top: 0; }
+          td { white-space: nowrap; }
+          .footer { margin-top: 20px; text-align: right; font-size: 10px; color: #666; }
+          @media print { 
+            body { margin: 0; }
+            .table-container { overflow: visible; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">DỮ LIỆU CHẤM CÔNG THÁNG ${selectedMonth.value}/${selectedYear.value}</div>
+        </div>
+        
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>${headers}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="footer">
+          <div>Ngày in: ${currentDate}</div>
+          <div>Tổng số bản ghi: ${attendanceData.value.length}</div>
+        </div>
+      </body>
+      </html>
+    `)
+    
+    printWindow.document.close()
+    
+    // Wait for content to load before printing
+    printWindow.onload = () => {
+      printWindow.focus()
+      printWindow.print()
+    }
+  } catch (error) {
+    console.error('Error printing report:', error)
+    showMessage(`Lỗi khi in báo cáo: ${error.message || 'Vui lòng thử lại sau'}`, 'error')
+  }
 }
 
 /**

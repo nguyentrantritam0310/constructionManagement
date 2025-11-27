@@ -81,7 +81,8 @@ export function useManagementReport() {
       })
 
       console.log('✅ Report created successfully:', response.data)
-      reports.value.push(response.data)
+      // Fetch lại danh sách để đảm bảo có đầy đủ StatusLogs
+      await fetchReports()
       return response.data
     } catch (err) {
       console.error('❌ Error creating report:', {

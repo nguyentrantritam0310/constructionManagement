@@ -206,19 +206,19 @@ export function usePermissions() {
   const canEditItem = (page, item) => {
     if (!item || !canView(page)) return false
     
-    // Giám đốc có toàn quyền - có thể sửa mọi thứ
-    if (currentUser.value?.role === 'director' && hasPermission(page, 'edit')) {
-      // Với các trang có approval workflow, giám đốc vẫn có thể sửa ở mọi trạng thái
-      return true
-    }
-    
     // Check approval status for specific pages - only allow edit if status is "Tạo mới"
+    // Đơn đã duyệt không được phép sửa (kể cả giám đốc)
     const statusRestrictedPages = ['leave', 'overtime', 'personnel-contract', 'payroll-adjustment']
     if (statusRestrictedPages.includes(page)) {
       // Only allow edit if approveStatus is "Tạo mới"
       if (item.approveStatus !== 'Tạo mới' && item.approveStatus !== 0 && item.approveStatus !== '0') {
         return false
       }
+    }
+    
+    // Giám đốc có thể sửa các items ở trạng thái "Tạo mới"
+    if (currentUser.value?.role === 'director' && hasPermission(page, 'edit')) {
+      return true
     }
     
     // Check if user can edit all
@@ -235,19 +235,19 @@ export function usePermissions() {
   const canDeleteItem = (page, item) => {
     if (!item || !canView(page)) return false
     
-    // Giám đốc có toàn quyền - có thể xóa mọi thứ
-    if (currentUser.value?.role === 'director' && hasPermission(page, 'delete')) {
-      // Giám đốc có thể xóa ở mọi trạng thái
-      return true
-    }
-    
     // Check approval status for specific pages - only allow delete if status is "Tạo mới"
+    // Đơn đã duyệt không được phép xóa (kể cả giám đốc)
     const statusRestrictedPages = ['leave', 'overtime', 'personnel-contract', 'payroll-adjustment']
     if (statusRestrictedPages.includes(page)) {
       // Only allow delete if approveStatus is "Tạo mới"
       if (item.approveStatus !== 'Tạo mới' && item.approveStatus !== 0 && item.approveStatus !== '0') {
         return false
       }
+    }
+    
+    // Giám đốc có thể xóa các items ở trạng thái "Tạo mới"
+    if (currentUser.value?.role === 'director' && hasPermission(page, 'delete')) {
+      return true
     }
     
     // Check if user can delete all

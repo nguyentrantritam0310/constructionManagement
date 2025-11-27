@@ -8,9 +8,8 @@ import WarehouseEntryForm from '@/components/warehouse/WarehouseEntryForm.vue'
 import ModalDialog from '../common/ModalDialog.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import { useMaterialPlan } from '../../composables/useMaterialPlan'
-import { faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { importOrderService } from '@/services/importOrderService'
+import ActionButton from '@/components/common/ActionButton.vue'
 
 const { showMessage } = useGlobalMessage()
 const materialPlans = ref([])
@@ -103,6 +102,29 @@ const handleReject = async (item) => {
         showMessage('Lỗi khi từ chối!', 'error')
     }
 }
+
+// Hàm chuyển đổi status từ tiếng Anh sang tiếng Việt
+const getStatusLabel = (status) => {
+    const statusMap = {
+        'Pending': 'Chờ duyệt',
+        'Approved': 'Đã duyệt',
+        'Rejected': 'Đã từ chối',
+        'Completed': 'Hoàn thành',
+        // Nếu đã là tiếng Việt thì giữ nguyên
+        'Chờ duyệt': 'Chờ duyệt',
+        'Đã duyệt': 'Đã duyệt',
+        'Đã từ chối': 'Đã từ chối',
+        'Hoàn thành': 'Hoàn thành',
+        'Từ chối': 'Đã từ chối', // Trường hợp backend trả về "Từ chối"
+        'Hoàn tất': 'Hoàn thành' // Trường hợp backend trả về "Hoàn tất"
+    }
+    return statusMap[status] || status
+}
+
+// Hàm kiểm tra status có phải là Pending không (hỗ trợ cả tiếng Anh và tiếng Việt)
+const isPending = (status) => {
+    return status === 'Pending' || status === 'Chờ duyệt'
+}
 </script>
 
 <template>
@@ -124,17 +146,27 @@ const handleReject = async (item) => {
                 {{ new Date(item.importDate).toLocaleDateString('vi-VN') }}
             </template>
             <template #status="{ item }">
-                <StatusBadge :status="item.status" />
+                <StatusBadge :status="getStatusLabel(item.status)" />
             </template>
             <template #actions="{ item }">
-                <button class="btn btn-link text-success p-0 me-2" title="Duyệt" @click.stop="handleApprove(item)"
-                    :disabled="item.status !== 'Pending'" @approval="handleApprove(item)" data-tour="material-approve-button">
-                    <FontAwesomeIcon :icon="faCheckCircle" size="xl" />
-                </button>
-                <button class="btn btn-link text-danger p-0" title="Từ chối" @click.stop="handleReject(item)"
-                    :disabled="item.status !== 'Pending'" data-tour="material-reject-button">
-                    <FontAwesomeIcon :icon="faTimesCircle" size="xl" />
-                </button>
+                <div class="d-flex justify-content-start gap-2">
+                    <ActionButton 
+                        v-if="isPending(item.status)"
+                        type="success" 
+                        icon="fas fa-check" 
+                        @click.stop="handleApprove(item)"
+                        title="Duyệt"
+                        data-tour="material-approve-button"
+                    ></ActionButton>
+                    <ActionButton 
+                        v-if="isPending(item.status)"
+                        type="danger" 
+                        icon="fas fa-times" 
+                        @click.stop="handleReject(item)"
+                        title="Từ chối"
+                        data-tour="material-reject-button"
+                    ></ActionButton>
+                </div>
             </template>
         </DataTable>
         <div class="d-flex justify-content-between align-items-center mt-4">

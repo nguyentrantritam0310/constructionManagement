@@ -54,7 +54,7 @@ const filteredReports = computed(() => {
 
   // Apply status filter
   if (statusFilter.value) {
-    result = result.filter(report => getStatusLabel(report.statusLogs[0].status) === statusFilter.value)
+    result = result.filter(report => getStatusLabel(getReportStatus(report)) === statusFilter.value)
   }
 
   // Apply level filter
@@ -210,7 +210,7 @@ const exportToExcel = async () => {
   filteredReports.value.forEach(report => {
     worksheet.addRow({
       ...report,
-      status: getStatusLabel(report.statusLogs[0].status),
+      status: getStatusLabel(getReportStatus(report)),
       reportDate: formatDate(report.reportDate)
     })
   })
@@ -326,16 +326,59 @@ const formatDate = (date) => {
 const getStatusLabel = (status) => {
   switch (status) {
     case 0:
-      return 'Pending'
+      return 'Chờ duyệt'
     case 1:
-      return 'Approved'
+      return 'Đã duyệt'
     case 2:
-      return 'Rejected'
+      return 'Đã từ chối'
     case 3:
-      return 'Completed'
+      return 'Hoàn thành'
     default:
       return 'Không xác định'
   }
+}
+
+const getReportStatus = (report) => {
+  // Xử lý cả camelCase và PascalCase - kiểm tra tất cả các khả năng
+  const statusLogs = report.statusLogs || report.StatusLogs || []
+  
+  if (!statusLogs || !Array.isArray(statusLogs) || statusLogs.length === 0) {
+    return 0 // Mặc định là Pending nếu không có statusLogs
+  }
+  
+  // Lấy status từ log đầu tiên (đã được sắp xếp theo ngày giảm dần từ backend)
+  const firstLog = statusLogs[0]
+  if (!firstLog) {
+    return 0
+  }
+  
+  // Thử nhiều cách để lấy status
+  let status = firstLog.status ?? firstLog.Status ?? 0
+  
+  // Nếu status là string, thử parse
+  if (typeof status === 'string') {
+    // Xử lý enum string như "Pending", "Approved", etc.
+    const statusMap = {
+      'Pending': 0,
+      'Approved': 1,
+      'Rejected': 2,
+      'Completed': 3,
+      '0': 0,
+      '1': 1,
+      '2': 2,
+      '3': 3
+    }
+    status = statusMap[status] ?? parseInt(status, 10)
+  }
+  
+  // Đảm bảo status là số hợp lệ
+  const statusNumber = typeof status === 'number' ? status : parseInt(status, 10)
+  
+  if (isNaN(statusNumber) || statusNumber < 0 || statusNumber > 3) {
+    return 0 // Mặc định là Pending
+  }
+  
+  return statusNumber
 }
 
 const showDetailModal = ref(false)
@@ -388,10 +431,10 @@ const handleEdit = (report) => {
 
 const statusOptions = [
   { value: 'all', label: 'Tất cả' },
-  { value: 'Pending', label: 'Chờ duyệt' },
-  { value: 'Approved', label: 'Đã duyệt' },
-  { value: 'Rejected', label: 'Từ chối' },
-  { value: 'Completed', label: 'Hoàn thành' }
+  { value: 'Chờ duyệt', label: 'Chờ duyệt' },
+  { value: 'Đã duyệt', label: 'Đã duyệt' },
+  { value: 'Đã từ chối', label: 'Đã từ chối' },
+  { value: 'Hoàn thành', label: 'Hoàn thành' }
 ]
 
 const levelOptions = [
@@ -403,8 +446,8 @@ const levelOptions = [
 ]
 
 const isResubmitMode = computed(() => {
-  if (selectedReport.value && selectedReport.value.statusLogs && selectedReport.value.statusLogs.length > 0) {
-    return selectedReport.value.statusLogs[0].status === 2 // 2 là Rejected
+  if (selectedReport.value) {
+    return getReportStatus(selectedReport.value) === 2 // 2 là Rejected
   }
   return false
 })
@@ -524,10 +567,10 @@ const startTour = () => {
           <div class="col-md-2">
             <select class="form-control" v-model="statusFilter">
               <option value="">Tất cả trạng thái</option>
-              <option value="Pending">Chờ duyệt</option>
-              <option value="Approved">Đã duyệt</option>
-              <option value="Rejected">Từ chối</option>
-              <option value="Completed">Hoàn thành</option>
+              <option value="Chờ duyệt">Chờ duyệt</option>
+              <option value="Đã duyệt">Đã duyệt</option>
+              <option value="Đã từ chối">Đã từ chối</option>
+              <option value="Hoàn thành">Hoàn thành</option>
             </select>
           </div>
           <div class="col-md-2">
@@ -574,15 +617,11 @@ const startTour = () => {
       </template>
 
       <template #level="{ item }">
-        <span :class="'badge bg-' + (item.level === 'Nghiêm trọng' ? 'danger' :
-          item.level === 'Cao' ? 'warning' :
-            item.level === 'Trung bình' ? 'info' : 'success')">
-          {{ item.level }}
-        </span>
+        <StatusBadge :status="item.level" />
       </template>
 
       <template #statusLogs[0].status="{ item }">
-        <StatusBadge :status="getStatusLabel(item.statusLogs[0].status)" />
+        <StatusBadge :status="getStatusLabel(getReportStatus(item))" />
       </template>
 
       <template #reportDate="{ item }">
@@ -592,7 +631,6 @@ const startTour = () => {
       <template #actions="{ item }">
         <div class="d-flex gap-2">
           <ActionButton type="success" icon="fas fa-edit" tooltip="Cập nhật" @click="handleUpdateStatus(item)" />
-          <ActionButton type="warning" icon="fas fa-exchange-alt" tooltip="Đổi trạng thái" @click.stop="openStatusDialog(item)" />
         </div>
       </template>
 

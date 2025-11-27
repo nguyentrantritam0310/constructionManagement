@@ -73,7 +73,10 @@ const filteredOrders = computed(() => {
 
   // Apply status filter
   if (statusFilter.value) {
-    result = result.filter(order => order.status === statusFilter.value)
+    result = result.filter(order => {
+      const orderStatus = getStatusLabel(order.status)
+      return orderStatus === statusFilter.value || order.status === statusFilter.value
+    })
   }
 
   // Apply date range filter
@@ -158,6 +161,24 @@ const resetFilters = () => {
     start: null,
     end: null
   }
+}
+
+// Hàm chuyển đổi status từ tiếng Anh sang tiếng Việt
+const getStatusLabel = (status) => {
+  const statusMap = {
+    'Pending': 'Chờ duyệt',
+    'Approved': 'Đã duyệt',
+    'Rejected': 'Đã từ chối',
+    'Completed': 'Hoàn thành',
+    // Nếu đã là tiếng Việt thì giữ nguyên
+    'Chờ duyệt': 'Chờ duyệt',
+    'Đã duyệt': 'Đã duyệt',
+    'Đã từ chối': 'Đã từ chối',
+    'Hoàn thành': 'Hoàn thành',
+    'Từ chối': 'Đã từ chối', // Trường hợp backend trả về "Từ chối"
+    'Hoàn tất': 'Hoàn thành' // Trường hợp backend trả về "Hoàn tất"
+  }
+  return statusMap[status] || status
 }
 
 // Tour Guide Steps
@@ -293,8 +314,8 @@ const startTour = () => {
             </span>
             <select class="form-control" v-model="statusFilter">
               <option value="">Tất cả trạng thái</option>
-              <option value="Rejected">Từ chối</option>
-              <option value="Completed">Hoàn thành</option>
+              <option value="Đã từ chối">Đã từ chối</option>
+              <option value="Hoàn thành">Hoàn thành</option>
             </select>
           </div>
         </div>
@@ -349,7 +370,7 @@ const startTour = () => {
       </template>
 
       <template #status="{ item }">
-        <StatusBadge :status="item.status" />
+        <StatusBadge :status="getStatusLabel(item.status)" />
       </template>
     </DataTable>
 
