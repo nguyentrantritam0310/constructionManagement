@@ -31,10 +31,10 @@ const formData = ref({
 const regexPatterns = {
   // Tên máy chấm công: chữ cái, số, khoảng trắng, dấu tiếng Việt, dấu gạch ngang và gạch dưới, độ dài 1-100
   attendanceMachineName: /^[a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s_-]{1,100}$/,
-  // Kinh độ: số thập phân từ -180 đến 180, tối đa 6 chữ số thập phân
-  longitude: /^-?(?:180(?:\.0{1,6})?|(?:1[0-7]\d|[0-9]?\d)(?:\.\d{1,6})?)$/,
-  // Vĩ độ: số thập phân từ -90 đến 90, tối đa 6 chữ số thập phân
-  latitude: /^-?(?:90(?:\.0{1,6})?|[0-8]?\d(?:\.\d{1,6})?)$/,
+  // Kinh độ: số thập phân, không giới hạn giá trị, tối đa 15 chữ số thập phân
+  longitude: /^-?\d+(\.\d{1,15})?$/,
+  // Vĩ độ: số thập phân, không giới hạn giá trị, tối đa 15 chữ số thập phân
+  latitude: /^-?\d+(\.\d{1,15})?$/,
   // Bán kính: số dương, tối đa 10000 mét
   allowedRadius: /^\d+(\.\d{1,2})?$/
 }
@@ -122,9 +122,11 @@ const getCurrentLocation = () => {
 }
 
 const handleMapClick = (event) => {
-  if (event.latlng) {
-    formData.value.latitude = event.latlng.lat.toFixed(6)
-    formData.value.longitude = event.latlng.lng.toFixed(6)
+  if (props.mode === 'detail') return
+  
+  if (event && event.latlng) {
+    formData.value.latitude = event.latlng.lat.toFixed(15)
+    formData.value.longitude = event.latlng.lng.toFixed(15)
     // Validate after map click
     validateField('latitude')
     validateField('longitude')
@@ -159,13 +161,8 @@ const validateLongitude = () => {
     return false
   }
   
-  if (longNum < -180 || longNum > 180) {
-    errors.value.longitude = 'Kinh độ phải nằm trong khoảng -180 đến 180'
-    return false
-  }
-  
   if (!regexPatterns.longitude.test(value)) {
-    errors.value.longitude = 'Định dạng kinh độ không hợp lệ (tối đa 6 chữ số thập phân)'
+    errors.value.longitude = 'Định dạng kinh độ không hợp lệ (tối đa 15 chữ số thập phân)'
     return false
   }
   
@@ -186,13 +183,8 @@ const validateLatitude = () => {
     return false
   }
   
-  if (latNum < -90 || latNum > 90) {
-    errors.value.latitude = 'Vĩ độ phải nằm trong khoảng -90 đến 90'
-    return false
-  }
-  
   if (!regexPatterns.latitude.test(value)) {
-    errors.value.latitude = 'Định dạng vĩ độ không hợp lệ (tối đa 6 chữ số thập phân)'
+    errors.value.latitude = 'Định dạng vĩ độ không hợp lệ (tối đa 15 chữ số thập phân)'
     return false
   }
   
@@ -335,7 +327,6 @@ const handleClose = () => emit('close')
           step="0.000001"
         />
         <div class="invalid-feedback">{{ errors.longitude }}</div>
-        <small class="form-text text-muted">Giá trị từ -180 đến 180</small>
       </div>
       <div class="col-md-6">
         <label class="form-label">Vĩ độ (Latitude) <span class="text-danger">*</span></label>
@@ -352,7 +343,6 @@ const handleClose = () => emit('close')
           step="0.000001"
         />
         <div class="invalid-feedback">{{ errors.latitude }}</div>
-        <small class="form-text text-muted">Giá trị từ -90 đến 90</small>
       </div>
       <div class="col-md-6">
         <label class="form-label">Bán kính cho phép (m) <span class="text-danger">*</span></label>
@@ -381,7 +371,7 @@ const handleClose = () => emit('close')
     <div class="map-container mt-4">
       <h6 class="mb-2 text-muted">Hoặc chọn vị trí trên bản đồ</h6>
       <div style="height: 400px; width: 100%; border-radius: 8px; overflow: hidden;">
-        <l-map ref="map" :zoom="zoom" :center="mapCenter" @click="props.mode !== 'detail' ? handleMapClick : null">
+        <l-map ref="map" :zoom="zoom" :center="mapCenter" @click="handleMapClick">
           <l-tile-layer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" layer-type="base"
             name="OpenStreetMap" attribution="&copy; <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a>">
           </l-tile-layer>

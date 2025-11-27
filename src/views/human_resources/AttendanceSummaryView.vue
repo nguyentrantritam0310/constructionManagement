@@ -1059,7 +1059,7 @@ const attendanceColumnsNoActions = [
   { key: 'date', label: 'Ngày đi làm' },
   { key: 'scanTime', label: 'Giờ quét' },
   { key: 'type', label: 'Loại công' },
-  { key: 'location', label: 'Vị trí' }
+  { key: 'location', label: 'Máy chấm công' }
 ]
 
 const workColumnsNoActions = [
@@ -3396,7 +3396,7 @@ const loadDayModalData = async (employee, dayIdx) => {
             date: new Date(item.workDate).toLocaleDateString('vi-VN'),
             scanTime: item.checkInTime.toString().substring(0, 5),
             type: 'Vào',
-            location: item.machineName || '-',
+            location: item.location || item.checkInLocation || '-',
             employeeId: employee.id, // Lưu employeeId để tạo ShiftAssignment mới nếu cần
             workDate: item.workDate // Lưu workDate để tạo ShiftAssignment mới nếu cần
           });
@@ -3414,7 +3414,7 @@ const loadDayModalData = async (employee, dayIdx) => {
             date: new Date(item.workDate).toLocaleDateString('vi-VN'),
             scanTime: item.checkOutTime.toString().substring(0, 5),
             type: 'Ra',
-            location: item.machineName || '-',
+            location: item.location || item.checkOutLocation || '-',
             employeeId: employee.id, // Lưu employeeId để tạo ShiftAssignment mới nếu cần
             workDate: item.workDate // Lưu workDate để tạo ShiftAssignment mới nếu cần
           });
