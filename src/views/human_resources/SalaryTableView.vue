@@ -8,8 +8,10 @@ import { useSalary } from '../../composables/useSalary.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
 import { useAuth } from '../../composables/useAuth.js'
 import { useLeaveRequest } from '../../composables/useLeaveRequest.js'
+import { useOvertimeRequest } from '../../composables/useOvertimeRequest.js'
 import { useShiftAssignment } from '../../composables/useShiftAssignment.js'
 import { useWorkShift } from '../../composables/useWorkShift.js'
+import { useContract } from '../../composables/useContract.js'
 import TourGuide from '../../components/common/TourGuide.vue'
 import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
@@ -42,8 +44,10 @@ const {
 const { showMessage } = useGlobalMessage()
 const { currentUser } = useAuth()
 const { leaveRequests, fetchLeaveRequests } = useLeaveRequest()
+const { overtimeRequests, fetchOvertimeRequests } = useOvertimeRequest()
 const { shiftAssignments, fetchAllShiftAssignments } = useShiftAssignment()
 const { workshifts, fetchWorkShifts } = useWorkShift()
+const { contracts, fetchAllContracts } = useContract()
 
 // Filter tabs based on user role
 const tabs = computed(() => {
@@ -126,12 +130,30 @@ function formatMoney(value) {
   return value?.toLocaleString('vi-VN', { style: 'currency', currency: 'VND' }) ?? ''
 }
 
+// Format contract period - xử lý hợp đồng không xác định thời hạn
+function formatContractPeriod(period) {
+  if (!period) return '-'
+  
+  // Kiểm tra nếu period chứa "01/01/01" hoặc "0001-01-01" (hợp đồng không xác định thời hạn)
+  if (typeof period === 'string' && (
+    period.includes('01/01/01') || 
+    period.includes('0001-01-01') ||
+    period.includes('0001-')
+  )) {
+    return 'Vĩnh viễn'
+  }
+  
+  return period
+}
+
 // Load dữ liệu khi component mount
 onMounted(async () => {
   await fetchSalaryData()
   await fetchLeaveRequests()
+  await fetchOvertimeRequests()
   await fetchAllShiftAssignments()
   await fetchWorkShifts()
+  await fetchAllContracts()
 })
 
 const handleTimeChange = async (year, month) => {
@@ -490,57 +512,315 @@ const goToCurrentYear = () => {
 
 const showOvertimeModal = ref(false)
 const selectedOvertimeEmployee = ref(null)
+const overtimeDetails = ref([])
 const showLeaveModal = ref(false)
 const selectedLeaveEmployee = ref(null)
 const leaveDetails = ref([])
 const showTourGuide = ref(false)
 
-const openOvertimeModal = (employee) => {
+// Computed properties để tính tổng hợp từ danh sách đơn thực tế
+const overtimeSummary = computed(() => {
+  if (!overtimeDetails.value || overtimeDetails.value.length === 0) {
+    return {
+      totalDays: 0,
+      totalDaysWithCoeff: 0,
+      totalHours: 0
+    }
+  }
+  
+  // Tính tổng số ngày tăng ca (tổng tất cả số ngày)
+  const totalDays = overtimeDetails.value.reduce((sum, ot) => sum + (ot.days || 0), 0)
+  
+  // Tính tổng số ngày có hệ số (tổng số ngày nhân với hệ số)
+  const totalDaysWithCoeff = overtimeDetails.value.reduce((sum, ot) => {
+    return sum + ((ot.days || 0) * (ot.coefficient || 1))
+  }, 0)
+  
+  // Tính tổng số giờ
+  const totalHours = overtimeDetails.value.reduce((sum, ot) => sum + (ot.hours || 0), 0)
+  
+  return {
+    totalDays: Math.round(totalDays * 10) / 10,
+    totalDaysWithCoeff: Math.round(totalDaysWithCoeff * 10) / 10,
+    totalHours: Math.round(totalHours * 10) / 10
+  }
+})
+
+const leaveSummary = computed(() => {
+  if (!leaveDetails.value || leaveDetails.value.length === 0) {
+    return {
+      totalDays: 0,
+      totalHours: 0
+    }
+  }
+  
+  // Tính tổng số ngày nghỉ phép
+  const totalDays = leaveDetails.value.reduce((sum, leave) => sum + (leave.days || 0), 0)
+  
+  // Tính tổng số giờ nghỉ phép
+  const totalHours = leaveDetails.value.reduce((sum, leave) => sum + (leave.hours || 0), 0)
+  
+  return {
+    totalDays: Math.round(totalDays * 10) / 10,
+    totalHours: Math.round(totalHours * 10) / 10
+  }
+})
+
+// Helper function để kiểm tra hợp đồng không xác định thời hạn
+const isIndeterminateTermContract = (endDate) => {
+  if (!endDate || endDate === null || endDate === undefined || endDate === '') {
+    return true
+  }
+  
+  if (typeof endDate === 'string' && (
+    endDate.includes('0001-01-01') || 
+    endDate.startsWith('0001-')
+  )) {
+    return true
+  }
+  
+  try {
+    const date = new Date(endDate)
+    if (isNaN(date.getTime()) || date.getFullYear() <= 1 || date.getFullYear() < 1900) {
+      return true
+    }
+  } catch (error) {
+    return true
+  }
+  
+  return false
+}
+
+// Helper function để kiểm tra trạng thái duyệt
+const isApproved = (approveStatus) => {
+  if (!approveStatus) return false
+  if (typeof approveStatus === 'string') {
+    return approveStatus === 'Đã duyệt' || approveStatus === 'Approved'
+  }
+  if (typeof approveStatus === 'number') {
+    return approveStatus === 2
+  }
+  return false
+}
+
+// Helper function để lấy khoảng thời gian hợp đồng trong tháng
+const getContractPeriodInMonth = (employeeId, year, month) => {
+  const monthStartDate = new Date(year, month - 1, 1)
+  monthStartDate.setHours(0, 0, 0, 0)
+  const monthEndDate = new Date(year, month, 0)
+  monthEndDate.setHours(23, 59, 59, 999)
+  
+  // Tìm hợp đồng đã duyệt của nhân viên trong tháng
+  const employeeContracts = contracts.value.filter(contract => {
+    const contractEmployeeId = String(contract.employeeID || '')
+    const empId = String(employeeId || '')
+    if (contractEmployeeId !== empId) return false
+    if (!isApproved(contract.approveStatus)) return false
+    
+    const contractStartDate = new Date(contract.startDate)
+    contractStartDate.setHours(0, 0, 0, 0)
+    
+    if (contractStartDate > monthEndDate) return false
+    
+    if (!isIndeterminateTermContract(contract.endDate)) {
+      const contractEndDate = new Date(contract.endDate)
+      contractEndDate.setHours(23, 59, 59, 999)
+      if (contractEndDate < monthStartDate) return false
+    }
+    
+    return true
+  })
+  
+  if (employeeContracts.length === 0) {
+    // Không có hợp đồng, trả về toàn bộ tháng
+    return {
+      periodStart: monthStartDate,
+      periodEnd: monthEndDate
+    }
+  }
+  
+  // Lấy hợp đồng đầu tiên (hoặc có thể xử lý nhiều hợp đồng)
+  const contract = employeeContracts[0]
+  const contractStartDate = new Date(contract.startDate)
+  contractStartDate.setHours(0, 0, 0, 0)
+  
+  let contractEndDate
+  if (!isIndeterminateTermContract(contract.endDate)) {
+    contractEndDate = new Date(contract.endDate)
+    contractEndDate.setHours(23, 59, 59, 999)
+  } else {
+    contractEndDate = monthEndDate
+  }
+  
+  const periodStart = contractStartDate > monthStartDate ? contractStartDate : monthStartDate
+  const periodEnd = contractEndDate < monthEndDate ? contractEndDate : monthEndDate
+  
+  return {
+    periodStart,
+    periodEnd
+  }
+}
+
+const openOvertimeModal = async (employee) => {
   selectedOvertimeEmployee.value = employee
   showOvertimeModal.value = true
+  
+  // Lấy danh sách đơn tăng ca đã duyệt trong khoảng thời gian hợp đồng
+  try {
+    await fetchOvertimeRequests()
+    await fetchAllContracts()
+    
+    // Xác định employeeId - nếu ở tab cá nhân thì dùng currentUser.id, ngược lại dùng employee.empId
+    const employeeId = activeTab.value === 'personalSalary' 
+      ? String(currentUser.value?.id || '')
+      : String(employee.empId || employee.id || '')
+    
+    const month = selectedMonth.value
+    const year = selectedYear.value
+    
+    // Lấy khoảng thời gian hợp đồng trong tháng
+    const contractPeriod = getContractPeriodInMonth(employeeId, year, month)
+    const periodStartDate = contractPeriod.periodStart
+    const periodEndDate = contractPeriod.periodEnd
+    
+    // Lọc đơn tăng ca đã duyệt trong khoảng thời gian hợp đồng
+    const approvedOvertimes = overtimeRequests.value.filter(request => {
+      if (!request || !request.startDateTime) return false
+      
+      // So sánh employeeID bằng string để đảm bảo khớp
+      const requestEmployeeId = String(request.employeeID || '')
+      if (requestEmployeeId !== employeeId) return false
+      
+      // Kiểm tra trạng thái duyệt
+      if (!isApproved(request.approveStatus)) return false
+      
+      const start = new Date(request.startDateTime)
+      const end = new Date(request.endDateTime)
+      
+      // Kiểm tra xem đơn tăng ca có nằm trong khoảng thời gian của hợp đồng không
+      return start <= periodEndDate && end >= periodStartDate
+    })
+    
+    // Format dữ liệu để hiển thị
+    overtimeDetails.value = approvedOvertimes.map(request => {
+      const start = new Date(request.startDateTime)
+      const end = new Date(request.endDateTime)
+      
+      // Chỉ tính phần thời gian nằm trong khoảng thời gian hợp đồng
+      const actualStart = start > periodStartDate ? start : periodStartDate
+      const actualEnd = end < periodEndDate ? end : periodEndDate
+      
+      // Tính số giờ tăng ca (chỉ tính phần trong period)
+      const hours = actualStart <= actualEnd 
+        ? Math.max(0, (actualEnd - actualStart) / (1000 * 60 * 60))
+        : 0
+      
+      // Format ngày giờ để hiển thị
+      const formatDateTime = (date) => {
+        const dateStr = date.toLocaleDateString('vi-VN')
+        const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        return `${dateStr} ${timeStr}`
+      }
+      
+      // Tính số ngày (1 ngày = 8 giờ)
+      const hoursPerDay = 8
+      const days = Math.round((hours / hoursPerDay) * 10) / 10
+      
+      return {
+        voucherCode: request.voucherCode,
+        startDate: formatDateTime(start),
+        endDate: formatDateTime(end),
+        hours: Math.round(hours * 10) / 10,
+        days: days,
+        coefficient: request.coefficient || 1,
+        overtimeTypeName: request.overtimeTypeName || 'Tăng ca',
+        notes: request.notes || ''
+      }
+    })
+  } catch (error) {
+    console.error('Error fetching overtime details:', error)
+    overtimeDetails.value = []
+  }
 }
 
 const closeOvertimeModal = () => {
   showOvertimeModal.value = false
   selectedOvertimeEmployee.value = null
+  overtimeDetails.value = []
 }
 
 const openLeaveModal = async (employee) => {
   selectedLeaveEmployee.value = employee
   showLeaveModal.value = true
   
-  // Lấy danh sách đơn nghỉ phép đã duyệt trong tháng
+  // Lấy danh sách đơn nghỉ phép đã duyệt trong khoảng thời gian hợp đồng
   try {
     await fetchLeaveRequests()
-    const employeeId = String(employee.empId || employee.id)
+    await fetchAllContracts()
+    
+    // Xác định employeeId - nếu ở tab cá nhân thì dùng currentUser.id, ngược lại dùng employee.empId
+    const employeeId = activeTab.value === 'personalSalary'
+      ? String(currentUser.value?.id || '')
+      : String(employee.empId || employee.id || '')
+    
     const month = selectedMonth.value
     const year = selectedYear.value
     
-    // Lọc đơn nghỉ phép đã duyệt trong tháng
+    // Lấy khoảng thời gian hợp đồng trong tháng
+    const contractPeriod = getContractPeriodInMonth(employeeId, year, month)
+    const periodStartDate = contractPeriod.periodStart
+    const periodEndDate = contractPeriod.periodEnd
+    
+    // Lọc đơn nghỉ phép đã duyệt trong khoảng thời gian hợp đồng
     const approvedLeaves = leaveRequests.value.filter(request => {
-      const requestDate = new Date(request.startDateTime)
-      const requestMonth = requestDate.getMonth() + 1
-      const requestYear = requestDate.getFullYear()
-      const requestEmployeeId = String(request.employeeID)
+      if (!request || !request.startDateTime) return false
       
-      return requestEmployeeId === employeeId &&
-             requestMonth === month &&
-             requestYear === year &&
-             (request.approveStatus === 'Đã duyệt' || request.approveStatus === 'Approved')
+      // So sánh employeeID bằng string để đảm bảo khớp
+      const requestEmployeeId = String(request.employeeID || '')
+      if (requestEmployeeId !== employeeId) return false
+      
+      // Kiểm tra trạng thái duyệt
+      if (!isApproved(request.approveStatus)) return false
+      
+      // Kiểm tra loại nghỉ phép
+      if (!request.leaveTypeName || !request.leaveTypeName.toLowerCase().includes('phép')) return false
+      
+      const leaveStartDate = new Date(request.startDateTime)
+      const leaveEndDate = new Date(request.endDateTime)
+      
+      // Kiểm tra xem đơn nghỉ phép có nằm trong khoảng thời gian của hợp đồng không
+      return leaveStartDate <= periodEndDate && leaveEndDate >= periodStartDate
     })
     
-    // Tính số giờ nghỉ và quy đổi thành số ngày
+    // Tính số giờ nghỉ và quy đổi thành số ngày (chỉ tính phần trong khoảng thời gian hợp đồng)
     leaveDetails.value = approvedLeaves.map(request => {
       const startDate = new Date(request.startDateTime)
       const endDate = new Date(request.endDateTime)
       
-      // Tính tổng số giờ nghỉ (từ startDateTime đến endDateTime)
-      const totalHoursDiff = (endDate - startDate) / (1000 * 60 * 60)
+      // Chỉ tính phần thời gian nằm trong khoảng thời gian hợp đồng
+      const actualStart = startDate > periodStartDate ? startDate : periodStartDate
+      const actualEnd = endDate < periodEndDate ? endDate : periodEndDate
+      
+      if (actualStart > actualEnd) {
+        // Không có phần nào nằm trong period
+        return {
+          voucherCode: request.voucherCode,
+          startDate: '',
+          endDate: '',
+          days: 0,
+          hours: 0,
+          leaveTypeName: request.leaveTypeName || 'Nghỉ phép',
+          notes: request.notes || ''
+        }
+      }
+      
+      // Tính tổng số giờ nghỉ (chỉ tính phần trong period)
+      const totalHoursDiff = (actualEnd - actualStart) / (1000 * 60 * 60)
       
       // Tính số giờ nghỉ trưa cần trừ (lấy từ shift details trong DB)
       let lunchBreakHours = 0
-      const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
-      const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+      const startDay = new Date(actualStart.getFullYear(), actualStart.getMonth(), actualStart.getDate())
+      const endDay = new Date(actualEnd.getFullYear(), actualEnd.getMonth(), actualEnd.getDate())
       
       // Helper function để parse time
       const parseTime = (timeStr) => {
@@ -609,17 +889,17 @@ const openLeaveModal = async (employee) => {
         let dayStartDecimal, dayEndDecimal
         
         if (isFirstDay && isLastDay) {
-          // Cùng ngày: dùng thời gian thực tế của đơn nghỉ
-          dayStartDecimal = startDate.getHours() + startDate.getMinutes() / 60
-          dayEndDecimal = endDate.getHours() + endDate.getMinutes() / 60
+          // Cùng ngày: dùng thời gian thực tế trong period
+          dayStartDecimal = actualStart.getHours() + actualStart.getMinutes() / 60
+          dayEndDecimal = actualEnd.getHours() + actualEnd.getMinutes() / 60
         } else if (isFirstDay) {
-          // Ngày đầu: từ giờ bắt đầu nghỉ đến cuối ca (17:00 hoặc từ shift detail)
-          dayStartDecimal = startDate.getHours() + startDate.getMinutes() / 60
+          // Ngày đầu: từ giờ bắt đầu nghỉ trong period đến cuối ca (17:00 hoặc từ shift detail)
+          dayStartDecimal = actualStart.getHours() + actualStart.getMinutes() / 60
           dayEndDecimal = 17 // Mặc định, có thể lấy từ shift detail nếu cần
         } else if (isLastDay) {
-          // Ngày cuối: từ đầu ca (8:00 hoặc từ shift detail) đến giờ kết thúc nghỉ
+          // Ngày cuối: từ đầu ca (8:00 hoặc từ shift detail) đến giờ kết thúc nghỉ trong period
           dayStartDecimal = 8 // Mặc định, có thể lấy từ shift detail nếu cần
-          dayEndDecimal = endDate.getHours() + endDate.getMinutes() / 60
+          dayEndDecimal = actualEnd.getHours() + actualEnd.getMinutes() / 60
         } else {
           // Các ngày ở giữa: trừ toàn bộ giờ nghỉ trưa
           lunchBreakHours += lunchBreak.duration
@@ -653,10 +933,10 @@ const openLeaveModal = async (employee) => {
       
       return {
         voucherCode: request.voucherCode,
-        startDate: formatDateTime(startDate),
-        endDate: formatDateTime(endDate),
-        days: days,
-        hours: hours,
+        startDate: formatDateTime(startDate), // Hiển thị thời gian bắt đầu thực tế của đơn
+        endDate: formatDateTime(endDate), // Hiển thị thời gian kết thúc thực tế của đơn
+        days: days, // Số ngày đã tính theo period
+        hours: hours, // Số giờ đã tính theo period
         leaveTypeName: request.leaveTypeName || 'Nghỉ phép',
         notes: request.notes || ''
       }
@@ -1794,7 +2074,7 @@ const startTour = () => {
             <span>{{ item.contractNumber || '-' }}</span>
           </template>
           <template #contractPeriod="{ item }">
-            <span class="text-muted small">{{ item.contractPeriod || '-' }}</span>
+            <span class="text-muted small">{{ formatContractPeriod(item.contractPeriod) }}</span>
           </template>
           <template #contractSalary="{ item }">
             <span class="money">{{ formatMoney(item.contractSalary) }}</span>
@@ -1807,6 +2087,15 @@ const startTour = () => {
           </template>
           <template #salaryByDays="{ item }">
             <span class="money">{{ formatMoney(item.salaryByDays) }}</span>
+          </template>
+          <template #paidLeaveDays="{ item }">
+            <span 
+              class="leave-days-link" 
+              @click="openLeaveModal(item)"
+              :title="`Xem chi tiết nghỉ phép của ${item.empName}`"
+            >
+              {{ item.paidLeaveDays }} ngày
+            </span>
           </template>
           <template #leaveSalary="{ item }">
             <span class="money">{{ formatMoney(item.leaveSalary) }}</span>
@@ -1927,7 +2216,7 @@ const startTour = () => {
                       </div>
                       <div v-if="personalSalaryData.length > 0 && personalSalaryData[0].contractPeriod" class="info-item">
                         <span class="info-label">Khoảng thời gian:</span>
-                        <span class="info-value">{{ personalSalaryData[0].contractPeriod }}</span>
+                        <span class="info-value">{{ formatContractPeriod(personalSalaryData[0].contractPeriod) }}</span>
                       </div>
                       <div v-if="personalSalaryData.length > 1" class="info-item">
                         <span class="badge bg-warning">Có {{ personalSalaryData.length }} hợp đồng trong tháng</span>
@@ -2620,13 +2909,17 @@ const startTour = () => {
           <div class="col-md-6">
             <div class="summary-item">
               <span class="summary-label">Tổng nghỉ có lương:</span>
-              <span class="summary-value">{{ selectedLeaveEmployee.paidLeaveDays }} ngày</span>
+              <span class="summary-value">{{ leaveSummary.totalDays }} ngày</span>
             </div>
           </div>
           <div class="col-md-6">
             <div class="summary-item">
               <span class="summary-label">Tổng lương phép:</span>
-              <span class="summary-value">{{ formatMoney(selectedLeaveEmployee.leaveSalary) }}</span>
+              <span class="summary-value">{{ formatMoney(
+                selectedLeaveEmployee.contractSalary && selectedLeaveEmployee.standardDays
+                  ? (leaveSummary.totalDays * selectedLeaveEmployee.contractSalary / selectedLeaveEmployee.standardDays)
+                  : 0
+              ) }}</span>
             </div>
           </div>
           <div class="col-md-6">
@@ -2686,9 +2979,13 @@ const startTour = () => {
           </div>
           <div class="formula-breakdown mt-2">
             <small class="text-muted">
-              = {{ selectedLeaveEmployee.paidLeaveDays }} × {{ formatMoney(selectedLeaveEmployee.contractSalary) }} / {{ selectedLeaveEmployee.standardDays }}
-              <br>
-              = {{ formatMoney(selectedLeaveEmployee.leaveSalary) }}
+              = {{ leaveSummary.totalDays }} × {{ formatMoney(selectedLeaveEmployee.contractSalary) }} / {{ selectedLeaveEmployee.standardDays }}
+              <br v-if="selectedLeaveEmployee.contractSalary && selectedLeaveEmployee.standardDays">
+              = {{ formatMoney(
+                selectedLeaveEmployee.contractSalary && selectedLeaveEmployee.standardDays
+                  ? (leaveSummary.totalDays * selectedLeaveEmployee.contractSalary / selectedLeaveEmployee.standardDays)
+                  : 0
+              ) }}
             </small>
           </div>
         </div>
@@ -2727,19 +3024,23 @@ const startTour = () => {
           <div class="col-md-6">
             <div class="summary-item">
               <span class="summary-label">Số ngày tăng ca:</span>
-              <span class="summary-value">{{ selectedOvertimeEmployee.otDays }} ngày</span>
+              <span class="summary-value">{{ overtimeSummary.totalDays }} ngày</span>
             </div>
           </div>
           <div class="col-md-6">
             <div class="summary-item">
               <span class="summary-label">Số ngày có hệ số:</span>
-              <span class="summary-value">{{ selectedOvertimeEmployee.otDaysWithCoeff }} ngày</span>
+              <span class="summary-value">{{ overtimeSummary.totalDaysWithCoeff }} ngày</span>
             </div>
           </div>
           <div class="col-md-6">
             <div class="summary-item">
               <span class="summary-label">Lương tăng ca:</span>
-              <span class="summary-value">{{ formatMoney(selectedOvertimeEmployee.otSalary) }}</span>
+              <span class="summary-value">{{ formatMoney(
+                selectedOvertimeEmployee.contractSalary && selectedOvertimeEmployee.standardDays
+                  ? (overtimeSummary.totalDaysWithCoeff * selectedOvertimeEmployee.contractSalary / selectedOvertimeEmployee.standardDays)
+                  : 0
+              ) }}</span>
             </div>
           </div>
           <div class="col-md-6">
@@ -2757,6 +3058,41 @@ const startTour = () => {
         </div>
       </div>
 
+      <!-- Overtime Details List -->
+      <div v-if="overtimeDetails.length > 0" class="overtime-details-list mt-4">
+        <h6 class="fw-bold mb-3">Danh sách đơn tăng ca</h6>
+        <div class="table-responsive">
+          <table class="table table-bordered">
+            <thead>
+              <tr>
+                <th>Mã phiếu</th>
+                <th>Từ ngày</th>
+                <th>Đến ngày</th>
+                <th>Số giờ</th>
+                <th>Số ngày</th>
+                <th>Hệ số</th>
+                <th>Loại tăng ca</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(overtime, index) in overtimeDetails" :key="index">
+                <td>{{ overtime.voucherCode }}</td>
+                <td>{{ overtime.startDate }}</td>
+                <td>{{ overtime.endDate }}</td>
+                <td><strong>{{ overtime.hours }} giờ</strong></td>
+                <td><strong>{{ overtime.days }} ngày</strong></td>
+                <td><strong>{{ overtime.coefficient }}x</strong></td>
+                <td>{{ overtime.overtimeTypeName }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div v-else class="alert alert-info mt-4">
+        <i class="fas fa-info-circle me-2"></i>
+        Không có đơn tăng ca đã duyệt trong tháng {{ selectedMonth }}/{{ selectedYear }}
+      </div>
+
       <!-- Calculation Formula -->
       <div class="calculation-formula mt-4">
         <h6 class="fw-bold mb-3">Công thức tính lương tăng ca</h6>
@@ -2766,7 +3102,13 @@ const startTour = () => {
           </div>
           <div class="formula-breakdown mt-2">
             <small class="text-muted">
-              = {{ selectedOvertimeEmployee.otDays }} × {{ formatMoney(selectedOvertimeEmployee.contractSalary) }} × Hệ số / {{ selectedOvertimeEmployee.standardDays }}
+              = {{ overtimeSummary.totalDaysWithCoeff }} × {{ formatMoney(selectedOvertimeEmployee.contractSalary) }} / {{ selectedOvertimeEmployee.standardDays }}
+              <br v-if="selectedOvertimeEmployee.contractSalary && selectedOvertimeEmployee.standardDays">
+              = {{ formatMoney(
+                selectedOvertimeEmployee.contractSalary && selectedOvertimeEmployee.standardDays
+                  ? (overtimeSummary.totalDaysWithCoeff * selectedOvertimeEmployee.contractSalary / selectedOvertimeEmployee.standardDays)
+                  : 0
+              ) }}
             </small>
           </div>
         </div>
@@ -2978,6 +3320,18 @@ const startTour = () => {
 }
 
 .overtime-days-link:hover {
+  color: #0b5ed7;
+  text-decoration: none;
+}
+
+.leave-days-link {
+  color: #0d6efd;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.leave-days-link:hover {
   color: #0b5ed7;
   text-decoration: none;
 }

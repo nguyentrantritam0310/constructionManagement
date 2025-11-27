@@ -198,9 +198,13 @@
             <span class="date-display">{{ item.endDateFormatted }}</span>
           </template>
           <template #daysToExpire="{ item }">
-            <span :class="getDaysToExpireClass(item.daysToExpire)" class="days-to-expire">
+            <span v-if="item.daysToExpire !== null" :class="getDaysToExpireClass(item.daysToExpire)" class="days-to-expire">
               <i :class="getDaysToExpireIcon(item.daysToExpire)" class="me-1"></i>
               {{ item.daysToExpire }} ngày
+            </span>
+            <span v-else class="days-to-expire days-indefinite">
+              <i class="fas fa-infinity me-1"></i>
+              Vĩnh viễn
             </span>
           </template>
         </DataTable>
@@ -586,10 +590,46 @@ onMounted(async () => {
 
 const contractsData = computed(() => {
   const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
   return contracts.value.map((c, index) => {
-    const end = new Date(c.endDate)
-    const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24))
-    const validityStatus = end > today ? 'Còn hiệu lực' : 'Hết hiệu lực'
+    // Xử lý hợp đồng không xác định thời hạn (endDate = null, undefined, empty, hoặc "0001-01-01")
+    const endDateStr = c.endDate
+    const isIndeterminateTerm = !endDateStr || 
+                                endDateStr === null || 
+                                endDateStr === undefined || 
+                                endDateStr === '' ||
+                                (typeof endDateStr === 'string' && (
+                                  endDateStr.includes('0001-01-01') || 
+                                  endDateStr.startsWith('0001-')
+                                ))
+    
+    let daysLeft = null
+    let validityStatus = 'Còn hiệu lực' // Hợp đồng không xác định thời hạn luôn còn hiệu lực
+    let endDateFormatted = 'Vĩnh viễn'
+    
+    if (!isIndeterminateTerm) {
+      const end = new Date(endDateStr)
+      // Kiểm tra nếu endDate hợp lệ và không phải là date rất cũ (0001-01-01)
+      if (!isNaN(end.getTime())) {
+        const endYear = end.getFullYear()
+        // Nếu năm là 1 hoặc nhỏ hơn 1900, coi như hợp đồng vĩnh viễn
+        if (endYear <= 1 || endYear < 1900) {
+          validityStatus = 'Còn hiệu lực' // Hợp đồng vĩnh viễn luôn còn hiệu lực
+          endDateFormatted = 'Vĩnh viễn'
+        } else {
+          end.setHours(0, 0, 0, 0)
+          daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24))
+          validityStatus = end >= today ? 'Còn hiệu lực' : 'Hết hiệu lực'
+          endDateFormatted = formatDateTime(endDateStr)
+        }
+      } else {
+        // Nếu endDate không hợp lệ, coi như hợp đồng vĩnh viễn
+        validityStatus = 'Còn hiệu lực' // Hợp đồng vĩnh viễn luôn còn hiệu lực
+        endDateFormatted = 'Vĩnh viễn'
+      }
+    }
+    
     const employee = employees.value.find(emp => emp.id === c.employeeID)
     const employeeStatus = employee ? employee.status : 'Unknown'
 
@@ -600,7 +640,7 @@ const contractsData = computed(() => {
       validityStatus,
       employeeStatus,
       startDateFormatted: formatDateTime(c.startDate),
-      endDateFormatted: formatDateTime(c.endDate)
+      endDateFormatted
     }
   })
 })
@@ -619,11 +659,15 @@ const formatDateTime = (dateString) => {
 
 // Get validity status class and icon
 const getValidityStatusClass = (status) => {
-  return status === 'Còn hiệu lực' ? 'validity-active' : 'validity-expired'
+  if (status === 'Còn hiệu lực') return 'validity-active'
+  if (status === 'Vĩnh viễn') return 'validity-indefinite'
+  return 'validity-expired'
 }
 
 const getValidityStatusIcon = (status) => {
-  return status === 'Còn hiệu lực' ? 'fas fa-check-circle' : 'fas fa-times-circle'
+  if (status === 'Còn hiệu lực') return 'fas fa-check-circle'
+  if (status === 'Vĩnh viễn') return 'fas fa-infinity'
+  return 'fas fa-times-circle'
 }
 
 // Get days to expire class and icon
@@ -655,6 +699,7 @@ const isApproved = (approveStatus) => {
 
 const expiredContracts = computed(() => {
   return contractsData.value.filter(c => 
+    c.daysToExpire !== null && // Chỉ lọc hợp đồng có ngày hết hạn (không phải vĩnh viễn)
     c.daysToExpire <= 10 && 
     c.employeeStatus === 'Active' &&
     isApproved(c.approveStatus)
@@ -1920,6 +1965,13 @@ const startTour = () => {
   box-shadow: 0 2px 4px rgba(114, 28, 36, 0.1);
 }
 
+.validity-indefinite {
+  background: linear-gradient(135deg, #cfe2ff, #b6d4fe);
+  color: #084298;
+  border: 1px solid #b6d4fe;
+  box-shadow: 0 2px 4px rgba(8, 66, 152, 0.1);
+}
+
 /* Days to expire styling */
 .days-to-expire {
   display: inline-flex;
@@ -1954,6 +2006,12 @@ const startTour = () => {
   color: white;
   border-color: #c82333;
   animation: pulse 2s infinite;
+}
+
+.days-indefinite {
+  background: linear-gradient(135deg, #cfe2ff, #b6d4fe);
+  color: #084298;
+  border-color: #b6d4fe;
 }
 
 @keyframes pulse {

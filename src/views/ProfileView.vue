@@ -346,8 +346,21 @@ const getGenderDisplayName = (gender) => {
 
 const formatDate = (dateString) => {
   if (!dateString) return null
+  
+  // Kiểm tra nếu là hợp đồng không xác định thời hạn (endDate = "0001-01-01" hoặc tương tự)
+  if (typeof dateString === 'string' && (
+    dateString.includes('0001-01-01') || 
+    dateString.startsWith('0001-')
+  )) {
+    return 'Vĩnh viễn'
+  }
+  
   try {
     const date = new Date(dateString)
+    // Kiểm tra nếu năm <= 1 hoặc < 1900 (hợp đồng không xác định thời hạn)
+    if (date.getFullYear() <= 1 || date.getFullYear() < 1900) {
+      return 'Vĩnh viễn'
+    }
     return date.toLocaleDateString('vi-VN')
   } catch (error) {
     return dateString
@@ -439,24 +452,60 @@ const getApprovalStatusClass = (status) => {
   }
 }
 
+// Kiểm tra xem hợp đồng có phải không xác định thời hạn không
+const isIndeterminateTermContract = (endDate) => {
+  if (!endDate || endDate === null || endDate === undefined || endDate === '') {
+    return true
+  }
+  
+  // Kiểm tra nếu endDate chứa "0001-01-01"
+  if (typeof endDate === 'string' && (
+    endDate.includes('0001-01-01') || 
+    endDate.startsWith('0001-')
+  )) {
+    return true
+  }
+  
+  try {
+    const date = new Date(endDate)
+    // Kiểm tra nếu năm <= 1 hoặc < 1900
+    if (isNaN(date.getTime()) || date.getFullYear() <= 1 || date.getFullYear() < 1900) {
+      return true
+    }
+  } catch (error) {
+    return true
+  }
+  
+  return false
+}
+
 const getValidityStatusClass = (contract) => {
-  if (!contract?.endDate) return 'validity-unknown'
+  if (isIndeterminateTermContract(contract?.endDate)) {
+    return 'validity-active' // Hợp đồng vĩnh viễn = còn hiệu lực
+  }
   const endDate = new Date(contract.endDate)
   const today = new Date()
+  today.setHours(0, 0, 0, 0)
   return endDate > today ? 'validity-active' : 'validity-expired'
 }
 
 const getValidityStatusIcon = (contract) => {
-  if (!contract?.endDate) return 'fas fa-question-circle'
+  if (isIndeterminateTermContract(contract?.endDate)) {
+    return 'fas fa-check-circle' // Hợp đồng vĩnh viễn = còn hiệu lực
+  }
   const endDate = new Date(contract.endDate)
   const today = new Date()
+  today.setHours(0, 0, 0, 0)
   return endDate > today ? 'fas fa-check-circle' : 'fas fa-times-circle'
 }
 
 const getValidityStatusText = (contract) => {
-  if (!contract?.endDate) return 'Không xác định'
+  if (isIndeterminateTermContract(contract?.endDate)) {
+    return 'Còn hiệu lực' // Hợp đồng vĩnh viễn = còn hiệu lực
+  }
   const endDate = new Date(contract.endDate)
   const today = new Date()
+  today.setHours(0, 0, 0, 0)
   return endDate > today ? 'Còn hiệu lực' : 'Hết hiệu lực'
 }
 

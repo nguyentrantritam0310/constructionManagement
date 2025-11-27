@@ -329,13 +329,14 @@ export function usePermissions() {
     }
     
     // Giám đốc có thể duyệt các đơn ở trạng thái "Chờ duyệt"
-    // (Giám đốc là cấp duyệt cuối cùng)
+    // (Giám đốc là cấp duyệt cuối cùng, kể cả khi tự gửi duyệt)
     if (currentUser.value?.role === 'director' && hasPermission(page, 'approve_director')) {
       return true
     }
     
     // Người cùng cấp với người submit không được duyệt/từ chối/trả lại
     // Phải đi theo quy trình duyệt (cấp trên mới được duyệt)
+    // TRỪ TRƯỜNG HỢP: Giám đốc tự gửi duyệt thì giám đốc vẫn có thể duyệt
     const currentUserRole = currentUser.value?.role
     const submitterRole = item.submitterRole
     
@@ -344,8 +345,8 @@ export function usePermissions() {
       const normalizedCurrentRole = currentUserRole.toLowerCase()
       const normalizedSubmitterRole = submitterRole.toLowerCase()
       
-      // Nếu cùng role, không cho phép approve
-      if (normalizedCurrentRole === normalizedSubmitterRole) {
+      // Nếu cùng role, không cho phép approve (trừ giám đốc)
+      if (normalizedCurrentRole === normalizedSubmitterRole && normalizedCurrentRole !== 'director') {
         return false
       }
     }

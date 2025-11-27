@@ -44,6 +44,33 @@ export function useSalary() {
     return false
   }
 
+  // Helper function to check if contract is indeterminate term (no end date)
+  const isIndeterminateTermContract = (endDate) => {
+    if (!endDate || endDate === null || endDate === undefined || endDate === '') {
+      return true
+    }
+    
+    // Kiểm tra nếu endDate chứa "0001-01-01"
+    if (typeof endDate === 'string' && (
+      endDate.includes('0001-01-01') || 
+      endDate.startsWith('0001-')
+    )) {
+      return true
+    }
+    
+    try {
+      const date = new Date(endDate)
+      // Kiểm tra nếu năm <= 1 hoặc < 1900 (hợp đồng không xác định thời hạn)
+      if (isNaN(date.getTime()) || date.getFullYear() <= 1 || date.getFullYear() < 1900) {
+        return true
+      }
+    } catch (error) {
+      return true
+    }
+    
+    return false
+  }
+
   // Helper function to get all contracts active in a month for an employee
   const getContractsInMonth = (employeeId, year, month) => {
     const monthStartDate = new Date(year, month - 1, 1)
@@ -63,12 +90,13 @@ export function useSalary() {
         if (contractStartDate > monthEndDate) return false
 
         // Contract must end after or on the first day of the month (or be indeterminate)
-        if (contract.endDate) {
+        // Kiểm tra xem có phải hợp đồng không xác định thời hạn không
+        if (!isIndeterminateTermContract(contract.endDate)) {
           const contractEndDate = new Date(contract.endDate)
           contractEndDate.setHours(23, 59, 59, 999)
           if (contractEndDate < monthStartDate) return false
         }
-        // If no endDate, it's an indeterminate term contract (always active)
+        // If indeterminate term contract (no endDate or "0001-01-01"), it's always active
 
         return true
       })
@@ -91,7 +119,8 @@ export function useSalary() {
     contractStartDate.setHours(0, 0, 0, 0)
 
     let contractEndDate
-    if (contract.endDate) {
+    // Kiểm tra xem có phải hợp đồng không xác định thời hạn không
+    if (!isIndeterminateTermContract(contract.endDate)) {
       contractEndDate = new Date(contract.endDate)
       contractEndDate.setHours(23, 59, 59, 999)
     } else {
@@ -133,20 +162,28 @@ export function useSalary() {
 
     // Filter attendance data for this period
     const attendanceData = attendanceList.value.filter(att => {
+      if (!att) return false
+      // So sánh employeeID bằng string để đảm bảo khớp
+      const attEmployeeId = String(att.employeeID || '')
+      const empId = String(employee.id || '')
+      if (attEmployeeId !== empId) return false
+      
       const workDate = new Date(att.workDate)
       workDate.setHours(0, 0, 0, 0)
-      return att.employeeID === employee.id &&
-             workDate >= periodStartDate &&
-             workDate <= periodEndDate
+      return workDate >= periodStartDate && workDate <= periodEndDate
     })
 
     // Filter shift assignments for this period
     const assignedDays = shiftAssignments.value.filter(assignment => {
+      if (!assignment) return false
+      // So sánh employeeID bằng string để đảm bảo khớp
+      const assignmentEmployeeId = String(assignment.employeeID || '')
+      const empId = String(employee.id || '')
+      if (assignmentEmployeeId !== empId) return false
+      
       const assignmentDate = new Date(assignment.workDate)
       assignmentDate.setHours(0, 0, 0, 0)
-      return assignment.employeeID === employee.id &&
-             assignmentDate >= periodStartDate &&
-             assignmentDate <= periodEndDate
+      return assignmentDate >= periodStartDate && assignmentDate <= periodEndDate
     }).length
 
     const standardDays = assignedDays || 0
@@ -168,14 +205,24 @@ export function useSalary() {
 
     // Calculate paid leave days in period
     const approvedLeaveRequests = leaveRequests.value.filter(leave => {
+      if (!leave || !leave.startDateTime) return false
+      
+      // So sánh employeeID bằng string để đảm bảo khớp
+      const leaveEmployeeId = String(leave.employeeID || '')
+      const empId = String(employee.id || '')
+      if (leaveEmployeeId !== empId) return false
+      
+      // Kiểm tra trạng thái duyệt
+      if (!isApproved(leave.approveStatus)) return false
+      
+      // Kiểm tra loại nghỉ phép
+      if (!leave.leaveTypeName || !leave.leaveTypeName.toLowerCase().includes('phép')) return false
+      
       const leaveStartDate = new Date(leave.startDateTime)
       const leaveEndDate = new Date(leave.endDateTime)
       
-      return leave.employeeID === employee.id &&
-             leaveStartDate <= periodEndDate &&
-             leaveEndDate >= periodStartDate &&
-             isApproved(leave.approveStatus) &&
-             leave.leaveTypeName && leave.leaveTypeName.toLowerCase().includes('phép')
+      // Kiểm tra xem đơn nghỉ phép có nằm trong khoảng thời gian của hợp đồng không
+      return leaveStartDate <= periodEndDate && leaveEndDate >= periodStartDate
     })
 
     let totalPaidLeaveDays = 0
@@ -202,6 +249,7 @@ export function useSalary() {
     const paidLeaveDays = totalPaidLeaveDays
 
     // Calculate overtime in period
+    // Lọc đơn tăng ca đã duyệt trong tháng (giống logic trong modal)
     const approvedOvertimeForMonth = (overtimeRequests?.value || []).filter(ot => {
       if (!ot || !ot.startDateTime) return false
       const start = new Date(ot.startDateTime)
@@ -221,20 +269,16 @@ export function useSalary() {
       const start = new Date(ot.startDateTime)
       const end = new Date(ot.endDateTime)
       
-      // Only count hours within the period
-      const actualStart = start > periodStartDate ? start : periodStartDate
-      const actualEnd = end < periodEndDate ? end : periodEndDate
+      // Tính toàn bộ thời gian tăng ca (giống modal) - không chỉ tính phần trong period
+      const totalHoursDiff = (end - start) / (1000 * 60 * 60)
+      const hours = Math.max(0, totalHoursDiff)
+      const dayUnits = hours / 8 // 1 ngày = 8 giờ
+      const coeff = Number(ot.coefficient) || 1
       
-      if (actualStart <= actualEnd) {
-        const hours = Math.max(0, (actualEnd - actualStart) / (1000 * 60 * 60))
-        const dayUnits = hours / 8
-        const coeff = Number(ot.coefficient) || 1
-        
-        totalOvertimeHours += hours
-        totalOvertimeDayUnits += dayUnits
-        totalOvertimeHoursWithCoeff += hours * coeff
-        totalOvertimeDaysWithCoeff += dayUnits * coeff
-      }
+      totalOvertimeHours += hours
+      totalOvertimeDayUnits += dayUnits
+      totalOvertimeHoursWithCoeff += hours * coeff
+      totalOvertimeDaysWithCoeff += dayUnits * coeff
     })
 
     const otDays = Math.round(totalOvertimeDayUnits * 100) / 100

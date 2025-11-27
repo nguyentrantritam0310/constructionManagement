@@ -169,13 +169,25 @@ watch(() => props.contract, (newContract) => {
 
 function formatDateForInput(dateString) {
   if (!dateString || dateString === null || dateString === undefined || dateString === '') return ''
+  
+  // Nếu dateString đã là định dạng YYYY-MM-DD, trả về trực tiếp
+  if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString
+  }
+  
+  // Parse date string và lấy local date (không bị ảnh hưởng bởi timezone)
   const date = new Date(dateString)
   // Check if date is valid
   if (isNaN(date.getTime())) {
     console.warn('Invalid date string:', dateString)
     return ''
   }
-  return date.toISOString().split('T')[0]
+  
+  // Sử dụng local date methods để tránh timezone issues
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 // Helper function to calculate end date (startDate + months)
