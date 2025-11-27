@@ -2489,8 +2489,7 @@ const attendanceDataColumns = [
   { key: 'shift', label: 'Ca làm việc' },
   { key: 'date', label: 'Ngày làm' },
   { key: 'scanTime', label: 'Giờ quét' },
-  { key: 'machine', label: 'Máy chấm công' },
-  { key: 'location', label: 'Vị trí' },
+  { key: 'location', label: 'Máy chấm công' },
   { key: 'type', label: 'Loại công' }
 ];
 
