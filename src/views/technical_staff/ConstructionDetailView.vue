@@ -18,7 +18,6 @@ import { useStatusTransition, STATUS_TYPES, STATUS } from '../../composables/use
 import { useConstructionItem } from '../../composables/useConstructionItem'
 import Pagination from '../../components/common/Pagination.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import api from '../../api.js'
 
 const route = useRoute()
@@ -429,116 +428,7 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', handleMouseUp)
 })
 
-// Tour Guide Steps
-const infoTourSteps = [
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Thông tin chung". Tại đây bạn có thể xem thông tin chi tiết về công trình và bản thiết kế.',
-    noHighlight: true
-  },
-  {
-    target: '[data-tour="construction-info"]',
-    message: 'Đây là phần thông tin chi tiết về công trình, bao gồm loại công trình, tổng diện tích, ngày khởi công, ngày dự kiến hoàn thành và địa điểm xây dựng.',
-    noHighlight: true
-  },
-  {
-    target: '[data-tour="design-blueprint"]',
-    message: 'Đây là phần hiển thị bản thiết kế công trình. Bạn có thể click vào ảnh để phóng to, sử dụng chuột để zoom và kéo để xem chi tiết. Nút "Tải xuống" cho phép bạn tải bản thiết kế về máy.',
-    noHighlight: true
-  }
-]
 
-const itemsTourSteps = [
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Hạng mục thi công". Tại đây bạn có thể quản lý các hạng mục thi công của công trình.',
-    noHighlight: true
-  },
-  {
-    target: '[data-tour="add-item-button"]',
-    message: 'Nút "Thêm Hạng Mục" cho phép bạn tạo mới một hạng mục thi công. Tôi sẽ mở form thêm hạng mục để bạn xem.',
-    noHighlight: true,
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đợi một chút để đảm bảo UI đã render
-        await new Promise(resolve => setTimeout(resolve, 300))
-        // Mở modal thêm hạng mục
-        formMode.value = 'create'
-        selectedItem.value = null
-        showItemForm.value = true
-        // Đợi modal render xong
-        await new Promise(resolve => setTimeout(resolve, 300))
-      }
-    }
-  },
-  {
-    target: '[data-tour="item-form-modal"]',
-    message: 'Đây là form thêm hạng mục thi công. Bạn có thể điền thông tin như tên hạng mục, ngày bắt đầu, ngày kết thúc, tổng khối lượng và đơn vị. Sau khi điền xong, click "Lưu" để tạo hạng mục mới.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đảm bảo modal đã mở
-        if (!showItemForm.value) {
-          formMode.value = 'create'
-          selectedItem.value = null
-          showItemForm.value = true
-        }
-        // Đợi modal render xong và có class .show
-        await nextTick()
-        await new Promise(resolve => setTimeout(resolve, 600))
-        // Đợi thêm để đảm bảo modal đã hoàn toàn hiển thị và animation xong
-        await nextTick()
-      }
-    }
-  },
-  {
-    target: '[data-tour="items-table"]',
-    message: 'Đây là bảng danh sách hạng mục thi công. Bạn có thể xem thông tin chi tiết của từng hạng mục như mã hạng mục, tên hạng mục, ngày bắt đầu, ngày kết thúc, tổng khối lượng, đơn vị và trạng thái. Click vào hàng để xem chi tiết.',
-    noHighlight: true,
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal trước khi tiếp tục
-        await new Promise(resolve => setTimeout(resolve, 300))
-        if (showItemForm.value) {
-          showItemForm.value = false
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="items-actions"]',
-    message: 'Cột "Thao tác" chứa các nút để cập nhật thông tin hạng mục (biểu tượng bút chì) và thay đổi trạng thái hạng mục (biểu tượng mũi tên).',
-    noHighlight: true
-  },
-  {
-    target: '[data-tour="items-pagination"]',
-    message: 'Phần phân trang ở cuối bảng cho phép bạn chuyển đổi giữa các trang để xem nhiều hạng mục hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Hạng mục thi công"!',
-    noHighlight: true
-  }
-]
-
-const tourSteps = computed(() => {
-  if (activeTab.value === 'info') {
-    return infoTourSteps
-  } else if (activeTab.value === 'items') {
-    return itemsTourSteps
-  }
-  return []
-})
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -916,20 +806,7 @@ const startTour = () => {
       </div>
     </ModalDialog>
 
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
     
-    <!-- AI Chatbot Button -->
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn? Tôi sẽ hướng dẫn bạn cách sử dụng trang chi tiết công trình này." 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 

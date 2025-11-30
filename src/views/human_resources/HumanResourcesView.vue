@@ -13,7 +13,6 @@ import { usePermissions } from '../../composables/usePermissions'
 import ActionButton from '@/components/common/ActionButton.vue'
 import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
 import TourGuide from '@/components/common/TourGuide.vue'
-import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -161,8 +160,6 @@ const familyFormMode = ref('create')
 const showFilter = ref(false)
 const showImportModal = ref(false)
 const showTourGuide = ref(false)
-const showChatbotMessage = ref(false)
-const chatbotMessage = ref('Xin chào! Tôi có thể giúp gì cho bạn?')
 const showDeleteConfirmModal = ref(false)
 const employeeToDelete = ref(null)
 
@@ -709,10 +706,6 @@ const handleImportExcel = async () => {
     return
   }
   
-  // Show chatbot message when starting import
-  chatbotMessage.value = 'Đang xử lý import dữ liệu. Do dữ liệu có thể nhiều nên quá trình sẽ cần thời gian, vui lòng đợi...'
-  showChatbotMessage.value = true
-  
   try {
     const reader = new FileReader()
     reader.onload = async (e) => {
@@ -731,7 +724,6 @@ const handleImportExcel = async () => {
         
         if (jsonData.length === 0) {
           showMessage('File Excel không có dữ liệu.', 'error')
-          showChatbotMessage.value = false
           return
         }
 
@@ -806,21 +798,11 @@ const handleImportExcel = async () => {
         if (errors.length > 0) {
           const errorMessage = `Có ${errors.length} lỗi validation:\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n... và ${errors.length - 10} lỗi khác` : ''}`
           showMessage(errorMessage, 'error')
-          chatbotMessage.value = 'Có lỗi validation trong dữ liệu. Vui lòng kiểm tra lại file Excel.'
-          setTimeout(() => {
-            showChatbotMessage.value = false
-            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
-          }, 3000)
           return
         }
 
         if (employeesToCreate.length === 0) {
           showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error')
-          chatbotMessage.value = 'Không tìm thấy dữ liệu hợp lệ trong file.'
-          setTimeout(() => {
-            showChatbotMessage.value = false
-            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
-          }, 3000)
           return
         }
 
@@ -828,18 +810,10 @@ const handleImportExcel = async () => {
         try {
           await createMultipleEmployees(employeesToCreate)
           showMessage(`Đã thêm thành công ${employeesToCreate.length} nhân viên.`, 'success')
-          chatbotMessage.value = `Đã hoàn thành! Đã thêm thành công ${employeesToCreate.length} nhân viên vào hệ thống.`
         } catch (error) {
           // Error message already shown by createMultipleEmployees
           console.error('Error creating employees:', error)
-          chatbotMessage.value = 'Có lỗi xảy ra trong quá trình import. Vui lòng kiểm tra lại dữ liệu.'
           // Don't throw here, let the user see the error message
-        } finally {
-          // Hide chatbot message after a delay
-          setTimeout(() => {
-            showChatbotMessage.value = false
-            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
-          }, 3000)
         }
         selectedFile.value = null
         showImportModal.value = false
@@ -848,19 +822,12 @@ const handleImportExcel = async () => {
         console.error('Lỗi khi xử lý file Excel:', error)
         const errorMessage = error.message || 'Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.'
         showMessage(errorMessage, 'error')
-        chatbotMessage.value = 'Có lỗi xảy ra trong quá trình import. Vui lòng kiểm tra lại dữ liệu.'
-        setTimeout(() => {
-          showChatbotMessage.value = false
-          chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
-        }, 3000)
       }
     }
     reader.readAsArrayBuffer(selectedFile.value)
   } catch (error) {
     console.error('Lỗi khi đọc file:', error)
     showMessage('Có lỗi xảy ra khi đọc file', 'error')
-    showChatbotMessage.value = false
-    chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
   }
 }
 
@@ -1111,12 +1078,6 @@ const handleImportExcel = async () => {
             :steps="tourSteps" 
             @update:show="showTourGuide = $event" 
             @complete="handleTourComplete" 
-        />
-        <AIChatbotButton 
-            :message="chatbotMessage" 
-            title="Trợ lý AI"
-            :auto-show="showChatbotMessage"
-            @guide-click="startTour"
         />
         
         <!-- Delete Employee Confirmation Modal -->

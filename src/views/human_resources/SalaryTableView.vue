@@ -13,7 +13,6 @@ import { useShiftAssignment } from '../../composables/useShiftAssignment.js'
 import { useWorkShift } from '../../composables/useWorkShift.js'
 import { useContract } from '../../composables/useContract.js'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 
@@ -3130,11 +3129,6 @@ const startTour = () => {
     :steps="tourSteps"
     @update:show="showTourGuide = $event"
     @complete="handleTourComplete"
-  />
-  <AIChatbotButton 
-    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-    title="Trợ lý AI"
-    @guide-click="startTour"
   />
 </template>
 

@@ -263,18 +263,6 @@
       </div>
     </div>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 
@@ -285,7 +273,6 @@ import { useAuth } from '../composables/useAuth'
 import { useEmployee } from '../composables/useEmployee'
 import { useContract } from '../composables/useContract'
 import TourGuide from '../components/common/TourGuide.vue'
-import AIChatbotButton from '../components/common/AIChatbotButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -509,36 +496,7 @@ const getValidityStatusText = (contract) => {
   return endDate > today ? 'Còn hiệu lực' : 'Hết hiệu lực'
 }
 
-// Tour Guide Steps
 const showTourGuide = ref(false)
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang thông tin cá nhân. Tại đây bạn có thể xem thông tin chi tiết về nhân viên, bao gồm thông tin cơ bản (mã nhân viên, email, số điện thoại, ngày sinh, giới tính), thông tin hợp đồng (số hợp đồng, loại hợp đồng, ngày bắt đầu, ngày hết hạn, lương hợp đồng, lương bảo hiểm, trạng thái duyệt và hiệu lực).'
-  },
-  {
-    target: '[data-tour="profile-card"]',
-    message: 'Đây là phần thông tin cá nhân. Hiển thị avatar, tên nhân viên, chức vụ, trạng thái hoạt động, ngày vào làm, phòng ban và số hợp đồng (nếu có).'
-  },
-  {
-    target: '[data-tour="basic-info"]',
-    message: 'Đây là phần thông tin cơ bản. Hiển thị mã nhân viên, email, số điện thoại, chức vụ, ngày sinh và giới tính của nhân viên.'
-  },
-  {
-    target: '[data-tour="contract-info"]',
-    message: 'Đây là phần thông tin hợp đồng. Hiển thị số hợp đồng, loại hợp đồng, ngày bắt đầu, ngày hết hạn, lương hợp đồng, lương bảo hiểm, trạng thái duyệt và hiệu lực của hợp đồng. Nếu nhân viên chưa có hợp đồng, sẽ hiển thị thông báo "Chưa có thông tin hợp đồng".'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <style scoped>

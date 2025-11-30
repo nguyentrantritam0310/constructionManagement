@@ -11,7 +11,6 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ActionButton from '@/components/common/ActionButton.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -323,85 +322,7 @@ watch([searchQuery, statusFilter, dateRangeFilter], () => {
   currentPage.value = 1
 }, { deep: true })
 
-// Tour Guide Steps
 const showTourGuide = ref(false)
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý công trình. Tại đây bạn có thể xem, tạo, cập nhật và quản lý các công trình xây dựng.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc công trình theo trạng thái và khoảng thời gian.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo tên công trình, địa điểm, mã công trình. Chọn trạng thái từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form thêm công trình mới. Bạn có thể nhập tên công trình, loại dự án, địa điểm, tổng diện tích, ngày bắt đầu và ngày hoàn thành dự kiến. Sau khi điền đầy đủ, bấm "Lưu" để tạo công trình.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách công trình ra file Excel để lưu trữ hoặc xử lý thêm.'
-  },
-  {
-    target: '[data-tour="import-modal"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin công trình vào file Excel, sau đó chọn file và bấm "Xử lý" để import vào hệ thống.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:last-child'
-    }
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách công trình. Bạn có thể xem thông tin chi tiết của từng công trình. Click vào một hàng để xem chi tiết công trình. Cột "Thao tác" chứa các nút để cập nhật và đổi trạng thái công trình.'
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều công trình hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
-    action: {
-      type: 'function',
-      func: async () => {
-        if (showImportModal.value) {
-          showImportModal.value = false
-        }
-        if (showCreateDialog.value) {
-          showCreateDialog.value = false
-        }
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
-    }
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -549,18 +470,6 @@ const startTour = () => {
       </div>
     </ModalDialog>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 

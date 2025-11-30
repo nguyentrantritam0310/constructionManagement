@@ -12,7 +12,6 @@ import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import TourGuide from '@/components/common/TourGuide.vue'
-import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -485,80 +484,6 @@ const exportToExcel = async () => {
   saveAs(new Blob([buf]), 'OvertimeRequests.xlsx')
 }
 
-// Tour Guide Steps
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý đơn tăng ca. Tại đây bạn có thể xem, tạo, và quản lý các đơn tăng ca của nhân viên.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form tạo đơn tăng ca mới. Bạn có thể chọn nhân viên, loại tăng ca, hình thức tăng ca, hệ số, ngày bắt đầu, ngày kết thúc và lý do tăng ca. Sau khi điền đầy đủ thông tin, bấm "Lưu" để tạo đơn.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc đơn tăng ca theo nhiều tiêu chí khác nhau như số phiếu, mã nhân viên, trạng thái và khoảng thời gian.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo số phiếu, mã nhân viên, tên. Chọn trạng thái từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Sau đó bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách đơn tăng ca ra file Excel để lưu trữ hoặc xử lý thêm. Khi bấm vào đây, file Excel sẽ được tải xuống tự động.'
-  },
-  {
-    target: '[data-tour="import-modal"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể chọn file Excel từ máy tính, sau đó bấm "Xử lý" để import các đơn tăng ca vào hệ thống.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(4)'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng của trang này bất cứ lúc nào.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách đơn tăng ca. Bạn có thể xem thông tin chi tiết về các đơn tăng ca như số phiếu, mã nhân viên, loại tăng ca, hình thức tăng ca, hệ số, ngày bắt đầu, ngày kết thúc và trạng thái duyệt. Bạn có thể bấm vào một hàng để xem chi tiết.'
-  },
-  {
-    target: '[data-tour="actions"]',
-    message: 'Cột "Thao tác" chứa các nút để bạn thực hiện các hành động như: Sửa đơn tăng ca, Xóa đơn, Gửi duyệt, Duyệt, Từ chối hoặc Trả lại đơn. Các nút sẽ hiển thị tùy theo quyền của bạn và trạng thái đơn.'
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều đơn tăng ca hơn. Bạn có thể thấy số lượng đơn tăng ca hiện tại và tổng số đơn tăng ca. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở để có thể highlight
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -785,18 +710,7 @@ const startTour = () => {
     </div>
   </ModalDialog>
   
-  <!-- Tour Guide -->
-  <TourGuide
-    :show="showTourGuide"
-    :steps="tourSteps"
-    @update:show="showTourGuide = $event"
-    @complete="handleTourComplete"
-  />
 
-  <!-- AI Chatbot Assistant Button -->
-  <AIChatbotButton 
-    @guide-click="startTour"
-  />
 </template>
 
 <style scoped>

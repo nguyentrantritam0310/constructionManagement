@@ -371,12 +371,6 @@
       @update:show="showTourGuide = $event" 
       @complete="handleTourComplete" 
     />
-    <AIChatbotButton 
-      :message="chatbotMessage" 
-      title="Trợ lý AI"
-      :auto-show="showChatbotMessage"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 
@@ -393,7 +387,6 @@ import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import TourGuide from '@/components/common/TourGuide.vue'
-import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 import { useContract } from '../../composables/useContract.js'
 import { useEmployee } from '../../composables/useEmployee.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
@@ -907,8 +900,6 @@ const selectedDetailItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
 const showTourGuide = ref(false)
-const showChatbotMessage = ref(false)
-const chatbotMessage = ref('Xin chào! Tôi có thể giúp gì cho bạn?')
 
 // Filter variables
 const searchQuery = ref('')
@@ -1140,10 +1131,6 @@ const processImport = async () => {
     return
   }
 
-  // Show chatbot message when starting import
-  chatbotMessage.value = 'Đang xử lý import dữ liệu hợp đồng. Do dữ liệu có thể nhiều nên quá trình sẽ cần thời gian, vui lòng đợi...'
-  showChatbotMessage.value = true
-
   try {
   const reader = new FileReader()
   reader.onload = async (e) => {
@@ -1162,8 +1149,6 @@ const processImport = async () => {
 
       if (jsonData.length === 0) {
           showMessage('File Excel không có dữ liệu.', 'error')
-          showChatbotMessage.value = false
-          chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
         return
       }
 
@@ -1448,21 +1433,11 @@ const processImport = async () => {
         if (errors.length > 0) {
           const errorMessage = `Có ${errors.length} lỗi validation:\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n... và ${errors.length - 10} lỗi khác` : ''}`
           showMessage(errorMessage, 'error')
-          chatbotMessage.value = 'Có lỗi validation trong dữ liệu. Vui lòng kiểm tra lại file Excel.'
-          setTimeout(() => {
-            showChatbotMessage.value = false
-            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
-          }, 3000)
           return
         }
 
         if (contractsToCreate.length === 0) {
           showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error')
-          chatbotMessage.value = 'Không tìm thấy dữ liệu hợp lệ trong file.'
-          setTimeout(() => {
-            showChatbotMessage.value = false
-            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
-          }, 3000)
           return
         }
 
@@ -1470,38 +1445,24 @@ const processImport = async () => {
         try {
           await createMultipleContracts(contractsToCreate)
           showMessage(`Đã thêm thành công ${contractsToCreate.length} hợp đồng lao động.`, 'success')
-          chatbotMessage.value = `Đã hoàn thành! Đã thêm thành công ${contractsToCreate.length} hợp đồng lao động vào hệ thống.`
         } catch (error) {
           // Error message already shown by createMultipleContracts
           console.error('Error creating contracts:', error)
-          chatbotMessage.value = 'Có lỗi xảy ra trong quá trình import. Vui lòng kiểm tra lại dữ liệu.'
         } finally {
       file.value = null
       showImportModal.value = false
           await fetchAllContracts()
-          // Hide chatbot message after a delay
-          setTimeout(() => {
-            showChatbotMessage.value = false
-            chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
-          }, 3000)
         }
     } catch (error) {
         console.error('Lỗi khi xử lý file Excel:', error)
         const errorMessage = error.message || 'Định dạng file Excel không hợp lệ hoặc có lỗi xảy ra.'
         showMessage(errorMessage, 'error')
-        chatbotMessage.value = 'Có lỗi xảy ra trong quá trình import. Vui lòng kiểm tra lại dữ liệu.'
-        setTimeout(() => {
-          showChatbotMessage.value = false
-          chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
-        }, 3000)
     }
   }
   reader.readAsArrayBuffer(file.value)
   } catch (error) {
     console.error('Lỗi khi đọc file:', error)
     showMessage('Có lỗi xảy ra khi đọc file', 'error')
-    showChatbotMessage.value = false
-    chatbotMessage.value = 'Xin chào! Tôi có thể giúp gì cho bạn?'
   }
 }
 

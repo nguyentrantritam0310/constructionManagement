@@ -11,7 +11,6 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const {
   materials,
@@ -268,112 +267,7 @@ const unitPriceBounds = computed(() => {
   }
 })
 
-// Tour Guide Steps
 const showTourGuide = ref(false)
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý vật tư. Tại đây bạn có thể xem, thêm, cập nhật và quản lý các vật tư trong hệ thống.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ. Bạn có thể thêm vật tư mới, lọc danh sách, xuất dữ liệu ra Excel hoặc nhập dữ liệu từ Excel.'
-  },
-  {
-    target: '[data-tour="add-button"]',
-    message: 'Nút "Thêm" cho phép bạn thêm vật tư mới vào hệ thống. Khi bấm vào nút này, một form sẽ mở ra để bạn nhập thông tin vật tư.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="add-button"]'
-    }
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form thêm vật tư. Bạn có thể nhập thông tin về tên vật tư, loại vật tư, đơn vị tính, đơn giá và số lượng tồn kho. Sau khi điền xong, bấm "Lưu" để thêm vật tư mới.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng form trước khi tiếp tục
-        await new Promise(resolve => setTimeout(resolve, 300))
-        const modal = document.querySelector('[data-tour="create-form"]')
-        if (modal) {
-          const closeButton = modal.querySelector('.btn-close')
-          if (closeButton) {
-            closeButton.click()
-          }
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="filter-button"]',
-    message: 'Nút "Lọc" cho phép bạn ẩn/hiện phần lọc để tìm kiếm và lọc vật tư theo nhiều tiêu chí khác nhau.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đảm bảo filter section được mở
-        if (!showFilter.value) {
-          showFilter.value = true
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="filter-section"]',
-    message: 'Đây là phần lọc. Bạn có thể tìm kiếm vật tư theo mã hoặc tên, lọc theo loại vật tư, lọc theo khoảng tồn kho hoặc khoảng đơn giá. Bấm "Đặt lại" để xóa tất cả bộ lọc.'
-  },
-  {
-    target: '[data-tour="export-button"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách vật tư ra file Excel. File Excel sẽ chứa tất cả thông tin về vật tư hiện có trong hệ thống.'
-  },
-  {
-    target: '[data-tour="import-button"]',
-    message: 'Nút "Nhập Excel" cho phép bạn nhập nhiều vật tư cùng lúc từ file Excel. Khi bấm vào nút này, một modal sẽ mở ra để bạn tải file mẫu và upload file đã điền.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="import-button"]'
-    }
-  },
-  {
-    target: '[data-tour="import-modal"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu để xem định dạng, sau đó điền thông tin vật tư vào file mẫu và upload lên. Hệ thống sẽ tự động xử lý và thêm các vật tư vào danh sách.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal trước khi tiếp tục
-        await new Promise(resolve => setTimeout(resolve, 300))
-        const modal = document.querySelector('[data-tour="import-modal"]')
-        if (modal) {
-          const closeButton = modal.querySelector('.btn-close')
-          if (closeButton) {
-            closeButton.click()
-          }
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách vật tư. Bạn có thể xem thông tin về mã vật tư, tên vật tư, loại vật tư, tồn kho, đơn giá và đơn vị tính. Click vào nút "Cập nhật" ở cột "Thao tác" để chỉnh sửa thông tin vật tư.'
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều vật tư hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -598,18 +492,6 @@ const startTour = () => {
       </div>
     </ModalDialog>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 

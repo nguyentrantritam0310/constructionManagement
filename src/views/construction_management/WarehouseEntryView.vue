@@ -11,7 +11,6 @@ import WarehouseEntryForm from '../../components/warehouse/WarehouseEntryForm.vu
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const { showMessage } = useGlobalMessage()
 const searchQuery = ref('')
@@ -181,104 +180,7 @@ const getStatusLabel = (status) => {
   return statusMap[status] || status
 }
 
-// Tour Guide Steps
 const showTourGuide = ref(false)
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang nhập kho. Tại đây bạn có thể xem danh sách các đơn hàng nhập kho, xem chi tiết đơn hàng và thực hiện nhập kho vật tư.'
-  },
-  {
-    target: '[data-tour="filter-button"]',
-    message: 'Nút "Lọc" cho phép bạn ẩn/hiện phần lọc để tìm kiếm và lọc đơn hàng theo nhiều tiêu chí khác nhau.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đảm bảo filter section được mở
-        if (!showFilter.value) {
-          showFilter.value = true
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="filter-section"]',
-    message: 'Đây là phần lọc. Bạn có thể tìm kiếm đơn hàng theo mã đơn hàng, tên người lập kế hoạch hoặc người nhập kho. Bạn cũng có thể lọc theo trạng thái (Từ chối, Hoàn thành) hoặc theo khoảng thời gian. Bấm "Đặt lại" để xóa tất cả bộ lọc.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách đơn hàng nhập kho. Bảng hiển thị mã đơn hàng, người lập kế hoạch, người nhập kho, ngày đặt và trạng thái. Click vào một hàng để xem chi tiết đơn hàng và thực hiện nhập kho.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Hãy để tôi mở modal chi tiết đơn hàng cho bạn. Tôi sẽ click vào hàng đầu tiên trong bảng.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đợi một chút để đảm bảo bảng đã render
-        await new Promise(resolve => setTimeout(resolve, 300))
-        // Tìm bảng và click vào hàng đầu tiên
-        const table = document.querySelector('[data-tour="table"]')
-        if (table) {
-          const firstRow = table.querySelector('tbody tr')
-          if (firstRow) {
-            firstRow.click()
-            // Đợi modal mở
-            await new Promise(resolve => setTimeout(resolve, 500))
-          }
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="order-detail-modal"]',
-    message: 'Đây là modal chi tiết đơn hàng nhập kho. Bạn có thể xem thông tin chi tiết về đơn hàng, danh sách vật tư cần nhập, số lượng cần nhập và các thông tin khác.'
-  },
-  {
-    target: '[data-tour="warehouse-form"]',
-    message: 'Trong modal này, bạn có thể xem toàn bộ thông tin về đơn hàng nhập kho, bao gồm thông tin đơn hàng, danh sách vật tư, số lượng cần nhập, và thực hiện nhập kho bằng cách điền số lượng thực tế đã nhập cho từng vật tư.'
-  },
-  {
-    target: '[data-tour="warehouse-form"]',
-    message: 'Sau khi điền đầy đủ thông tin và xác nhận nhập kho, đơn hàng sẽ được cập nhật trạng thái thành "Hoàn thành". Nếu có sự cố với vật tư, bạn có thể báo cáo sự cố.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal trước khi tiếp tục
-        await new Promise(resolve => setTimeout(resolve, 300))
-        const modal = document.querySelector('[data-tour="order-detail-modal"]')
-        if (modal) {
-          const closeButton = modal.querySelector('.btn-close')
-          if (closeButton) {
-            closeButton.click()
-          } else {
-            // Nếu không tìm thấy, thử tìm nút Cancel trong WarehouseEntryForm
-            const cancelButton = modal.querySelector('button')
-            if (cancelButton && (cancelButton.textContent.includes('Hủy') || cancelButton.textContent.includes('Cancel'))) {
-              cancelButton.click()
-            }
-          }
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều đơn hàng hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -391,18 +293,6 @@ const startTour = () => {
       </div>
     </ModalDialog>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 

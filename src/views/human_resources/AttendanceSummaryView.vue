@@ -12,7 +12,6 @@ import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import LeaveForm from '../../components/common/leave/LeaveForm.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import TabBar from '../../components/common/TabBar.vue'
 import TimeFilter from '../../components/common/TimeFilter.vue'
 
@@ -65,7 +64,6 @@ const showLeaveFormModal = ref(false)
 const showImageModal = ref(false)
 const showLocationMapModal = ref(false)
 const showTourGuide = ref(false)
-const showAIChatbot = ref(false)
 
 // ============================================================================
 // BIẾN REACTIVE - DỮ LIỆU ĐÃ CHỌN
@@ -81,7 +79,6 @@ const mapLocation = ref({ lat: null, lng: null, name: null })
 // ============================================================================
 const dayModalLoading = ref(false)
 const dayModalError = ref(null)
-const aiChatbotMessage = ref('')
 
 // ============================================================================
 // BIẾN REACTIVE - TRẠNG THÁI TAB VÀ BỘ LỌC
@@ -195,8 +192,8 @@ function analyzeZeroWorkTime(item) {
 function showZeroHoursWarning(item) {
   const analysis = analyzeZeroWorkTime(item)
   const reasonsText = analysis.reasons.length > 0 
-    ? analysis.reasons.map((r, i) => `\n${i + 1}. ${r}`).join('')
-    : '\nKhông xác định được nguyên nhân cụ thể'
+    ? analysis.reasons.map((r, i) => `${i + 1}. ${r}`).join('\n')
+    : 'Không xác định được nguyên nhân cụ thể'
   
   // Thêm gợi ý về việc đổi ca trong tab tổng hợp
   const allSuggestions = [...analysis.suggestions]
@@ -205,23 +202,11 @@ function showZeroHoursWarning(item) {
   }
   
   const suggestionsText = allSuggestions.length > 0
-    ? allSuggestions.map((s, i) => `\n${i + 1}. ${s}`).join('')
-    : '\nVui lòng kiểm tra lại dữ liệu chấm công'
+    ? allSuggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')
+    : 'Vui lòng kiểm tra lại dữ liệu chấm công'
   
-  aiChatbotMessage.value = `CẢNH BÁO: Số giờ công bằng 0
-
-\nNGUYÊN NHÂN CÓ THỂ:${reasonsText}
-
-ĐỀ XUẤT:${suggestionsText}`
-  showAIChatbot.value = true
-  
-  // Tự động mở chat bubble sau một khoảng thời gian ngắn
-  setTimeout(() => {
-    const chatbotButton = document.querySelector('.ai-chatbot-button')
-    if (chatbotButton) {
-      chatbotButton.click()
-    }
-  }, 100)
+  const message = `CẢNH BÁO: Số giờ công bằng 0\n\nNGUYÊN NHÂN CÓ THỂ:\n${reasonsText}\n\nĐỀ XUẤT:\n${suggestionsText}`
+  showMessage(message, 'warning')
 }
 
 /**
@@ -231,8 +216,8 @@ function showZeroHoursWarning(item) {
 function showZeroDaysWarning(item) {
   const analysis = analyzeZeroWorkTime(item)
   const reasonsText = analysis.reasons.length > 0 
-    ? analysis.reasons.map((r, i) => `\n${i + 1}. ${r}`).join('')
-    : '\nKhông xác định được nguyên nhân cụ thể'
+    ? analysis.reasons.map((r, i) => `${i + 1}. ${r}`).join('\n')
+    : 'Không xác định được nguyên nhân cụ thể'
   
   // Thêm gợi ý về việc đổi ca trong tab tổng hợp
   const allSuggestions = [...analysis.suggestions]
@@ -241,23 +226,11 @@ function showZeroDaysWarning(item) {
   }
   
   const suggestionsText = allSuggestions.length > 0
-    ? allSuggestions.map((s, i) => `\n${i + 1}. ${s}`).join('')
-    : '\nVui lòng kiểm tra lại dữ liệu chấm công'
+    ? allSuggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')
+    : 'Vui lòng kiểm tra lại dữ liệu chấm công'
   
-  aiChatbotMessage.value = `CẢNH BÁO: Số ngày công bằng 0
-
-\nNGUYÊN NHÂN CÓ THỂ:${reasonsText}
-
-\nĐỀ XUẤT:${suggestionsText}`
-  showAIChatbot.value = true
-  
-  // Tự động mở chat bubble sau một khoảng thời gian ngắn
-  setTimeout(() => {
-    const chatbotButton = document.querySelector('.ai-chatbot-button')
-    if (chatbotButton) {
-      chatbotButton.click()
-    }
-  }, 100)
+  const message = `CẢNH BÁO: Số ngày công bằng 0\n\nNGUYÊN NHÂN CÓ THỂ:\n${reasonsText}\n\nĐỀ XUẤT:\n${suggestionsText}`
+  showMessage(message, 'warning')
 }
 
 
@@ -6597,11 +6570,6 @@ const tourSteps = computed(() => {
 
   </div>
 
-  <!-- AI Chatbot Button -->
-  <AIChatbotButton 
-    :message="aiChatbotMessage || 'Xin chào! Tôi có thể giúp gì cho bạn?'"
-    @guide-click="showAIChatbot = false"
-  />
 
   <!-- Modal Bản Đồ Vị Trí -->
   <ModalDialog 
@@ -6991,11 +6959,6 @@ const tourSteps = computed(() => {
     :steps="tourSteps"
     @update:show="showTourGuide = $event"
     @complete="handleTourComplete"
-  />
-  <AIChatbotButton 
-    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-    title="Trợ lý AI"
-    @guide-click="startTour"
   />
 </template>
 

@@ -23,7 +23,6 @@ import { shiftAssignmentService } from '../../services/shiftAssignmentService'
 import FormField from '@/components/common/FormField.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 import api from '../../api.js'
 const { showMessage } = useGlobalMessage()
 const route = useRoute()
@@ -1757,12 +1756,6 @@ const startTour = () => {
       :steps="tourSteps" 
       @update:show="showTourGuide = $event" 
       @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      v-if="activeTab === 'items' || activeTab === 'plans'"
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
     />
   </div>
 </template>

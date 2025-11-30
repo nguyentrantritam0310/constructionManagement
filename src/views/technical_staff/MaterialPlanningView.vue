@@ -13,7 +13,6 @@ import { useUser } from '../../composables/useUser'
 import { useAuth } from '../../composables/useAuth'
 import { useImportOrderEmployee } from '../../composables/useImportOrderEmployee'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const selectedConstruction = ref(null)
 const showConfirmDialog = ref(false)
@@ -318,108 +317,7 @@ const handleMaterialPageChange = (page) => {
   currentMaterialPage.value = page
 }
 
-// Tour Guide Steps
 const showTourGuide = ref(false)
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang lập kế hoạch vật tư. Tại đây bạn có thể chọn công trình và lập kế hoạch vật tư cần nhập kho cho công trình đó.'
-  },
-  {
-    target: '[data-tour="filter-button"]',
-    message: 'Nút "Lọc" cho phép bạn ẩn/hiện phần lọc để tìm kiếm công trình theo mã, tên, địa điểm, trạng thái hoặc khoảng thời gian.'
-  },
-  {
-    target: '[data-tour="filter-section"]',
-    message: 'Đây là phần lọc. Bạn có thể tìm kiếm công trình theo mã, tên hoặc địa điểm, lọc theo trạng thái, hoặc chọn khoảng thời gian từ ngày bắt đầu đến ngày hoàn thành dự kiến. Bấm "Đặt lại" để xóa tất cả bộ lọc.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đảm bảo filter section được mở
-        if (!showFilter.value) {
-          showFilter.value = true
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="construction-table"]',
-    message: 'Đây là bảng danh sách công trình. Bạn có thể xem thông tin về mã công trình, tên công trình, địa điểm, ngày bắt đầu, ngày hoàn thành dự kiến và trạng thái. Click vào một hàng để xem và lập kế hoạch vật tư cho công trình đó.'
-  },
-  {
-    target: '[data-tour="construction-table"]',
-    message: 'Hãy để tôi mở modal định lượng vật tư cho bạn. Tôi sẽ click vào hàng đầu tiên trong bảng.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đợi một chút để đảm bảo bảng đã render
-        await new Promise(resolve => setTimeout(resolve, 300))
-        // Tìm bảng và click vào hàng đầu tiên
-        const table = document.querySelector('[data-tour="construction-table"]')
-        if (table) {
-          const firstRow = table.querySelector('tbody tr')
-          if (firstRow) {
-            firstRow.click()
-            // Đợi modal mở
-            await new Promise(resolve => setTimeout(resolve, 500))
-          }
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="material-norm-modal"]',
-    message: 'Đây là modal định lượng vật tư. Bạn có thể xem thông tin công trình đã chọn, tổng hợp vật tư, và chi tiết định mức vật tư theo từng hạng mục thi công.'
-  },
-  {
-    target: '[data-tour="material-summary"]',
-    message: 'Đây là bảng tổng hợp vật tư. Bảng này hiển thị tổng số lượng và thành tiền cho từng loại vật tư cần nhập kho. Bạn có thể xem tổng thành tiền ở phía dưới.'
-  },
-  {
-    target: '[data-tour="material-detail"]',
-    message: 'Đây là phần chi tiết định mức vật tư theo từng hạng mục thi công. Mỗi hạng mục có một bảng riêng hiển thị các vật tư cần thiết. Bạn có thể chỉnh sửa số lượng định mức trong cột "Định mức" để điều chỉnh kế hoạch vật tư.'
-  },
-  {
-    target: '[data-tour="save-button"]',
-    message: 'Nút "Lưu kế hoạch" cho phép bạn lưu kế hoạch vật tư đã chỉnh sửa. Sau khi lưu, kế hoạch sẽ được gửi lên giám đốc để duyệt.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal trước khi tiếp tục
-        await new Promise(resolve => setTimeout(resolve, 300))
-        const modal = document.querySelector('[data-tour="material-norm-modal"]')
-        if (modal) {
-          const closeButton = modal.querySelector('.btn-close')
-          if (closeButton) {
-            closeButton.click()
-          } else {
-            // Nếu không tìm thấy, thử tìm nút Hủy
-            const cancelButton = modal.querySelector('button')
-            if (cancelButton && (cancelButton.textContent.includes('Hủy') || cancelButton.textContent.includes('Cancel'))) {
-              cancelButton.click()
-            }
-          }
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều công trình hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -671,18 +569,6 @@ const startTour = () => {
       </div>
     </ModalDialog>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 

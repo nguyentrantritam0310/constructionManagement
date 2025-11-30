@@ -7,7 +7,6 @@ import { useAuth } from '../../composables/useAuth'
 import { useMaterialPlan } from '../../composables/useMaterialPlan'
 import { useImportOrder } from '../../composables/useImportOrder'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const { constructions, fetchConstructions } = useConstructionManagement()
 const { materials, fetchMaterials } = useMaterialManagement()
@@ -188,53 +187,7 @@ const formatCurrency = (value) => {
   }).format(value)
 }
 
-// Tour Guide Steps - Dynamic based on role
 const showTourGuide = ref(false)
-const tourSteps = computed(() => {
-  const steps = [
-    {
-      target: '[data-tour="title"]',
-      message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là bảng điều khiển (Dashboard). Trang này hiển thị tổng quan về các thống kê và thông tin quan trọng của hệ thống.'
-    },
-    {
-      target: '[data-tour="construction-stats"]',
-      message: 'Đây là phần thống kê công trình. Hiển thị tổng số công trình và số lượng công trình theo từng trạng thái như chờ khởi công, đang thi công, đã hoàn thành, tạm dừng và đã hủy.'
-    }
-  ]
-
-  // Thêm step cho Manager
-  if (isManager.value) {
-    steps.push({
-      target: '[data-tour="material-stats"]',
-      message: 'Đây là phần thống kê vật tư (chỉ hiển thị cho Quản lý). Hiển thị tổng số vật tư, số vật tư sắp hết và tổng giá trị vật tư trong kho.'
-    })
-  }
-
-  // Thêm step cho Director
-  if (isDirector.value) {
-    steps.push({
-      target: '[data-tour="report-stats"]',
-      message: 'Đây là phần thống kê báo cáo và kế hoạch vật tư (chỉ hiển thị cho Giám đốc). Hiển thị thống kê về báo cáo sự cố thi công, sự cố kỹ thuật và kế hoạch vật tư cần duyệt.'
-    })
-  }
-
-  steps.push({
-    target: '[data-tour="upcoming-deadlines"]',
-    message: 'Đây là phần công trình sắp đến hạn và thống kê theo loại. Hiển thị danh sách công trình có ngày hoàn thành dự kiến trong vòng 30 ngày tới và số lượng công trình theo từng loại (Dân dụng, Công nghiệp, Cầu đường, Thủy lợi).'
-  })
-
-  return steps
-})
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -561,18 +514,6 @@ const startTour = () => {
       </div>
     </div>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 

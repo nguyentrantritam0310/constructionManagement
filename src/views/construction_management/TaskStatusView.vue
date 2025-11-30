@@ -7,7 +7,6 @@ import { useConstructionManagement } from '../../composables/useConstructionMana
 import Pagination from '../../components/common/Pagination.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const router = useRouter()
 
@@ -124,48 +123,6 @@ const formatDate = (date) => {
   return new Date(date).toLocaleDateString('vi-VN')
 }
 
-// Tour Guide Steps
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý công trình. Tại đây bạn có thể xem danh sách tất cả công trình và xem chi tiết từng công trình.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ. Nút "Lọc" cho phép bạn ẩn/hiện phần bộ lọc để tìm kiếm công trình.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm công trình theo mã, tên, địa điểm. Chọn trạng thái từ dropdown. Chọn khoảng thời gian từ ngày bắt đầu đến ngày hoàn thành. Bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách công trình. Bạn có thể xem thông tin cơ bản của từng công trình như mã, tên, địa điểm, ngày bắt đầu, ngày kết thúc và trạng thái. Bấm vào một hàng bất kỳ để xem chi tiết công trình đó.'
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều công trình hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -291,18 +248,6 @@ const startTour = () => {
         @update:currentPage="handlePageChange" data-tour="pagination" />
     </div>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 

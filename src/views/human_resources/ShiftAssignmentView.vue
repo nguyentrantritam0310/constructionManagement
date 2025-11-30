@@ -15,7 +15,6 @@ import ChangeStatusButton from '@/components/common/ChangeStatusButton.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import TourGuide from '@/components/common/TourGuide.vue'
-import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 
 const {
   workshifts,
@@ -1676,11 +1675,6 @@ watch(unassignedSearchTerm, () => {
     :steps="tourSteps"
     @update:show="showTourGuide = $event"
     @complete="handleTourComplete"
-  />
-  <AIChatbotButton 
-    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-    title="Trợ lý AI"
-    @guide-click="startTour"
   />
   </div>
 

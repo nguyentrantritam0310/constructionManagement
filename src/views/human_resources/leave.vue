@@ -16,7 +16,6 @@ import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
 import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import TourGuide from '@/components/common/TourGuide.vue'
-import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -301,76 +300,6 @@ const openDeleteDialog = (voucherCode) => {
   showDeleteDialog.value = true
 }
 
-// Tour Guide Steps
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý đơn nghỉ phép. Tại đây bạn có thể xem, tạo, và quản lý các đơn nghỉ phép của nhân viên.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form tạo đơn nghỉ phép mới. Bạn có thể chọn nhân viên, loại nghỉ phép, ca làm việc, ngày bắt đầu, ngày kết thúc và lý do nghỉ phép. Sau khi điền đầy đủ thông tin, bấm "Lưu" để tạo đơn.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc đơn nghỉ phép theo nhiều tiêu chí khác nhau như số phiếu, mã nhân viên, loại nghỉ phép, trạng thái và khoảng thời gian.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo số phiếu, mã nhân viên, tên. Chọn loại nghỉ phép và trạng thái từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Sau đó bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách đơn nghỉ phép ra file Excel để lưu trữ hoặc xử lý thêm. Khi bấm vào đây, file Excel sẽ được tải xuống tự động.'
-  },
-  {
-    target: '[data-tour="import-modal"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể chọn file Excel từ máy tính, sau đó bấm "Nhập dữ liệu" để import các đơn nghỉ phép vào hệ thống.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(4)'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng của trang này bất cứ lúc nào.'
-  },
-  {
-    target: '[data-tour="actions"]',
-    message: 'Cột "Thao tác" chứa các nút để bạn thực hiện các hành động như: Sửa đơn nghỉ phép, Xóa đơn, Gửi duyệt, Duyệt, Từ chối hoặc Trả lại đơn. Các nút sẽ hiển thị tùy theo quyền của bạn và trạng thái đơn.'
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều đơn nghỉ phép hơn. Bạn có thể thấy số lượng đơn nghỉ phép hiện tại và tổng số đơn nghỉ phép. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở để có thể highlight
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 
 const formatDateTime = (dateTime) => {
   if (!dateTime) return ''
@@ -388,8 +317,6 @@ const getStatusText = (status) => {
 }
 
 const file = ref(null)
-const showChatbotMessage = ref(false)
-const chatbotMessage = ref('')
 
 const handleFileUpload = (event) => {
   const target = event.target
@@ -529,10 +456,6 @@ const processImport = async () => {
     return
   }
 
-  // Show chatbot message
-  showChatbotMessage.value = true
-  chatbotMessage.value = 'Đang xử lý file Excel. Quá trình này có thể mất thời gian do dữ liệu nhiều, vui lòng đợi...'
-
   // Fetch data if not already loaded
   if (!leaveTypes.value || leaveTypes.value.length === 0) {
     await fetchLeaveTypes()
@@ -551,7 +474,6 @@ const processImport = async () => {
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
       if (jsonData.length === 0) {
-        showChatbotMessage.value = false
         showMessage('File Excel không có dữ liệu.', 'error')
         return
       }
@@ -636,26 +558,19 @@ const processImport = async () => {
       })
 
       if (validationErrors.length > 0) {
-        showChatbotMessage.value = false
         const errorMessage = `Có ${validationErrors.length} lỗi validation:\n${validationErrors.slice(0, 10).join('\n')}${validationErrors.length > 10 ? `\n... và ${validationErrors.length - 10} lỗi khác` : ''}`
         showMessage(errorMessage, 'error')
         return
       }
 
       if (leaveRequestsToCreate.length === 0) {
-        showChatbotMessage.value = false
         showMessage('Không tìm thấy dữ liệu hợp lệ trong file.', 'error')
         return
       }
 
       // Import leave requests
       await createMultipleLeaveRequests(leaveRequestsToCreate)
-
-      showChatbotMessage.value = false
-      chatbotMessage.value = `Đã nhập thành công ${leaveRequestsToCreate.length} đơn nghỉ phép.`
-      setTimeout(() => {
-        showChatbotMessage.value = false
-      }, 3000)
+      showMessage(`Đã nhập thành công ${leaveRequestsToCreate.length} đơn nghỉ phép.`, 'success')
 
       file.value = null
       showImportModal.value = false
@@ -1029,21 +944,7 @@ defineExpose({
     </div>
   </ModalDialog>
 
-  <!-- Tour Guide -->
-  <TourGuide
-    :show="showTourGuide"
-    :steps="tourSteps"
-    @update:show="showTourGuide = $event"
-    @complete="handleTourComplete"
-    v-if="showTourGuide"
-  />
 
-  <!-- AI Chatbot Assistant Button -->
-  <AIChatbotButton 
-    :autoShow="showChatbotMessage"
-    :message="chatbotMessage"
-    @guide-click="startTour"
-  />
 </template>
 
 <style scoped>

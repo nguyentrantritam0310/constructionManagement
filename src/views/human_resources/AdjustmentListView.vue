@@ -11,7 +11,6 @@ import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 import TourGuide from '@/components/common/TourGuide.vue'
-import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -884,11 +883,6 @@ const startTour = () => {
     :steps="tourSteps"
     @update:show="showTourGuide = $event"
     @complete="handleTourComplete"
-  />
-  <AIChatbotButton 
-    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-    title="Trợ lý AI"
-    @guide-click="startTour"
   />
   </div>
 </template>

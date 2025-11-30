@@ -16,7 +16,6 @@ import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
 import { isApprovedStatus } from '../../constants/status.js'
 import TourGuide from '@/components/common/TourGuide.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
-import AIChatbotButton from '@/components/common/AIChatbotButton.vue'
 
 // Composables
 const { employees, fetchAllEmployees, loading: employeeLoading, error: employeeError } = useEmployee()
@@ -443,151 +442,6 @@ const reloadData = async () => {
   }
 }
 
-// Tour Guide Steps
-const annualTourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý phép năm quy định. Tại đây bạn có thể xem thông tin phép năm của từng nhân viên theo từng tháng trong năm.'
-  },
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Đây là các tab để chuyển đổi giữa "Phép năm quy định" và "Phép bù tăng ca". Hiện tại bạn đang ở tab "Phép năm quy định".'
-  },
-  {
-    target: '[data-tour="year-filter"]',
-    message: 'Đây là bộ lọc năm. Bạn có thể chọn năm để xem dữ liệu phép năm của năm đó. Nút "Reload" để tải lại dữ liệu từ server.'
-  },
-  {
-    target: '[data-tour="table-annual"]',
-    message: 'Đây là bảng phép năm quy định. Mỗi hàng là một nhân viên, mỗi cột là một tháng trong năm. Bạn có thể thấy số ngày nghỉ phép của từng nhân viên trong từng tháng. Bấm vào số ngày nghỉ để xem chi tiết các phiếu nghỉ phép.'
-  },
-  {
-    target: '[data-tour="modal-detail"]',
-    message: 'Bấm vào số ngày nghỉ trong bảng sẽ mở modal chi tiết. Bạn có thể xem danh sách các phiếu nghỉ phép và bấm vào mã phiếu để xem chi tiết từng phiếu.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="table-annual"] .leave-cell.clickable:first-of-type'
-    }
-  },
-  {
-    target: '[data-tour="modal-detail"]',
-    message: 'Bấm vào cột "Tổng ngày đã nghỉ" sẽ mở modal hiển thị tất cả phiếu nghỉ phép trong năm. Bấm vào mã phiếu để xem chi tiết từng phiếu.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal nếu đang mở
-        const modal = document.querySelector('.modal.show')
-        if (modal) {
-          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
-          if (closeBtn) closeBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-        // Click vào total-used
-        const totalUsed = document.querySelector('[data-tour="total-used"]:first-of-type')
-        if (totalUsed) {
-          totalUsed.click()
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="pagination-annual"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Phép năm quy định"!',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal nếu đang mở
-        const modal = document.querySelector('.modal.show')
-        if (modal) {
-          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
-          if (closeBtn) closeBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  }
-]
-
-const otLeaveTourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý phép bù tăng ca. Tại đây bạn có thể xem thông tin phép bù tăng ca của từng nhân viên theo từng tháng trong năm.'
-  },
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Đây là các tab để chuyển đổi giữa "Phép năm quy định" và "Phép bù tăng ca". Hiện tại bạn đang ở tab "Phép bù tăng ca".'
-  },
-  {
-    target: '[data-tour="year-filter"]',
-    message: 'Đây là bộ lọc năm. Bạn có thể chọn năm để xem dữ liệu phép bù tăng ca của năm đó. Nút "Reload" để tải lại dữ liệu từ server.'
-  },
-  {
-    target: '[data-tour="table-otLeave"]',
-    message: 'Đây là bảng phép bù tăng ca. Mỗi hàng là một nhân viên, mỗi cột là một tháng trong năm. Bạn có thể thấy số ngày phép bù tăng ca của từng nhân viên trong từng tháng. Bấm vào số ngày để xem chi tiết các phiếu phép bù tăng ca.'
-  },
-  {
-    target: '[data-tour="modal-detail"]',
-    message: 'Bấm vào số ngày phép bù trong bảng sẽ mở modal chi tiết. Bạn có thể xem danh sách các phiếu phép bù tăng ca và bấm vào mã phiếu để xem chi tiết từng phiếu.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="table-otLeave"] .leave-cell.clickable:first-of-type'
-    }
-  },
-  {
-    target: '[data-tour="modal-detail"]',
-    message: 'Bấm vào cột "Đã nghỉ phép bù" sẽ mở modal hiển thị tất cả phiếu phép bù tăng ca trong năm. Bấm vào mã phiếu để xem chi tiết từng phiếu.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal nếu đang mở
-        const modal = document.querySelector('.modal.show')
-        if (modal) {
-          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
-          if (closeBtn) closeBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-        // Click vào ot-leave-used
-        const otLeaveUsed = document.querySelector('[data-tour="ot-leave-used"]:first-of-type')
-        if (otLeaveUsed) {
-          otLeaveUsed.click()
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="pagination-otLeave"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Phép bù tăng ca"!',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal nếu đang mở
-        const modal = document.querySelector('.modal.show')
-        if (modal) {
-          const closeBtn = modal.querySelector('.btn-close, [data-bs-dismiss="modal"]')
-          if (closeBtn) closeBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  }
-]
-
-const tourSteps = computed(() => {
-  return activeTab.value === 'annual' ? annualTourSteps : otLeaveTourSteps
-})
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -857,18 +711,6 @@ const startTour = () => {
       />
     </ModalDialog>
   
-  <!-- Tour Guide -->
-  <TourGuide
-    :show="showTourGuide"
-    :steps="tourSteps"
-    @update:show="showTourGuide = $event"
-    @complete="handleTourComplete"
-  />
-  <AIChatbotButton 
-    message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-    title="Trợ lý AI"
-    @guide-click="startTour"
-  />
   </div>
 </template>
 

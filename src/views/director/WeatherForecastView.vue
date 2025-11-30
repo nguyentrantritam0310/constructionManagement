@@ -228,18 +228,6 @@
       </div>
     </div>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 
@@ -250,8 +238,6 @@ import { useConstructionManagement } from '@/composables/useConstructionManageme
 import { LMap, LTileLayer, LMarker } from "@vue-leaflet/vue-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from 'leaflet';
-import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 // Fix lỗi icon marker mặc định của Leaflet khi dùng với bundler như Vite/Webpack
 delete L.Icon.Default.prototype._getIconUrl;
@@ -537,48 +523,7 @@ const weatherAverages = computed(() => {
   }
 })
 
-// Tour Guide Steps
 const showTourGuide = ref(false)
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang dự báo thời tiết. Tại đây bạn có thể chọn vị trí trên bản đồ để xem dự báo thời tiết 7 ngày tới và các cảnh báo về công trình có thể bị ảnh hưởng.'
-  },
-  {
-    target: '[data-tour="location-select"]',
-    message: 'Đây là phần chọn vị trí. Bạn có thể thấy tọa độ vĩ độ và kinh độ của vị trí đã chọn. Bấm "Lấy vị trí hiện tại" để tự động lấy vị trí của bạn, hoặc click trên bản đồ để chọn vị trí khác.'
-  },
-  {
-    target: '[data-tour="map"]',
-    message: 'Đây là bản đồ tương tác. Bạn có thể click vào bất kỳ điểm nào trên bản đồ để chọn vị trí cần dự báo thời tiết. Các marker trên bản đồ đánh dấu các tỉnh/thành phố của Việt Nam.'
-  },
-  {
-    target: '[data-tour="fetch-button"]',
-    message: 'Sau khi chọn vị trí, bấm nút "Lấy dự báo cho vị trí này" để lấy dự báo thời tiết 7 ngày tới cho vị trí đã chọn. Hệ thống sẽ hiển thị nhiệt độ, lượng mưa, gió và các thông tin khác.'
-  },
-  {
-    target: '[data-tour="forecast-grid"]',
-    message: 'Đây là bảng dự báo thời tiết 7 ngày tới. Mỗi card hiển thị thông tin của một ngày, bao gồm nhiệt độ cao nhất/thấp nhất, lượng mưa, giờ nắng, tốc độ gió và tổng bức xạ. Bấm "Xem chi tiết" để xem thêm thông tin chi tiết.'
-  },
-  {
-    target: '[data-tour="averages"]',
-    message: 'Đây là phần thống kê trung bình 7 ngày. Bạn có thể xem các giá trị trung bình của nhiệt độ, lượng mưa, tốc độ gió và số giờ mưa trong 7 ngày tới.'
-  },
-  {
-    target: '[data-tour="warning"]',
-    message: 'Nếu lượng mưa trung bình vượt quá 7mm/ngày, hệ thống sẽ hiển thị cảnh báo về các công trình có thể bị ảnh hưởng. Phần này giúp bạn chuẩn bị và bảo vệ các công trình trước thời tiết xấu.'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <style scoped>

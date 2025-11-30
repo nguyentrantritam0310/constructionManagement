@@ -17,7 +17,6 @@ import { useAuth } from '../../composables/useAuth'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import StockOutDetail from '../../components/warehouse/StockOutDetail.vue'
 import TourGuide from '../../components/common/TourGuide.vue'
-import AIChatbotButton from '../../components/common/AIChatbotButton.vue'
 
 const { showMessage } = useGlobalMessage()
 
@@ -360,141 +359,7 @@ const formatDate = (date, isActualCompletion = false) => {
   return new Date(date).toLocaleDateString('vi-VN')
 }
 
-// Tour Guide Steps
 const showTourGuide = ref(false)
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang xuất kho. Tại đây bạn có thể xem danh sách các phiếu xuất kho, tạo phiếu xuất mới, xem chi tiết phiếu xuất và thực hiện xuất kho vật tư.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ. Bạn có thể lọc danh sách phiếu xuất hoặc tạo phiếu xuất mới.'
-  },
-  {
-    target: '[data-tour="filter-button"]',
-    message: 'Nút "Lọc" cho phép bạn ẩn/hiện phần lọc để tìm kiếm và lọc phiếu xuất theo nhiều tiêu chí khác nhau.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đảm bảo filter section được mở
-        if (!showFilter.value) {
-          showFilter.value = true
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="filter-section"]',
-    message: 'Đây là phần lọc. Bạn có thể tìm kiếm phiếu xuất theo từ khóa (mã phiếu, công trình, hạng mục, vật tư), lọc theo khoảng thời gian từ ngày đến ngày. Bấm "Đặt lại" để xóa tất cả bộ lọc.'
-  },
-  {
-    target: '[data-tour="create-button"]',
-    message: 'Nút "Tạo Phiếu Xuất" cho phép bạn tạo phiếu xuất kho mới. Khi bấm vào nút này, một form sẽ mở ra để bạn chọn công trình, hạng mục và các vật tư cần xuất.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="create-button"]'
-    }
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form tạo phiếu xuất. Bạn cần chọn công trình và hạng mục thi công. Sau khi chọn hạng mục, hệ thống sẽ tự động hiển thị danh sách vật tư cần thiết cho hạng mục đó. Bạn có thể thêm vật tư khác hoặc xóa vật tư không cần thiết.'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Bạn cần nhập số lượng xuất cho từng vật tư. Lưu ý: số lượng xuất không được vượt quá số lượng tồn kho. Sau khi điền đầy đủ thông tin, bấm "Tạo Phiếu Xuất" để tạo phiếu xuất mới.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng form trước khi tiếp tục
-        await new Promise(resolve => setTimeout(resolve, 300))
-        const modal = document.querySelector('[data-tour="create-form"]')
-        if (modal) {
-          const closeButton = modal.querySelector('.btn-close')
-          if (closeButton) {
-            closeButton.click()
-          } else {
-            // Nếu không tìm thấy, thử tìm nút Hủy
-            const cancelButton = modal.querySelector('button')
-            if (cancelButton && (cancelButton.textContent.includes('Hủy') || cancelButton.textContent.includes('Cancel'))) {
-              cancelButton.click()
-            }
-          }
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách phiếu xuất kho. Bảng hiển thị mã phiếu xuất, tên công trình, tên hạng mục, ngày xuất và người xuất. Click vào một hàng để xem chi tiết phiếu xuất và thực hiện xuất kho.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Hãy để tôi mở modal chi tiết phiếu xuất cho bạn. Tôi sẽ click vào hàng đầu tiên trong bảng.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đợi một chút để đảm bảo bảng đã render
-        await new Promise(resolve => setTimeout(resolve, 300))
-        // Tìm bảng và click vào hàng đầu tiên
-        const table = document.querySelector('[data-tour="table"]')
-        if (table) {
-          const firstRow = table.querySelector('tbody tr')
-          if (firstRow) {
-            firstRow.click()
-            // Đợi modal mở
-            await new Promise(resolve => setTimeout(resolve, 500))
-          }
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="stock-out-detail-modal"]',
-    message: 'Đây là modal chi tiết phiếu xuất kho. Bạn có thể xem thông tin chi tiết về phiếu xuất, danh sách vật tư cần xuất, số lượng cần xuất, số lượng tồn kho và số lượng còn lại sau khi xuất.'
-  },
-  {
-    target: '[data-tour="stock-out-detail"]',
-    message: 'Trong modal này, bạn có thể xem toàn bộ thông tin về phiếu xuất kho, bao gồm thông tin công trình, hạng mục, danh sách vật tư và số lượng. Sau khi kiểm tra đầy đủ, bạn có thể xác nhận xuất kho hoặc báo cáo sự cố nếu có vấn đề.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng modal trước khi tiếp tục
-        await new Promise(resolve => setTimeout(resolve, 300))
-        const modal = document.querySelector('[data-tour="stock-out-detail-modal"]')
-        if (modal) {
-          const closeButton = modal.querySelector('.btn-close')
-          if (closeButton) {
-            closeButton.click()
-          } else {
-            // Nếu không tìm thấy, thử tìm nút Close trong StockOutDetail
-            const closeButton2 = modal.querySelector('button')
-            if (closeButton2 && (closeButton2.textContent.includes('Đóng') || closeButton2.textContent.includes('Close'))) {
-              closeButton2.click()
-            }
-          }
-          await new Promise(resolve => setTimeout(resolve, 300))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều phiếu xuất hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -669,18 +534,6 @@ const startTour = () => {
       </form>
     </ModalDialog>
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
-    <AIChatbotButton 
-      message="Xin chào! Tôi có thể giúp gì cho bạn?" 
-      title="Trợ lý AI"
-      @guide-click="startTour"
-    />
   </div>
 </template>
 
