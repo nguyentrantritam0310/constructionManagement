@@ -90,7 +90,6 @@ export function usePermissions() {
     
     // Trang quản lý công trình
     'construction-management': {
-      'worker': ['view_own', 'create'],
       'technician': ['view_own', 'create'],
       'manager': ['view', 'create', 'edit', 'delete'],
       'hr_employee': ['view'], // Nhân viên HCNS: chỉ xem
@@ -100,7 +99,6 @@ export function usePermissions() {
     
     // Trang kế hoạch thi công
     'construction-plan-management': {
-      'worker': ['view_own', 'create'],
       'technician': ['view_own', 'create'],
       'manager': ['view', 'create', 'edit', 'delete'],
       'hr_employee': ['view'], // Nhân viên HCNS: chỉ xem
@@ -110,7 +108,6 @@ export function usePermissions() {
     
     // Trang báo cáo kỹ thuật
     'technical-reports': {
-      'worker': ['view_own', 'create'],
       'technician': ['view_own', 'create'],
       'manager': ['view', 'create', 'edit', 'delete'],
       'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
@@ -118,7 +115,6 @@ export function usePermissions() {
     
     // Trang lập kế hoạch vật tư
     'material-planning': {
-      'worker': ['view_own', 'create'],
       'technician': ['view_own', 'create'],
       'manager': ['view', 'create', 'edit', 'delete'],
       'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền

@@ -51,7 +51,8 @@ const {
   canDeleteItem, 
   canSubmitItem,
   canApproveItem,
-  filterDataByPermission 
+  filterDataByPermission,
+  hasPermission
 } = usePermissions()
 
 // Leave types will be loaded from API in LeaveForm component
@@ -646,8 +647,22 @@ const exportToExcel = async () => {
   saveAs(new Blob([buf]), 'LeaveRequests.xlsx')
 }
 
+// Computed để kiểm tra quyền truy cập (reactive với currentUser)
+const hasAccess = computed(() => {
+  const role = currentUser.value?.role
+  console.log('=== LEAVE PAGE ACCESS CHECK ===')
+  console.log('Current user:', currentUser.value)
+  console.log('User role:', role)
+  console.log('Can view leave:', canView('leave'))
+  console.log('Has view_own permission:', hasPermission('leave', 'view_own'))
+  return canView('leave')
+})
+
 // Lifecycle
 onMounted(async () => {
+  // Đảm bảo user info được cập nhật từ API để có role chính xác
+  await refreshUserInfo()
+  
   await Promise.all([
     fetchLeaveRequests(),
     fetchUsers(),
@@ -672,10 +687,13 @@ defineExpose({
 
 <template>
   <!-- Kiểm tra quyền xem trước khi hiển thị trang -->
-  <div v-if="!canView('leave')" class="container-fluid py-4">
+  <div v-if="!hasAccess" class="container-fluid py-4">
     <div class="alert alert-danger text-center">
       <i class="fas fa-exclamation-triangle me-2"></i>
       Bạn không có quyền truy cập trang này.
+      <div class="mt-2 small">
+        <strong>Role hiện tại:</strong> {{ currentUser?.role || 'Chưa xác định' }}
+      </div>
     </div>
   </div>
   

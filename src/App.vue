@@ -6,11 +6,16 @@ import GlobalMessageModal from './components/common/GlobalMessageModal.vue'
 import ChangePasswordModal from './components/common/ChangePasswordModal.vue'
 import { useAuth } from './composables/useAuth'
 
-const { isAuthenticated, currentUser } = useAuth()
+const { isAuthenticated, currentUser, checkAuth } = useAuth()
 const showChangePasswordModal = ref(false)
 
 // Kiểm tra khi component được mount
-onMounted(() => {
+onMounted(async () => {
+  // Gọi checkAuth để lấy thông tin user mới nhất từ API (đảm bảo role chính xác)
+  // Thay vì dựa vào token có thể có role cũ
+  if (isAuthenticated.value) {
+    await checkAuth()
+  }
   checkPasswordChangeRequirement()
 })
 

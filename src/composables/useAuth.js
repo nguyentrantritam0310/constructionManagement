@@ -35,7 +35,8 @@ const getUserFromToken = (token) => {
   }
 };
 
-// Khởi tạo currentUser từ token nếu có
+// Khởi tạo currentUser từ token nếu có (tạm thời, sẽ được cập nhật khi checkAuth được gọi)
+// Lưu ý: Role từ token có thể không chính xác, nên luôn gọi checkAuth() sau khi app khởi động
 if (token.value) {
   currentUser.value = getUserFromToken(token.value)
 }
@@ -128,8 +129,16 @@ export function useAuth() {
       localStorage.setItem('token', newToken)
       localStorage.setItem('refreshToken', newRefreshToken)
 
-      // Lấy thông tin user từ token
-      currentUser.value = getUserFromToken(newToken)
+      // Lấy thông tin user từ API để đảm bảo role chính xác từ database
+      // Thay vì lấy từ token (có thể có role cũ)
+      try {
+        const userResponse = await axios.get('/Auth/me')
+        currentUser.value = userResponse.data
+      } catch (userError) {
+        // Nếu API /Auth/me fail, fallback về token
+        console.warn('Failed to fetch user info from API, using token instead:', userError)
+        currentUser.value = getUserFromToken(newToken)
+      }
 
       router.push('/')
       return { 
@@ -178,7 +187,8 @@ export function useAuth() {
 
     try {
       const response = await axios.get('/Auth/me')
-      currentUser.value = response.data
+      // Sử dụng updateUserFromResponse để map role đúng
+      updateUserFromResponse(response.data)
       return true
     } catch (error) {
       logout()
@@ -186,13 +196,48 @@ export function useAuth() {
     }
   }
 
+  // Hàm map role từ backend sang frontend
+  const mapRoleFromBackend = (backendRole) => {
+    if (!backendRole) return null
+    
+    const roleLower = backendRole.toLowerCase()
+    
+    // Map các role từ backend
+    const roleMap = {
+      'user': 'worker', // Backend trả về 'user' cho worker
+      'worker': 'worker',
+      'technician': 'technician',
+      'manager': 'manager',
+      'director': 'director',
+      'hr_manager': 'hr_manager',
+      'hr_employee': 'hr_employee',
+      // Map từ Vietnamese nếu có
+      'nhân viên thợ': 'worker',
+      'nhân viên kỹ thuật': 'technician',
+      'chỉ huy công trình': 'manager',
+      'giám đốc': 'director',
+      'trưởng phòng hành chính – nhân sự': 'hr_manager',
+      'nhân viên phòng hành chính - nhân sự': 'hr_employee'
+    }
+    
+    return roleMap[roleLower] || backendRole
+  }
+
   const updateUserFromResponse = (userData) => {
+    // Map role từ backend sang frontend
+    const mappedRole = mapRoleFromBackend(userData.role)
+    
     currentUser.value = {
       id: userData.id,
       email: userData.email,
       fullName: userData.fullName,
-      role: userData.role
+      role: mappedRole || userData.role
     }
+    
+    console.log('=== USER ROLE MAPPING ===')
+    console.log('Backend role:', userData.role)
+    console.log('Mapped role:', mappedRole)
+    console.log('Final role:', currentUser.value.role)
   }
 
   const refreshTokenAsync = async () => {
@@ -209,9 +254,18 @@ export function useAuth() {
         token.value = newToken
         localStorage.setItem('token', newToken)
 
-        const tokenUser = getUserFromToken(newToken)
-        if (tokenUser) {
-          currentUser.value = tokenUser
+        // Sau khi refresh token, lấy thông tin user mới nhất từ API
+        // để đảm bảo role chính xác từ database
+        try {
+          const userResponse = await axios.get('/Auth/me')
+          currentUser.value = userResponse.data
+        } catch (userError) {
+          // Nếu API /Auth/me fail, fallback về token
+          console.warn('Failed to fetch user info from API after token refresh, using token instead:', userError)
+          const tokenUser = getUserFromToken(newToken)
+          if (tokenUser) {
+            currentUser.value = tokenUser
+          }
         }
         return true
       }

@@ -170,7 +170,6 @@ const isUserDropdownOpen = ref(false)
 const constructionMenuItems = computed(() => {
   switch (currentUser.value?.role) {
     case 'technician':
-    case 'worker':
       return [{
         name: 'Dự án',
         icon: 'fas fa-building',
@@ -189,6 +188,9 @@ const constructionMenuItems = computed(() => {
         ]
       }
       ]
+    case 'worker':
+      // Worker không có quyền truy cập phân hệ công trình
+      return []
     case 'director':
       return [
         {
@@ -333,7 +335,7 @@ const personnelMenuItems = computed(() => {
 
 // Subsystems
 const subsystems = computed(() => {
-  return [
+  const subsystemsList = [
     {
       name: 'Phân hệ Nhân sự',
       icon: 'fas fa-users',
@@ -347,6 +349,9 @@ const subsystems = computed(() => {
       modules: constructionMenuItems.value || []
     }
   ]
+  
+  // Chỉ hiển thị các phân hệ có ít nhất một module
+  return subsystemsList.filter(subsystem => subsystem.modules && subsystem.modules.length > 0)
 })
 
 const filteredSubsystems = computed(() => {
@@ -497,7 +502,7 @@ const toggleFullscreen = () => {
 // Save state when route changes
 let routeWatcher = null
 
-// Set default module to "Công trình" on component load
+// Set default module to "Đơn từ" (trong phân hệ Nhân sự) on component load
 onMounted(async () => {
   // Wait for subsystems to be ready
   await nextTick()
@@ -507,10 +512,24 @@ onMounted(async () => {
   
   // Only set default module if no module was restored
   if (!restored && !selectedModule.value && subsystems.value && subsystems.value.length > 0) {
-    const defaultModule = subsystems.value.find((subsystem) => subsystem.key === 'construction')?.modules?.[0]
-    if (defaultModule) {
-      selectedModule.value = defaultModule
+    // Tìm module "Đơn từ" trong phân hệ Nhân sự
+    const personnelSubsystem = subsystems.value.find((subsystem) => subsystem.key === 'personnel')
+    const donTuModule = personnelSubsystem?.modules?.find((module) => module.name === 'Đơn từ')
+    
+    if (donTuModule) {
+      selectedModule.value = donTuModule
       saveState()
+      // Navigate to the first child functionality of the selected module
+      if (donTuModule.children && donTuModule.children.length > 0) {
+        router.push(donTuModule.children[0].route)
+      }
+    } else {
+      // Fallback: chọn module đầu tiên của phân hệ đầu tiên
+      const defaultModule = subsystems.value[0]?.modules?.[0]
+      if (defaultModule) {
+        selectedModule.value = defaultModule
+        saveState()
+      }
     }
   }
   
