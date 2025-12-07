@@ -11,7 +11,6 @@ import ModalDialog from '../../components/common/ModalDialog.vue'
 import Pagination from '../../components/common/Pagination.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import LeaveForm from '../../components/common/leave/LeaveForm.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 import TabBar from '../../components/common/TabBar.vue'
 import TimeFilter from '../../components/common/TimeFilter.vue'
 
@@ -63,7 +62,6 @@ const showDayModal = ref(false)
 const showLeaveFormModal = ref(false)
 const showImageModal = ref(false)
 const showLocationMapModal = ref(false)
-const showTourGuide = ref(false)
 
 // ============================================================================
 // BIẾN REACTIVE - DỮ LIỆU ĐÃ CHỌN
@@ -1032,7 +1030,7 @@ const attendanceColumnsNoActions = [
   { key: 'date', label: 'Ngày đi làm' },
   { key: 'scanTime', label: 'Giờ quét' },
   { key: 'type', label: 'Loại công' },
-  { key: 'location', label: 'Máy chấm công' }
+  { key: 'location', label: 'Vị trí làm việc' }
 ]
 
 const workColumnsNoActions = [
@@ -2462,7 +2460,7 @@ const attendanceDataColumns = [
   { key: 'shift', label: 'Ca làm việc' },
   { key: 'date', label: 'Ngày làm' },
   { key: 'scanTime', label: 'Giờ quét' },
-  { key: 'location', label: 'Máy chấm công' },
+  { key: 'location', label: 'Vị trí làm việc' },
   { key: 'type', label: 'Loại công' }
 ];
 
@@ -5306,294 +5304,8 @@ const getEmployeeFullName = (employee) => {
   }
   return null
 }
+      
 
-// Tour Guide Functions
-const startTour = () => {
-  console.log('Starting tour, activeTab:', activeTab.value)
-  console.log('Tour steps:', tourSteps.value)
-  showTourGuide.value = true
-}
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-// Tour Steps - Dynamic based on active tab
-const tourSteps = computed(() => {
-  if (activeTab.value === 'summary') {
-    return [
-      {
-        target: '[data-tour="title"]',
-        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng tổng hợp công" - nơi bạn có thể xem tổng hợp công của tất cả nhân viên trong tháng.'
-      },
-      {
-        target: '[data-tour="tabs"]',
-        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng tổng hợp công".'
-      },
-      {
-        target: '[data-tour="month-filter"]',
-        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu công của các tháng khác nhau.'
-      },
-      {
-        target: '[data-tour="legend"]',
-        message: 'Đây là chú thích màu sắc. Mỗi màu đại diện cho một trạng thái công: xanh lá (đi làm), xanh dương (nghỉ phép), vàng (chưa đủ giờ công), đỏ (quên checkin/checkout).'
-      },
-      {
-        target: '[data-tour="summary-table"]',
-        message: 'Đây là bảng tổng hợp công. Bạn có thể xem thông tin công của từng nhân viên theo từng ngày trong tháng.'
-      },
-      {
-        target: '[data-tour="employee-modal"]',
-        message: 'Đây là modal chi tiết tổng hợp công nhân viên. Bạn có thể xem thống kê tổng hợp về ngày công, đi làm, công tác, nghỉ có lương, tăng ca nghỉ bù và tăng ca tính lương.',
-        action: {
-          type: 'click',
-          selector: '[data-tour="detail-btn"]:first-of-type'
-        }
-      },
-      {
-        target: '[data-tour="day-modal"]',
-        message: 'Đây là modal chi tiết chấm công từng ngày. Bạn có thể xem dữ liệu chấm công và lịch làm việc chi tiết của nhân viên cho một ngày cụ thể. Hãy để tôi hướng dẫn từng phần!',
-        action: {
-          type: 'function',
-          func: async () => {
-            // Đóng modal employee nếu đang mở
-            if (showEmployeeModal.value) {
-              showEmployeeModal.value = false
-              await new Promise(resolve => setTimeout(resolve, 200))
-            }
-            // Tìm và click vào một ô ngày có dữ liệu
-            const firstCell = document.querySelector('[data-tour="day-cell"]')
-            if (firstCell) {
-              firstCell.click()
-              await new Promise(resolve => setTimeout(resolve, 500))
-            }
-          }
-        }
-      },
-      {
-        target: '[data-tour="attendance-history"]',
-        message: 'Đây là bảng dữ liệu chấm công. Bạn có thể xem thông tin về các lần quét thẻ, giờ quét, loại công và vị trí chấm công. Bạn có thể click vào mã phiếu tham chiếu để xem chi tiết phiếu nghỉ phép.'
-      },
-      {
-        target: '[data-tour="work-history"]',
-        message: 'Đây là bảng lịch làm việc. Bạn có thể xem thông tin về ca làm việc, công chuẩn, giờ quét vào/ra, đi trễ/về sớm và giờ/ngày công.'
-      },
-      {
-        target: '[data-tour="leave-form-modal"]',
-        message: 'Đây là modal chi tiết phiếu nghỉ phép. Bạn có thể xem và chỉnh sửa thông tin về đơn nghỉ phép của nhân viên.',
-        action: {
-          type: 'function',
-          func: async () => {
-            // Đóng modal day nếu đang mở
-            if (showDayModal.value) {
-              showDayModal.value = false
-              await new Promise(resolve => setTimeout(resolve, 200))
-            }
-            // Tìm và click vào một mã phiếu nghỉ phép
-            const voucherLink = document.querySelector('[data-tour="voucher-code-link"]')
-            if (voucherLink) {
-              voucherLink.click()
-              await new Promise(resolve => setTimeout(resolve, 300))
-            }
-          }
-        }
-      },
-      {
-        target: '[data-tour="pagination-summary"]',
-        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Bảng tổng hợp công"!',
-        action: {
-          type: 'function',
-          func: async () => {
-            // Đóng modal nếu đang mở
-            if (showLeaveFormModal.value) {
-              showLeaveFormModal.value = false
-              await new Promise(resolve => setTimeout(resolve, 300))
-            }
-          }
-        }
-      }
-    ]
-  } else if (activeTab.value === 'personal') {
-    return [
-      {
-        target: '[data-tour="title"]',
-        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng công cá nhân" - nơi bạn có thể xem bảng công của chính mình trong tháng.'
-      },
-      {
-        target: '[data-tour="tabs"]',
-        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng công cá nhân".'
-      },
-      {
-        target: '[data-tour="month-filter-personal"]',
-        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu công của các tháng khác nhau.'
-      },
-      {
-        target: '[data-tour="legend-personal"]',
-        message: 'Đây là chú thích màu sắc. Mỗi màu đại diện cho một trạng thái công: xanh lá (đi làm), xanh dương (nghỉ phép), vàng (chưa đủ giờ công), đỏ (quên checkin/checkout).'
-      },
-      {
-        target: '[data-tour="personal-calendar"]',
-        message: 'Đây là lịch công cá nhân. Bạn có thể xem trạng thái công của mình theo từng ngày trong tháng. Click vào một ngày để xem chi tiết.'
-      },
-      {
-        target: '[data-tour="personal-stats"]',
-        message: 'Đây là thống kê tháng. Bạn có thể xem tổng hợp về số ngày đi làm, nghỉ phép, chưa đủ giờ, quên checkin/checkout, đi trễ và tổng ngày trong tháng.'
-      }
-    ]
-  } else if (activeTab.value === 'overtime') {
-    return [
-      {
-        target: '[data-tour="title"]',
-        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng công tăng ca" - nơi bạn có thể xem tổng hợp tăng ca của tất cả nhân viên trong tháng.'
-      },
-      {
-        target: '[data-tour="tabs"]',
-        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng công tăng ca".'
-      },
-      {
-        target: '[data-tour="month-filter-overtime"]',
-        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu tăng ca của các tháng khác nhau.'
-      },
-      {
-        target: '[data-tour="legend-overtime"]',
-        message: 'Đây là chú thích màu sắc. Mỗi màu đại diện cho một loại tăng ca: xanh lá (tăng ca nghỉ bù), xanh dương (tăng ca tính lương).'
-      },
-      {
-        target: '[data-tour="overtime-table"]',
-        message: 'Đây là bảng tổng hợp tăng ca. Bạn có thể xem thông tin tăng ca của từng nhân viên theo từng ngày trong tháng.'
-      },
-      {
-        target: '[data-tour="overtime-modal"]',
-        message: 'Đây là modal chi tiết tăng ca. Bạn có thể xem thông tin chi tiết về số giờ tăng ca, số ngày tăng ca, giờ có hệ số và ngày có hệ số của nhân viên.',
-        action: {
-          type: 'click',
-          selector: '[data-tour="overtime-detail-btn"]:first-of-type'
-        }
-      },
-      {
-        target: '[data-tour="pagination-overtime"]',
-        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Bảng công tăng ca"!',
-        action: {
-          type: 'function',
-          func: async () => {
-            // Đóng modal nếu đang mở
-            if (showOvertimeModal.value) {
-              showOvertimeModal.value = false
-              await new Promise(resolve => setTimeout(resolve, 300))
-            }
-          }
-        }
-      }
-    ]
-  } else if (activeTab.value === 'personalOvertime') {
-    return [
-      {
-        target: '[data-tour="title"]',
-        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng công tăng ca cá nhân" - nơi bạn có thể xem bảng tăng ca của chính mình trong tháng.'
-      },
-      {
-        target: '[data-tour="tabs"]',
-        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng công tăng ca cá nhân".'
-      },
-      {
-        target: '[data-tour="month-filter-personal-ot"]',
-        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu tăng ca của các tháng khác nhau.'
-      },
-      {
-        target: '[data-tour="legend-personal-ot"]',
-        message: 'Đây là chú thích màu sắc. Mỗi màu đại diện cho một loại tăng ca: xanh lá (tăng ca nghỉ bù), tím (tăng ca tính lương), xám (tăng ca thường).'
-      },
-      {
-        target: '[data-tour="personal-ot-calendar"]',
-        message: 'Đây là lịch tăng ca cá nhân. Bạn có thể xem trạng thái tăng ca của mình theo từng ngày trong tháng.'
-      },
-      {
-        target: '[data-tour="personal-ot-stats"]',
-        message: 'Đây là thống kê tăng ca tháng. Bạn có thể xem tổng hợp về số ngày tăng ca nghỉ bù, tăng ca tính lương, tăng ca thường, tổng ngày tăng ca và tổng giờ tăng ca trong tháng.'
-      }
-    ]
-  } else if (activeTab.value === 'detail') {
-    return [
-      {
-        target: '[data-tour="title"]',
-        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Bảng công chi tiết" - nơi bạn có thể xem chi tiết công của từng ngày làm việc.'
-      },
-      {
-        target: '[data-tour="tabs"]',
-        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Bảng công chi tiết".'
-      },
-      {
-        target: '[data-tour="month-filter-detail"]',
-        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu công chi tiết của các tháng khác nhau.'
-      },
-      {
-        target: '[data-tour="export-buttons-detail"]',
-        message: 'Đây là các nút xuất dữ liệu. Bạn có thể xuất Excel hoặc in báo cáo công chi tiết.'
-      },
-      {
-        target: '[data-tour="detail-table"]',
-        message: 'Đây là bảng công chi tiết. Bạn có thể xem thông tin về STT, mã nhân viên, tên nhân viên, ca làm việc, ngày làm, giờ vào, giờ ra, loại công, số giờ, số ngày, đi trễ và về sớm.'
-      },
-      {
-        target: '[data-tour="pagination-detail"]',
-        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều bản ghi hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Bảng công chi tiết"!'
-      }
-    ]
-  } else if (activeTab.value === 'attendance') {
-    return [
-      {
-        target: '[data-tour="title"]',
-        message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Dữ liệu chấm công" - nơi bạn có thể xem tất cả dữ liệu chấm công của nhân viên.'
-      },
-      {
-        target: '[data-tour="tabs"]',
-        message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Dữ liệu chấm công".'
-      },
-      {
-        target: '[data-tour="month-filter-attendance"]',
-        message: 'Đây là bộ lọc tháng. Bạn có thể chuyển đổi giữa các tháng để xem dữ liệu chấm công của các tháng khác nhau.'
-      },
-      {
-        target: '[data-tour="export-buttons-attendance"]',
-        message: 'Đây là các nút xuất dữ liệu. Bạn có thể xuất Excel hoặc in báo cáo dữ liệu chấm công.'
-      },
-      {
-        target: '[data-tour="attendance-table"]',
-        message: 'Đây là bảng dữ liệu chấm công. Bạn có thể xem thông tin về STT, ảnh chấm công, mã nhân viên, tên nhân viên, ca làm việc, ngày làm, giờ quét, máy chấm công, vị trí và loại công. Bạn có thể click vào ảnh để xem chi tiết.'
-      },
-      {
-        target: '[data-tour="image-modal"]',
-        message: 'Đây là modal xem chi tiết ảnh chấm công. Bạn có thể xem ảnh chấm công vào hoặc ra với kích thước lớn hơn.',
-        action: {
-          type: 'function',
-          func: async () => {
-            // Tìm và click vào một ảnh chấm công
-            const firstImage = document.querySelector('[data-tour="attendance-image"]')
-            if (firstImage) {
-              firstImage.click()
-              await new Promise(resolve => setTimeout(resolve, 300))
-            }
-          }
-        }
-      },
-      {
-        target: '[data-tour="pagination-attendance"]',
-        message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều bản ghi hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Dữ liệu chấm công"!',
-        action: {
-          type: 'function',
-          func: async () => {
-            // Đóng modal nếu đang mở
-            if (showImageModal.value) {
-              showImageModal.value = false
-              await new Promise(resolve => setTimeout(resolve, 300))
-            }
-          }
-        }
-      }
-    ]
-  }
-  return []
-})
 </script>
 
 <template>
@@ -6953,13 +6665,6 @@ const tourSteps = computed(() => {
       </div>
   </ModalDialog>
 
-  <!-- Tour Guide -->
-  <TourGuide
-    :show="showTourGuide"
-    :steps="tourSteps"
-    @update:show="showTourGuide = $event"
-    @complete="handleTourComplete"
-  />
 </template>
 
 

@@ -12,7 +12,6 @@ import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import { usePermissions } from '../../composables/usePermissions'
 import ActionButton from '@/components/common/ActionButton.vue'
 import GlobalMessageModal from '@/components/common/GlobalMessageModal.vue'
-import TourGuide from '@/components/common/TourGuide.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -159,7 +158,6 @@ const selectedFamilyRelation = ref(null)
 const familyFormMode = ref('create')
 const showFilter = ref(false)
 const showImportModal = ref(false)
-const showTourGuide = ref(false)
 const showDeleteConfirmModal = ref(false)
 const employeeToDelete = ref(null)
 
@@ -436,128 +434,6 @@ const getEmployeeNameWithStatus = (employee) => {
     </span>`
 }
 
-// Tour Guide Steps
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý nhân sự. Tại đây bạn có thể xem, tạo, và quản lý thông tin nhân viên cùng với quan hệ gia đình của họ.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form thêm/sửa hồ sơ nhân viên. Bạn có thể điền thông tin cá nhân, thông tin liên hệ, ngày sinh, ngày vào làm, chức danh và các thông tin khác. Sau khi điền đầy đủ, bấm "Lưu" để lưu thông tin.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc nhân viên theo nhiều tiêu chí như mã nhân viên, tên, email, số điện thoại, trạng thái, chức danh và khoảng thời gian vào làm.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã, tên, email, số điện thoại. Chọn trạng thái và chức danh từ dropdown. Chọn khoảng thời gian vào làm từ ngày đến ngày. Bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách nhân viên ra file Excel để lưu trữ hoặc xử lý thêm.'
-  },
-  {
-    target: '[data-tour="import-modal"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin nhân viên vào file Excel, sau đó chọn file và bấm "Nhập dữ liệu" để import vào hệ thống.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(4)'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng bất cứ lúc nào.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách nhân viên. Bạn có thể xem thông tin cơ bản của từng nhân viên. Click vào mã nhân viên hoặc click vào hàng để xem chi tiết hồ sơ nhân viên.'
-  },
-  {
-    target: '[data-tour="family-modal"]',
-    message: 'Đây là modal quản lý quan hệ gia đình. Bạn có thể xem danh sách các quan hệ gia đình của nhân viên, thêm mới, sửa hoặc xóa quan hệ. Hãy để tôi hướng dẫn từng phần!',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Tìm nút quan hệ gia đình đầu tiên và click
-        await new Promise(resolve => setTimeout(resolve, 100))
-        const familyBtn = document.querySelector('[data-tour="family-button"]')
-        if (familyBtn) {
-          familyBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="family-table"]',
-    message: 'Đây là bảng danh sách quan hệ gia đình của nhân viên. Bạn có thể xem tên người quan hệ, mối quan hệ, từ ngày và đến ngày. Có các nút sửa và xóa ở cột thao tác.'
-  },
-  {
-    target: '[data-tour="family-form-modal"]',
-    message: 'Đây là form thêm/sửa quan hệ gia đình. Bạn có thể chọn nhân viên, nhập tên người quan hệ, mối quan hệ, từ ngày và đến ngày. Sau khi điền đầy đủ, bấm "Lưu" để lưu thông tin.',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Tìm nút "Thêm quan hệ gia đình" trong modal và click
-        await new Promise(resolve => setTimeout(resolve, 100))
-        const addBtn = document.querySelector('[data-tour="add-family-button"]')
-        if (addBtn) {
-          addBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Bạn có thể thấy số lượng nhân viên hiện tại và tổng số nhân viên. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
-    action: {
-      type: 'function',
-      func: async () => {
-        // Đóng các modal đang mở
-        if (showFamilyFormModal.value) {
-          showFamilyFormModal.value = false
-        }
-        if (showFamilyModal.value) {
-          showFamilyModal.value = false
-        }
-        if (showEmployeeModal.value) {
-          showEmployeeModal.value = false
-        }
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
-    }
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 
 // Import Excel functions
 const selectedFile = ref(null)
@@ -1071,14 +947,6 @@ const handleImportExcel = async () => {
         </ModalDialog>
         
         <GlobalMessageModal />
-        
-        <!-- Tour Guide -->
-        <TourGuide 
-            :show="showTourGuide" 
-            :steps="tourSteps" 
-            @update:show="showTourGuide = $event" 
-            @complete="handleTourComplete" 
-        />
         
         <!-- Delete Employee Confirmation Modal -->
         <ModalDialog 

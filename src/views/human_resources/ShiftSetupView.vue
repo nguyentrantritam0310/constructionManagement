@@ -13,7 +13,6 @@ import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import AttendanceMachineForm from '@/components/common/workshift/AttendanceMachineForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
-import TourGuide from '@/components/common/TourGuide.vue'
 const {
   workshifts,
   fetchWorkShifts,
@@ -40,7 +39,6 @@ const selectedItem = ref(null)
 const selectedDetailItem = ref(null)
 const showImportModal = ref(false)
 const showFilter = ref(false)
-const showTourGuide = ref(false)
 const { showMessage } = useGlobalMessage()
 onMounted(async () => {
   await fetchWorkShifts()
@@ -71,7 +69,7 @@ const activeTab = ref('shift')
 
 const tabs = [
   { key: 'shift', label: 'Ca làm việc' },
-  { key: 'machine', label: 'Máy chấm công' }
+  { key: 'machine', label: 'Vị trí làm việc' }
 ]
 
 const handleCreateWorkShift = async (payload) => {
@@ -172,13 +170,13 @@ const paginatedShiftData = computed(() => {
   return filteredShiftData.value.slice(start, start + shiftItemsPerPage.value)
 })
 
-// Phân trang máy chấm công
+// Phân trang vị trí làm việc
 const machineCurrentPage = ref(1)
 const machineItemsPerPage = ref(5)
 const machineColumns = [
   { key: 'stt', label: 'STT' },
-  { key: 'id', label: 'Mã máy chấm công' },
-  { key: 'attendanceMachineName', label: 'Tên máy chấm công' },
+  { key: 'id', label: 'Mã vị trí làm việc' },
+  { key: 'attendanceMachineName', label: 'Tên vị trí làm việc' },
   { key: 'longitude', label: 'Tọa độ X' },
   { key: 'latitude', label: 'Tọa độ Y' },
   { key: 'allowedRadius', label: 'Bán kính cho phép (m)' },
@@ -318,7 +316,7 @@ const downloadExcelTemplate = async () => {
   // --- Sheet 1: Dữ liệu ---
   const dataSheet = workbook.addWorksheet('Dữ liệu nhập');
   const headers = [
-    { header: 'Tên máy chấm công', key: 'attendanceMachineName', width: 30 },
+    { header: 'Tên vị trí làm việc', key: 'attendanceMachineName', width: 30 },
     { header: 'Kinh độ (Longitude)', key: 'longitude', width: 20 },
     { header: 'Vĩ độ (Latitude)', key: 'latitude', width: 20 },
     { header: 'Bán kính cho phép (m)', key: 'allowedRadius', width: 25 },
@@ -335,7 +333,7 @@ const downloadExcelTemplate = async () => {
 
   // Add example row
   dataSheet.addRow({
-    attendanceMachineName: 'Máy chấm công Vinhome',
+    attendanceMachineName: 'Vị trí làm việc Vinhome',
     longitude: '106.722153',
     latitude: '10.790434',
     allowedRadius: 50
@@ -358,9 +356,9 @@ const downloadExcelTemplate = async () => {
 
   // Add instruction data
   instructionSheet.addRows([
-    { column: 'Tên máy chấm công', description: 'Tên để nhận dạng máy chấm công.', required: 'Có', example: 'Máy chấm công cổng chính' },
-    { column: 'Kinh độ (Longitude)', description: 'Tọa độ kinh độ của máy chấm công. Là một số thập phân.', required: 'Có', example: '106.722153' },
-    { column: 'Vĩ độ (Latitude)', description: 'Tọa độ vĩ độ của máy chấm công. Là một số thập phân.', required: 'Có', example: '10.790434' },
+    { column: 'Tên vị trí làm việc', description: 'Tên để nhận dạng vị trí làm việc.', required: 'Có', example: 'Vị trí làm việc cổng chính' },
+    { column: 'Kinh độ (Longitude)', description: 'Tọa độ kinh độ của vị trí làm việc. Là một số thập phân.', required: 'Có', example: '106.722153' },
+    { column: 'Vĩ độ (Latitude)', description: 'Tọa độ vĩ độ của vị trí làm việc. Là một số thập phân.', required: 'Có', example: '10.790434' },
     { column: 'Bán kính cho phép (m)', description: 'Bán kính (tính bằng mét) cho phép chấm công xung quanh vị trí đã đặt. Là một số nguyên dương.', required: 'Có', example: '50' },
   ]);
 
@@ -376,7 +374,7 @@ const downloadExcelTemplate = async () => {
 
   // Generate and download file
   const buf = await workbook.xlsx.writeBuffer();
-  saveAs(new Blob([buf]), 'Mau_Nhap_May_Cham_Cong.xlsx');
+  saveAs(new Blob([buf]), 'Mau_Nhap_Vi_Tri_Lam_Viec.xlsx');
 };
 
 const processImport = () => {
@@ -400,7 +398,7 @@ const processImport = () => {
       }
 
       const machinesToCreate = jsonData.map(row => ({
-        attendanceMachineName: row['Tên máy chấm công'],
+        attendanceMachineName: row['Tên vị trí làm việc'],
         longitude: String(row['Kinh độ (Longitude)'] || ''),
         latitude: String(row['Vĩ độ (Latitude)'] || ''),
         allowedRadius: String(row['Bán kính cho phép (m)'] || '0'),
@@ -437,7 +435,7 @@ const handleUpdateMachine = async (formData) => {
 }
 
 const handleDeleteClick = async (item) => {
-  if (confirm(`Bạn có chắc chắn muốn xóa máy chấm công "${item.attendanceMachineName}" không?`)) {
+  if (confirm(`Bạn có chắc chắn muốn xóa vị trí làm việc "${item.attendanceMachineName}" không?`)) {
     await deleteAttendanceMachine(item.id)
   }
 }
@@ -467,144 +465,6 @@ const closeDetailForm = () => {
 const closeDetailFormAttendanceMachine = () => {
   showDetailFormAttendanceMachine.value = false
   selectedDetailItem.value = null
-}
-
-// Tour Guide Steps
-const shiftTourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý ca làm việc. Tại đây bạn có thể xem, tạo, và quản lý các ca làm việc của nhân viên.'
-  },
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Đây là các tab để chuyển đổi giữa "Ca làm việc" và "Máy chấm công". Hiện tại bạn đang ở tab "Ca làm việc".'
-  },
-  {
-    target: '[data-tour="toolbar-shift"]',
-    message: 'Đây là thanh công cụ với các chức năng chính cho ca làm việc. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="create-form-shift"]',
-    message: 'Đây là form tạo ca làm việc mới. Bạn có thể nhập tên ca, mã ca, và các chi tiết ca làm việc như giờ vào, giờ ra cho từng ngày trong tuần. Sau khi điền đầy đủ thông tin, bấm "Lưu" để tạo ca làm việc.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar-shift"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="toolbar-shift"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc ca làm việc theo mã ca hoặc tên ca.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar-shift"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="filter-shift"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã ca, tên ca. Sau đó bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="toolbar-shift"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách ca làm việc ra file Excel để lưu trữ hoặc xử lý thêm. Khi bấm vào đây, file Excel sẽ được tải xuống tự động.'
-  },
-  {
-    target: '[data-tour="toolbar-shift"]',
-    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng của trang này bất cứ lúc nào.'
-  },
-  {
-    target: '[data-tour="table-shift"]',
-    message: 'Đây là bảng danh sách ca làm việc. Bạn có thể xem thông tin chi tiết về các ca làm việc như STT, mã ca, tên ca, giờ vào, giờ ra. Bạn có thể bấm vào các nút thao tác để sửa hoặc xóa ca làm việc.'
-  },
-  {
-    target: '[data-tour="actions-shift"]',
-    message: 'Cột "Thao tác" chứa các nút để bạn thực hiện các hành động như: Sửa ca làm việc hoặc Xóa ca làm việc.'
-  },
-  {
-    target: '[data-tour="pagination-shift"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều ca làm việc hơn. Bạn có thể thấy số lượng ca làm việc hiện tại và tổng số ca làm việc. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Ca làm việc"!'
-  }
-]
-
-const machineTourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý máy chấm công. Tại đây bạn có thể xem, tạo, và quản lý các máy chấm công của hệ thống.'
-  },
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Đây là các tab để chuyển đổi giữa "Ca làm việc" và "Máy chấm công". Hiện tại bạn đang ở tab "Máy chấm công".'
-  },
-  {
-    target: '[data-tour="toolbar-machine"]',
-    message: 'Đây là thanh công cụ với các chức năng chính cho máy chấm công. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="create-form-machine"]',
-    message: 'Đây là form tạo máy chấm công mới. Bạn có thể nhập tên máy chấm công, tọa độ (kinh độ, vĩ độ), và bán kính cho phép (tính bằng mét). Sau khi điền đầy đủ thông tin, bấm "Lưu" để tạo máy chấm công.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar-machine"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="toolbar-machine"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc máy chấm công theo mã máy, tên máy hoặc tọa độ.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar-machine"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="filter-machine"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã máy, tên máy, tọa độ. Sau đó bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="toolbar-machine"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách máy chấm công ra file Excel để lưu trữ hoặc xử lý thêm. Khi bấm vào đây, file Excel sẽ được tải xuống tự động.'
-  },
-  {
-    target: '[data-tour="import-modal-machine"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin máy chấm công vào file Excel, sau đó bấm "Xử lý" để import các máy chấm công vào hệ thống.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar-machine"] button:nth-child(4)'
-    }
-  },
-  {
-    target: '[data-tour="toolbar-machine"]',
-    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng của trang này bất cứ lúc nào.'
-  },
-  {
-    target: '[data-tour="table-machine"]',
-    message: 'Đây là bảng danh sách máy chấm công. Bạn có thể xem thông tin chi tiết về các máy chấm công như STT, mã máy, tên máy, tọa độ X, tọa độ Y, và bán kính cho phép. Bạn có thể bấm vào các nút thao tác để sửa hoặc xóa máy chấm công.'
-  },
-  {
-    target: '[data-tour="actions-machine"]',
-    message: 'Cột "Thao tác" chứa các nút để bạn thực hiện các hành động như: Sửa máy chấm công hoặc Xóa máy chấm công.'
-  },
-  {
-    target: '[data-tour="pagination-machine"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều máy chấm công hơn. Bạn có thể thấy số lượng máy chấm công hiện tại và tổng số máy chấm công. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Máy chấm công"!'
-  }
-]
-
-const tourSteps = computed(() => {
-  return activeTab.value === 'shift' ? shiftTourSteps : machineTourSteps
-})
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở để có thể highlight
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
 }
 </script>
 
@@ -677,7 +537,7 @@ const startTour = () => {
               type="text"
               class="form-control"
               v-model="machineSearchQuery"
-              placeholder="Tìm kiếm theo mã máy, tên máy, tọa độ..."
+              placeholder="Tìm kiếm theo mã vị trí, tên vị trí, tọa độ..."
             >
           </div>
           <div class="col-md-2">
@@ -735,7 +595,7 @@ const startTour = () => {
       </DataTable>
       <div class="d-flex justify-content-between align-items-center mt-3">
         <div class="text-muted">
-          Hiển thị {{ paginatedMachineData.length }} trên {{ filteredMachineData.length }} máy chấm công
+          Hiển thị {{ paginatedMachineData.length }} trên {{ filteredMachineData.length }} vị trí làm việc
         </div>
         <Pagination :totalItems="filteredMachineData.length" :itemsPerPage="machineItemsPerPage" :currentPage="machineCurrentPage"
           @update:currentPage="machineCurrentPage = $event" data-tour="pagination-machine" />
@@ -744,13 +604,13 @@ const startTour = () => {
     <ModalDialog v-model:show="showCreateForm" title="Tạo ca làm" size="xl" data-tour="create-form-shift">
   <WorkShiftForm mode="create" @close="showCreateForm = false" @submit="handleCreateWorkShift" />
     </ModalDialog>
-    <ModalDialog v-model:show="showCreateFormAttendanceMachine" title="Thêm máy chấm công" size="lg" data-tour="create-form-machine">
+    <ModalDialog v-model:show="showCreateFormAttendanceMachine" title="Thêm vị trí làm việc" size="lg" data-tour="create-form-machine">
       <AttendanceMachineForm mode="create" @submit="handleCreateMachine" @close="showCreateFormAttendanceMachine = false" />
     </ModalDialog>
     <ModalDialog v-model:show="showUpdateForm" title="Cập nhật ca làm" size="xl">
       <WorkShiftForm mode="update" :workshift="selectedItem" @close="showUpdateForm = false" @submit="handleUpdateWorkShift" />
     </ModalDialog>
-    <ModalDialog v-model:show="showUpdateFormAttendanceMachine" title="Cập nhật máy chấm công" size="lg">
+    <ModalDialog v-model:show="showUpdateFormAttendanceMachine" title="Cập nhật vị trí làm việc" size="lg">
       <AttendanceMachineForm  :key="selectedItem?.id" mode="update" :attendancemachine="selectedItem" @submit="handleUpdateMachine" @close="showUpdateFormAttendanceMachine = false" />
     </ModalDialog>
     
@@ -764,14 +624,14 @@ const startTour = () => {
     </ModalDialog>
     
     <!-- Detail Form Modal for Machine -->
-    <ModalDialog v-model:show="showDetailFormAttendanceMachine" title="Chi tiết máy chấm công" size="lg" @update:show="closeDetailFormAttendanceMachine">
+    <ModalDialog v-model:show="showDetailFormAttendanceMachine" title="Chi tiết vị trí làm việc" size="lg" @update:show="closeDetailFormAttendanceMachine">
       <AttendanceMachineForm 
         mode="detail" 
         :attendancemachine="selectedDetailItem" 
         @close="closeDetailFormAttendanceMachine" 
       />
     </ModalDialog>
-    <ModalDialog v-model:show="showImportModal" title="Nhập máy chấm công từ Excel" size="lg" data-tour="import-modal-machine">
+    <ModalDialog v-model:show="showImportModal" title="Nhập vị trí làm việc từ Excel" size="lg" data-tour="import-modal-machine">
       <div class="p-4">
         <p>Vui lòng tải file mẫu và điền thông tin theo đúng định dạng được cung cấp trong sheet "Hướng dẫn".</p>
         <ActionButton type="secondary" icon="fas fa-download me-2" @click="downloadExcelTemplate">
@@ -790,14 +650,6 @@ const startTour = () => {
         </div>
       </div>
     </ModalDialog>
-  
-  <!-- Tour Guide -->
-  <TourGuide
-    :show="showTourGuide"
-    :steps="tourSteps"
-    @update:show="showTourGuide = $event"
-    @complete="handleTourComplete"
-  />
   </div>
 </template>
 

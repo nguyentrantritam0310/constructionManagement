@@ -12,7 +12,6 @@ import { useOvertimeRequest } from '../../composables/useOvertimeRequest.js'
 import { useShiftAssignment } from '../../composables/useShiftAssignment.js'
 import { useWorkShift } from '../../composables/useWorkShift.js'
 import { useContract } from '../../composables/useContract.js'
-import TourGuide from '../../components/common/TourGuide.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 
@@ -515,7 +514,6 @@ const overtimeDetails = ref([])
 const showLeaveModal = ref(false)
 const selectedLeaveEmployee = ref(null)
 const leaveDetails = ref([])
-const showTourGuide = ref(false)
 
 // Computed properties để tính tổng hợp từ danh sách đơn thực tế
 const overtimeSummary = computed(() => {
@@ -1868,88 +1866,6 @@ const printTaxFinalizationReport = () => {
   }
 }
 
-// Tour Guide Steps - chỉ hiển thị các bước phù hợp với role
-const tourSteps = computed(() => {
-  const userRole = currentUser.value?.role
-  const isHRRole = ['hr_employee', 'hr_manager', 'director'].includes(userRole)
-  
-  const baseSteps = [
-    {
-      target: '[data-tour="tabs"]',
-      message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý bảng lương.'
-    }
-  ]
-  
-  if (isHRRole) {
-    // Các role HR xem tất cả tabs
-    return [
-      ...baseSteps,
-      {
-        target: '[data-tour="salary-tab"]',
-        message: 'Tab "Quản lý bảng lương" hiển thị bảng lương tổng hợp của tất cả nhân viên trong tháng được chọn. Bạn có thể xem chi tiết lương, các khoản phụ cấp, các khoản trừ và thực lãnh của từng nhân viên. Bấm vào số ngày tăng ca để xem chi tiết.',
-        action: {
-          type: 'click',
-          selector: '[data-tour="salary-tab"]'
-        }
-      },
-      {
-        target: '[data-tour="personal-salary-tab"]',
-        message: 'Tab "Bảng lương cá nhân" hiển thị chi tiết bảng lương của bạn. Bạn có thể xem thông tin lương cơ bản, tăng ca, nghỉ phép, các khoản phụ cấp, các khoản trừ và thực lãnh.',
-        action: {
-          type: 'click',
-          selector: '[data-tour="personal-salary-tab"]'
-        }
-      },
-      {
-        target: '[data-tour="insurance-tab"]',
-        message: 'Tab "Bảo hiểm theo tháng" hiển thị chi tiết các khoản bảo hiểm của nhân viên trong tháng được chọn, bao gồm BHXH, BHYT, BHTN cho cả nhân viên và doanh nghiệp.',
-        action: {
-          type: 'click',
-          selector: '[data-tour="insurance-tab"]'
-        }
-      },
-      {
-        target: '[data-tour="tax-tab"]',
-        message: 'Tab "Thuế TNCN" hiển thị thông tin thuế thu nhập cá nhân của nhân viên trong tháng được chọn, bao gồm tổng thu nhập, thu nhập chịu thuế và số thuế phải nộp.',
-        action: {
-          type: 'click',
-          selector: '[data-tour="tax-tab"]'
-        }
-      },
-      {
-        target: '[data-tour="tax-finalization-tab"]',
-        message: 'Tab "Quyết toán thuế TNCN" hiển thị bảng quyết toán thuế thu nhập cá nhân theo năm, bao gồm tổng hợp theo năm và chi tiết từng tháng. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
-        action: {
-          type: 'click',
-          selector: '[data-tour="tax-finalization-tab"]'
-        }
-      }
-    ]
-  } else {
-    // Các role khác chỉ thấy tab bảng lương cá nhân
-    return [
-      ...baseSteps,
-      {
-        target: '[data-tour="personal-salary-tab"]',
-        message: 'Tab "Bảng lương cá nhân" hiển thị chi tiết bảng lương của bạn. Bạn có thể xem thông tin lương cơ bản, tăng ca, nghỉ phép, các khoản phụ cấp, các khoản trừ và thực lãnh. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
-        action: {
-          type: 'click',
-          selector: '[data-tour="personal-salary-tab"]'
-        }
-      }
-    ]
-  }
-})
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -3123,13 +3039,6 @@ const startTour = () => {
     </div>
   </ModalDialog>
 
-  <!-- Tour Guide -->
-  <TourGuide
-    :show="showTourGuide"
-    :steps="tourSteps"
-    @update:show="showTourGuide = $event"
-    @complete="handleTourComplete"
-  />
 </template>
 
 <style scoped>

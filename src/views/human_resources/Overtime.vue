@@ -11,7 +11,6 @@ import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
 import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
-import TourGuide from '@/components/common/TourGuide.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -66,7 +65,6 @@ const showDetailForm = ref(false)
 const selectedItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
-const showTourGuide = ref(false)
 
 // Approval modal states
 const showApprovalModal = ref(false)

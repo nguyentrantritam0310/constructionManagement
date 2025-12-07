@@ -364,13 +364,6 @@
 
     <GlobalMessageModal />
     
-    <!-- Tour Guide -->
-    <TourGuide 
-      :show="showTourGuide" 
-      :steps="tourSteps" 
-      @update:show="showTourGuide = $event" 
-      @complete="handleTourComplete" 
-    />
   </div>
 </template>
 
@@ -386,7 +379,6 @@ import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
 import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
-import TourGuide from '@/components/common/TourGuide.vue'
 import { useContract } from '../../composables/useContract.js'
 import { useEmployee } from '../../composables/useEmployee.js'
 import { useGlobalMessage } from '../../composables/useGlobalMessage.js'
@@ -899,7 +891,6 @@ const showDetailForm = ref(false)
 const selectedDetailItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
-const showTourGuide = ref(false)
 
 // Filter variables
 const searchQuery = ref('')
@@ -1640,233 +1631,9 @@ const exportContract = async (contract) => {
   }
 }
 
-// Tour Guide Steps
-const allContractsTourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là tab "Hợp đồng lao động". Tại đây bạn có thể xem, tạo, và quản lý tất cả hợp đồng lao động của nhân viên.'
-  },
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Hợp đồng lao động". Có 3 tab: Hợp đồng lao động, Chưa lên hợp đồng, và Hợp đồng hết hạn.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form thêm/sửa hợp đồng lao động. Bạn có thể chọn nhân viên, loại hợp đồng, ngày bắt đầu, ngày kết thúc, lương hợp đồng, lương bảo hiểm và các phụ cấp. Sau khi điền đầy đủ, bấm "Lưu" để lưu hợp đồng.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc hợp đồng theo số hợp đồng, tên nhân viên, trạng thái duyệt, hiệu lực và khoảng thời gian.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo số hợp đồng, tên nhân viên. Chọn trạng thái duyệt và hiệu lực từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách hợp đồng ra file Excel.'
-  },
-  {
-    target: '[data-tour="import-modal"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin hợp đồng vào file Excel, sau đó chọn file và bấm "Xử lý" để import vào hệ thống.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(4)'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng bất cứ lúc nào.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách hợp đồng lao động. Bạn có thể xem thông tin chi tiết của từng hợp đồng. Click vào mã nhân viên để xem hồ sơ nhân viên. Cột "Thao tác" chứa các nút để sửa, xóa, gửi duyệt, duyệt, từ chối hoặc trả lại hợp đồng.'
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều hợp đồng hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Hợp đồng lao động"!',
-    action: {
-      type: 'function',
-      func: async () => {
-        if (showImportModal.value) {
-          showImportModal.value = false
-        }
-        if (showContractModal.value) {
-          showContractModal.value = false
-        }
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
-    }
-  }
-]
+ 
 
-const notCreatedTourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Đây là tab "Chưa lên hợp đồng". Tại đây bạn có thể xem danh sách nhân viên chưa có hợp đồng lao động và tạo hợp đồng cho họ.'
-  },
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Chưa lên hợp đồng".'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ. Nút "Lọc" cho phép bạn ẩn/hiện phần bộ lọc để tìm kiếm nhân viên.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm nhân viên theo mã, tên, email hoặc số điện thoại. Bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách nhân viên chưa có hợp đồng. Bạn có thể xem thông tin cơ bản của từng nhân viên. Click vào mã nhân viên để xem hồ sơ nhân viên.'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form tạo hợp đồng lao động. Khi bạn click vào nút "+" ở cột thao tác, form này sẽ mở với thông tin nhân viên đã được điền sẵn. Bạn chỉ cần chọn loại hợp đồng, ngày bắt đầu, ngày kết thúc và các thông tin khác.',
-    action: {
-      type: 'function',
-      func: async () => {
-        await new Promise(resolve => setTimeout(resolve, 100))
-        const createBtn = document.querySelector('[data-tour="create-button"]')
-        if (createBtn) {
-          createBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều nhân viên hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Chưa lên hợp đồng"!',
-    action: {
-      type: 'function',
-      func: async () => {
-        if (showContractModal.value) {
-          showContractModal.value = false
-        }
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
-    }
-  }
-]
 
-const expiredTourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Đây là tab "Hợp đồng hết hạn". Tại đây bạn có thể xem danh sách hợp đồng sắp hết hạn hoặc đã hết hạn và thực hiện các thao tác như gia hạn hợp đồng hoặc cho nhân viên nghỉ việc.'
-  },
-  {
-    target: '[data-tour="tabs"]',
-    message: 'Đây là các tab để chuyển đổi giữa các chức năng. Hiện tại bạn đang ở tab "Hợp đồng hết hạn".'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ. Nút "Lọc" cho phép bạn ẩn/hiện phần bộ lọc để tìm kiếm hợp đồng.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm hợp đồng theo mã nhân viên, tên nhân viên, số hợp đồng hoặc loại hợp đồng. Bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách hợp đồng hết hạn. Bạn có thể xem thông tin chi tiết của từng hợp đồng, bao gồm số ngày đến hạn. Click vào mã nhân viên để xem hồ sơ nhân viên.'
-  },
-  {
-    target: '[data-tour="extend-modal"]',
-    message: 'Đây là modal gia hạn hợp đồng. Khi bạn click vào nút "Gia hạn hợp đồng", modal này sẽ mở. Bạn có thể chọn ngày bắt đầu mới và ngày hết hạn mới cho hợp đồng. Sau đó bấm "Gia hạn" để lưu.',
-    action: {
-      type: 'function',
-      func: async () => {
-        await new Promise(resolve => setTimeout(resolve, 100))
-        const extendBtn = document.querySelector('[data-tour="extend-button"]')
-        if (extendBtn) {
-          extendBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="terminate-modal"]',
-    message: 'Đây là modal cho nhân viên nghỉ việc. Khi bạn click vào nút "Cho nghỉ việc", modal này sẽ mở. Bạn có thể xác nhận để chấm dứt hợp đồng và thay đổi trạng thái nhân viên thành "Nghỉ việc".',
-    action: {
-      type: 'function',
-      func: async () => {
-        if (showExtendModal.value) {
-          showExtendModal.value = false
-        }
-        await new Promise(resolve => setTimeout(resolve, 100))
-        const terminateBtn = document.querySelector('[data-tour="terminate-button"]')
-        if (terminateBtn) {
-          terminateBtn.click()
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-      }
-    }
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều hợp đồng hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn về tab "Hợp đồng hết hạn"!',
-    action: {
-      type: 'function',
-      func: async () => {
-        if (showTerminateModal.value) {
-          showTerminateModal.value = false
-        }
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
-    }
-  }
-]
-
-const tourSteps = computed(() => {
-  switch (activeTab.value) {
-    case 'allContracts':
-      return allContractsTourSteps
-    case 'notCreated':
-      return notCreatedTourSteps
-    case 'expired':
-      return expiredTourSteps
-    default:
-      return allContractsTourSteps
-  }
-})
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở (cho tất cả các tab)
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <style scoped>

@@ -29,7 +29,7 @@ const formData = ref({
 
 // Regex patterns cho validation
 const regexPatterns = {
-  // Tên máy chấm công: chữ cái, số, khoảng trắng, dấu tiếng Việt, dấu gạch ngang và gạch dưới, độ dài 1-100
+  // Tên vị trí làm việc: chữ cái, số, khoảng trắng, dấu tiếng Việt, dấu gạch ngang và gạch dưới, độ dài 1-100
   attendanceMachineName: /^[a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s_-]{1,100}$/,
   // Kinh độ: số thập phân, không giới hạn giá trị, tối đa 15 chữ số thập phân
   longitude: /^-?\d+(\.\d{1,15})?$/,
@@ -137,11 +137,11 @@ const handleMapClick = (event) => {
 const validateAttendanceMachineName = () => {
   const value = formData.value.attendanceMachineName?.trim()
   if (!value) {
-    errors.value.attendanceMachineName = 'Tên máy chấm công không được để trống'
+    errors.value.attendanceMachineName = 'Tên vị trí làm việc không được để trống'
     return false
   }
   if (!regexPatterns.attendanceMachineName.test(value)) {
-    errors.value.attendanceMachineName = 'Tên máy chấm công chỉ được chứa chữ cái, số, khoảng trắng, dấu tiếng Việt và các ký tự đặc biệt (gạch ngang, gạch dưới) (tối đa 100 ký tự)'
+    errors.value.attendanceMachineName = 'Tên vị trí làm việc chỉ được chứa chữ cái, số, khoảng trắng, dấu tiếng Việt và các ký tự đặc biệt (gạch ngang, gạch dưới) (tối đa 100 ký tự)'
     return false
   }
   errors.value.attendanceMachineName = ''
@@ -297,7 +297,7 @@ const handleClose = () => emit('close')
   <form @submit.prevent="handleSubmit" class="p-4 bg-white rounded shadow-sm">
     <div class="row g-3 mb-4">
       <div class="col-md-12">
-        <label class="form-label">Tên máy chấm công <span class="text-danger">*</span></label>
+        <label class="form-label">Tên vị trí làm việc <span class="text-danger">*</span></label>
         <input 
           type="text" 
           class="form-control" 
@@ -308,7 +308,7 @@ const handleClose = () => emit('close')
           :disabled="props.mode === 'detail'"
           :readonly="props.mode === 'detail'"
           maxlength="100"
-          placeholder="VD: Máy chấm công 01"
+          placeholder="VD: Vị trí làm việc 01"
         />
         <div class="invalid-feedback">{{ errors.attendanceMachineName }}</div>
       </div>

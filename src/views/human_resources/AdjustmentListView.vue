@@ -10,7 +10,6 @@ import ApprovalStatusLabel from '@/components/common/ApprovalStatusLabel.vue'
 import ApprovalNoteModal from '@/components/common/ApprovalNoteModal.vue'
 import ApprovalHistoryModal from '@/components/common/ApprovalHistoryModal.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
-import TourGuide from '@/components/common/TourGuide.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -59,7 +58,6 @@ const selectedItem = ref(null)
 const selectedDetailItem = ref(null)
 const showFilter = ref(false)
 const showImportModal = ref(false)
-const showTourGuide = ref(false)
 
 // Approval modal states
 const showApprovalModal = ref(false)
@@ -571,80 +569,6 @@ const exportToExcel = async () => {
   saveAs(new Blob([buf]), 'PayrollAdjustments.xlsx')
 }
 
-// Tour Guide Steps
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý khoản cộng trừ. Tại đây bạn có thể xem, tạo, và quản lý các khoản cộng trừ lương của nhân viên.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form tạo khoản cộng trừ mới. Bạn có thể nhập số phiếu, ngày quyết định, tháng/năm áp dụng, chọn khoản cộng trừ, hạng mục, lý do và thêm danh sách nhân viên với giá trị tương ứng. Sau khi điền đầy đủ thông tin, bấm "Lưu" để tạo khoản cộng trừ.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc khoản cộng trừ theo nhiều tiêu chí khác nhau như số phiếu, khoản cộng trừ, hạng mục, trạng thái, tháng/năm và khoảng thời gian.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo số phiếu, khoản cộng trừ, hạng mục. Chọn trạng thái từ dropdown. Chọn tháng/năm hoặc khoảng thời gian từ ngày đến ngày. Sau đó bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách khoản cộng trừ ra file Excel để lưu trữ hoặc xử lý thêm. Khi bấm vào đây, file Excel sẽ được tải xuống tự động.'
-  },
-  {
-    target: '[data-tour="import-modal"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin khoản cộng trừ và danh sách nhân viên vào các sheet tương ứng, sau đó bấm "Xử lý" để import các khoản cộng trừ vào hệ thống.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(4)'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Hướng dẫn" (nút này) sẽ mở lại tour hướng dẫn để bạn xem lại các tính năng của trang này bất cứ lúc nào.'
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách khoản cộng trừ. Bạn có thể xem thông tin chi tiết về các khoản cộng trừ như số phiếu, ngày quyết định, tháng/năm, khoản cộng trừ, hạng mục, tổng giá trị, số nhân viên, lý do và trạng thái duyệt. Bạn có thể bấm vào một hàng để xem chi tiết.'
-  },
-  {
-    target: '[data-tour="actions"]',
-    message: 'Cột "Thao tác" chứa các nút để bạn thực hiện các hành động như: Sửa khoản cộng trừ, Xóa, Gửi duyệt, Duyệt, Từ chối hoặc Trả lại. Các nút sẽ hiển thị tùy theo quyền của bạn và trạng thái khoản cộng trừ.'
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều khoản cộng trừ hơn. Bạn có thể thấy số lượng khoản cộng trừ hiện tại và tổng số khoản cộng trừ. Đó là tất cả những gì tôi muốn giới thiệu với bạn!'
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở để có thể highlight
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 </script>
 
 <template>
@@ -878,12 +802,6 @@ const startTour = () => {
     </ModalDialog>
   
   <!-- Tour Guide -->
-  <TourGuide
-    :show="showTourGuide"
-    :steps="tourSteps"
-    @update:show="showTourGuide = $event"
-    @complete="handleTourComplete"
-  />
   </div>
 </template>
 

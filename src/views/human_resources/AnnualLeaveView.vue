@@ -14,7 +14,6 @@ import { useOvertimeForm } from '../../composables/useOvertimeForm'
 import { useEmployeeRequest } from '../../composables/useEmployeeRequest'
 import { useOvertimeRequest } from '../../composables/useOvertimeRequest'
 import { isApprovedStatus } from '../../constants/status.js'
-import TourGuide from '@/components/common/TourGuide.vue'
 import ActionButton from '@/components/common/ActionButton.vue'
 
 // Composables
@@ -287,7 +286,6 @@ const showOvertimeFormModal = ref(false)
 const selectedLeaveRequest = ref(null)
 const selectedOvertimeRequest = ref(null)
 const currentUser = ref({}) // Mock current user for forms
-const showTourGuide = ref(false)
 
 const leaveTicketColumns = [
   { key: 'ticketId', label: 'Mã phiếu' },
