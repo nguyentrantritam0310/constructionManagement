@@ -167,8 +167,9 @@ const materialTotals = computed(() => {
         totalAmount: 0
       }
     }
-    totals[key].totalQuantity += parseInt(norm.quantity)
-    totals[key].totalAmount += parseInt(norm.quantity) * parseFloat(norm.price)
+    totals[key].totalQuantity += parseInt(norm.quantity || 0)
+    const price = parseFloat(norm.price || norm.unitPrice || 0)
+    totals[key].totalAmount += (parseInt(norm.quantity || 0) * price)
   })
   return Object.values(totals)
 })
@@ -299,10 +300,27 @@ const handleCancel = () => {
 }
 
 const formatCurrency = (value) => {
+  // Parse value to number, handle string, null, undefined
+  let numValue = 0
+  if (value !== null && value !== undefined) {
+    if (typeof value === 'string') {
+      numValue = parseFloat(value) || 0
+    } else if (typeof value === 'number') {
+      numValue = value
+    } else {
+      numValue = 0
+    }
+  }
+  
+  // Check if valid number
+  if (isNaN(numValue) || !isFinite(numValue)) {
+    return '0 ₫'
+  }
+  
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND'
-  }).format(value)
+  }).format(numValue)
 }
 
 const formatDate = (date) => {
@@ -519,11 +537,11 @@ const showTourGuide = ref(false)
                   </template>
 
                   <template #price="{ item }">
-                    {{ formatCurrency(item.price) }}
+                    {{ formatCurrency(item.price || item.unitPrice || 0) }}
                   </template>
 
                   <template #total="{ item }">
-                    {{ formatCurrency(item.quantity * parseFloat(item.price)) }}
+                    {{ formatCurrency((parseInt(item.quantity) || 0) * (parseFloat(item.price || item.unitPrice || 0))) }}
                   </template>
                 </DataTable>
               </div>

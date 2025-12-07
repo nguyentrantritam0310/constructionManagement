@@ -101,14 +101,15 @@ const materialTotals = computed(() => {
         totalImportQuantity: 0,
         totalActualQuantity: 0,
         unitOfMeasurement: material.unitOfMeasurement,
-        price: material.price || 0,
+        price: parseFloat(material.price || material.unitPrice || 0) || 0,
         totalAmount: 0,
         status: material.status
       }
     }
-    totals[key].totalImportQuantity += parseInt(material.importQuantity)
-    totals[key].totalActualQuantity += parseInt(material.actualQuantity)
-    totals[key].totalAmount += (parseInt(material.actualQuantity) || 0) * (parseFloat(material.price) || 0)
+    totals[key].totalImportQuantity += parseInt(material.importQuantity || 0)
+    totals[key].totalActualQuantity += parseInt(material.actualQuantity || 0)
+    const price = parseFloat(material.price || material.unitPrice || 0) || 0
+    totals[key].totalAmount += (parseInt(material.actualQuantity || 0) * price)
   })
   return Object.values(totals)
 })
@@ -118,10 +119,27 @@ const grandTotal = computed(() => {
 })
 
 const formatCurrency = (value) => {
+  // Parse value to number, handle string, null, undefined
+  let numValue = 0
+  if (value !== null && value !== undefined) {
+    if (typeof value === 'string') {
+      numValue = parseFloat(value) || 0
+    } else if (typeof value === 'number') {
+      numValue = value
+    } else {
+      numValue = 0
+    }
+  }
+  
+  // Check if valid number
+  if (isNaN(numValue) || !isFinite(numValue)) {
+    return '0 ₫'
+  }
+  
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND'
-  }).format(value)
+  }).format(numValue)
 }
 
 const validateForm = () => {
@@ -223,10 +241,10 @@ const handleReject = async (item) => {
             <span><b>{{ item.materialName }}</b></span>
           </template>
           <template #price="{ item }">
-            {{ formatCurrency(item.price) }}
+            {{ formatCurrency(item.price || item.unitPrice || 0) }}
           </template>
           <template #totalAmount="{ item }">
-            {{ formatCurrency(item.totalAmount) }}
+            {{ formatCurrency(item.totalAmount || 0) }}
           </template>
           <template #status="{ item }">
             <span :class="{
@@ -275,10 +293,10 @@ const handleReject = async (item) => {
             </template>
 
             <template #price="{ item }">
-              {{ formatCurrency(item.price) }}
+              {{ formatCurrency(item.price || item.unitPrice || 0) }}
             </template>
             <template #totalAmount="{ item }">
-              {{ formatCurrency((item.actualQuantity || 0) * (item.price || 0)) }}
+              {{ formatCurrency((parseInt(item.actualQuantity || 0) || 0) * (parseFloat(item.price || item.unitPrice || 0) || 0)) }}
             </template>
           </DataTable>
         </div>

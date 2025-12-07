@@ -199,7 +199,6 @@ const constructionMenuItems = computed(() => {
           children: [
             { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
             { icon: 'fas fa-check-circle', text: 'Phê duyệt đề xuất', route: '/proposal-approval' },
-            { icon: 'fas fa-clipboard-list', text: 'Xem dự báo thời tiết', route: '/weather-forecast' },
             // Menu của nhân viên kỹ thuật/công nhân
             { icon: 'fas fa-project-diagram', text: 'Quản lý Công trình', route: '/construction-management' },
             { icon: 'fas fa-tasks', text: 'Quản lý kế hoạch thi công', route: '/construction-plan-management' },

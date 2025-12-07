@@ -135,12 +135,6 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/weather-forecast',
-      name: 'WeatherForecast',
-      component: () => import('../views/director/WeatherForecastView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
       path: '/human-resources',
       component: () => import('../views/human_resources/HumanResourcesView.vue'),
       meta: { requiresAuth: true }

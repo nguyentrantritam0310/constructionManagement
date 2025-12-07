@@ -78,7 +78,8 @@ const errors = ref({
   location: '',
   totalArea: '',
   startDate: '',
-  expectedCompletionDate: ''
+  expectedCompletionDate: '',
+  designBlueprint: ''
 })
 
 // Khởi tạo formData với dữ liệu của construction nếu là chế độ update
@@ -313,6 +314,17 @@ const validateExpectedCompletionDate = () => {
   return true
 }
 
+const validateDesignBlueprint = () => {
+  // File đính kèm là optional, nhưng nên có cảnh báo khi không chọn
+  // Chỉ validate khi ở chế độ create
+  if (props.mode === 'create' && !formData.value.designBlueprint) {
+    errors.value.designBlueprint = 'Vui lòng chọn tài liệu thiết kế'
+    return false // Warning, không block submit
+  }
+  errors.value.designBlueprint = ''
+  return true
+}
+
 // Real-time validation cho các trường input
 const validateField = (fieldName) => {
   switch (fieldName) {
@@ -342,6 +354,9 @@ const validateField = (fieldName) => {
         validateStartDate()
       }
       break
+    case 'designBlueprint':
+      validateDesignBlueprint()
+      break
   }
 }
 
@@ -355,6 +370,9 @@ const validateForm = () => {
     validateStartDate(),
     validateExpectedCompletionDate()
   ]
+  
+  // Validate design blueprint (warning only, doesn't block submit)
+  validateDesignBlueprint()
   
   const isValid = validations.every(v => v === true)
   
@@ -408,11 +426,35 @@ const handleSubmit = async () => {
         // Step 2: Create construction items using the new construction's ID
         if (constructionItems.value.length > 0) {
           console.log('Creating construction items:', constructionItems.value)
+          
+          // Validate construction items before creating
+          const invalidItems = constructionItems.value.filter((item, index) => {
+            const hasName = item.constructionItemName && item.constructionItemName.trim() !== ''
+            const hasStartDate = item.startDate && item.startDate !== ''
+            const hasEndDate = item.expectedCompletionDate && item.expectedCompletionDate !== ''
+            const hasVolume = item.totalVolume && Number(item.totalVolume) > 0
+            const hasUnit = item.unitOfMeasurementID && Number(item.unitOfMeasurementID) > 0
+            const hasVariant = item.workSubTypeVariantID && Number(item.workSubTypeVariantID) > 0
+            
+            if (!hasName || !hasStartDate || !hasEndDate || !hasVolume || !hasUnit || !hasVariant) {
+              console.warn(`Item ${index + 1} is missing required fields:`, {
+                hasName, hasStartDate, hasEndDate, hasVolume, hasUnit, hasVariant
+              })
+              return true
+            }
+            return false
+          })
+          
+          if (invalidItems.length > 0) {
+            showMessage('Vui lòng điền đầy đủ thông tin cho tất cả các hạng mục', 'error')
+            return
+          }
+          
           const { createConstructionItem } = useConstructionItem()
           const itemPromises = constructionItems.value.map(item => {
             const itemData = {
               constructionID: createdConstruction.id,
-              constructionItemName: item.constructionItemName,
+              constructionItemName: item.constructionItemName.trim(),
               startDate: `${item.startDate}T00:00:00.000Z`,
               expectedCompletionDate: `${item.expectedCompletionDate}T00:00:00.000Z`,
               totalVolume: Number(item.totalVolume),
@@ -449,9 +491,31 @@ const handleSubmit = async () => {
           message: error.message,
           response: error.response?.data,
           status: error.response?.status,
+          statusText: error.response?.statusText,
           requestData: constructionData
         })
-        showMessage(`Không thể tạo công trình: ${error.response?.data?.message || error.message}`, 'error')
+        
+        // Log full error response for debugging
+        if (error.response?.data) {
+          console.error('Full error response:', JSON.stringify(error.response.data, null, 2))
+        }
+        
+        // Extract error message from various possible locations
+        let errorMessage = 'Không thể tạo công trình'
+        
+        if (error.response?.data) {
+          errorMessage = error.response.data.message || 
+                        error.response.data.title || 
+                        error.response.data.error ||
+                        (error.response.data.errors ? JSON.stringify(error.response.data.errors) : null) ||
+                        errorMessage
+        }
+        
+        if (!errorMessage || errorMessage === 'Không thể tạo công trình') {
+          errorMessage = error.message || errorMessage
+        }
+        
+        showMessage(`Không thể tạo công trình: ${errorMessage}`, 'error')
       }
     }
   } catch (error) {
@@ -492,6 +556,13 @@ const handleFileUpload = async (event) => {
         return
       }
     formData.value.designBlueprint = file
+    // Clear error when file is selected
+    errors.value.designBlueprint = ''
+  } else {
+    // If no file selected, validate again
+    if (props.mode === 'create') {
+      validateDesignBlueprint()
+    }
   }
 }
 
@@ -624,9 +695,14 @@ const handleCancelItem = () => {
         <input 
           type="file" 
           class="form-control" 
+          :class="{ 'is-invalid': errors.designBlueprint && props.mode === 'create' }"
           accept="image/*" 
           @change="handleFileUpload"
+          @blur="validateField('designBlueprint')"
         />
+        <div v-if="errors.designBlueprint && props.mode === 'create'" class="invalid-feedback">
+          {{ errors.designBlueprint }}
+        </div>
         <small class="text-muted">Chỉ chấp nhận file ảnh (jpg, png, gif, jpeg, webp)</small>
       </div>
     </div>
@@ -655,7 +731,16 @@ const handleCancelItem = () => {
       <div v-if="constructionItems.length > 0" class="items-list mb-4">
         <div v-for="(item, index) in constructionItems" :key="index" class="item-card mb-3">
           <div class="item-header d-flex justify-content-between align-items-center mb-2">
-            <h5 class="mb-0">{{ item.constructionItemName }}</h5>
+            <div class="flex-grow-1 me-3">
+              <label class="form-label">Tên Hạng Mục <span class="text-danger">*</span></label>
+              <input 
+                type="text" 
+                class="form-control" 
+                v-model="item.constructionItemName"
+                placeholder="Nhập tên hạng mục"
+                required
+              />
+            </div>
             <div v-if="props.mode === 'create'" class="btn-group">
               <button type="button" class="btn btn-outline-danger btn-sm" @click="removeItemRow(index)">
                 <i class="fas fa-trash-alt"></i>
@@ -669,7 +754,6 @@ const handleCancelItem = () => {
                 type="date"
                 v-model="item.startDate"
                 required
-                :disabled="true"
               />
             </div>
             <div class="col-md-3">
@@ -678,7 +762,6 @@ const handleCancelItem = () => {
                 type="date"
                 v-model="item.expectedCompletionDate"
                 required
-                :disabled="true"
               />
             </div>
             <div class="col-md-3">
@@ -687,7 +770,8 @@ const handleCancelItem = () => {
                 type="number"
                 v-model="item.totalVolume"
                 required
-                :disabled="true"
+                step="0.01"
+                min="0.01"
               />
             </div>
             <div class="col-md-3">
@@ -700,7 +784,6 @@ const handleCancelItem = () => {
                   label: unit.shortName || unit.name
                 }))"
                 required
-                :disabled="true"
               />
             </div>
             <div class="col-md-12">
@@ -713,7 +796,6 @@ const handleCancelItem = () => {
                   label: variant.description
                 }))"
                 required
-                :disabled="true"
               />
             </div>
           </div>

@@ -40,6 +40,12 @@ const { fetchTasksByItemId } = useTask()
 const emit = defineEmits(['close'])
 
 const formError = ref('')
+const volumeInfo = ref({
+  totalVolume: 0,
+  totalPlanned: 0,
+  remaining: 0,
+  loading: false
+})
 
 // Regex patterns cho validation
 const regexPatterns = {
@@ -98,8 +104,38 @@ watch(() => formData.constructionID, (newVal) => {
     console.log('Hạng mục của công trình:', construction?.constructionItems)
     // Reset constructionItemID khi đổi công trình
     formData.constructionItemID = ''
+    // Reset volume info
+    volumeInfo.value = { totalVolume: 0, totalPlanned: 0, remaining: 0, loading: false }
     // Validate constructionID
     validateField('constructionID')
+  }
+})
+
+// Watch constructionItemID để load thông tin khối lượng
+watch(() => formData.constructionItemID, async (newVal) => {
+  if (newVal && props.mode === 'create') {
+    const item = filteredConstructionItems.value.find(i => i.id === Number(newVal))
+    if (item) {
+      volumeInfo.value.loading = true
+      try {
+        const totalVolume = parseFloat(item.totalVolume || 0)
+        const tasksOfItem = await fetchTasksByItemId(newVal)
+        const totalPlanned = tasksOfItem.reduce((sum, t) => sum + (parseFloat(t.plannedVolume || t.workload) || 0), 0)
+        const remaining = totalVolume - totalPlanned
+        
+        volumeInfo.value = {
+          totalVolume,
+          totalPlanned,
+          remaining,
+          loading: false
+        }
+      } catch (error) {
+        console.error('Error loading volume info:', error)
+        volumeInfo.value.loading = false
+      }
+    }
+  } else {
+    volumeInfo.value = { totalVolume: 0, totalPlanned: 0, remaining: 0, loading: false }
   }
 })
 
@@ -296,12 +332,31 @@ const handleSubmit = async () => {
     const tasksOfItem = await fetchTasksByItemId(formData.constructionItemID)
     // Tính tổng khối lượng hoạch định đã có
     const totalPlanned = tasksOfItem.reduce((sum, t) => sum + (parseFloat(t.plannedVolume || t.workload) || 0), 0)
-    // Lấy tổng khối lượng hạng mục (giả sử lấy từ filteredConstructionItems)
+    // Lấy tổng khối lượng hạng mục - sửa từ totalWorkload sang totalVolume
     const item = filteredConstructionItems.value.find(i => i.id === Number(formData.constructionItemID))
-    const totalWorkload = item?.totalWorkload || 0
+    const totalVolume = parseFloat(item?.totalVolume || item?.totalWorkload || 0)
 
-    if (totalPlanned >= totalWorkload) {
-      formError.value = 'Tổng khối lượng hoạch định đã đủ, không thể thêm kế hoạch mới!'
+    console.log('Validation khối lượng hoạch định:', {
+      itemId: formData.constructionItemID,
+      itemName: item?.constructionItemName,
+      totalPlanned,
+      totalVolume,
+      remaining: totalVolume - totalPlanned,
+      tasksCount: tasksOfItem.length
+    })
+
+    if (totalVolume <= 0) {
+      formError.value = 'Hạng mục chưa có tổng khối lượng. Vui lòng cập nhật tổng khối lượng hạng mục trước.'
+      const endDateField = document.querySelector('[name="expectedCompletionDate"]') || document.querySelector('input[type="date"]:last-of-type')
+      if (endDateField) {
+        endDateField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      return
+    }
+
+    if (totalPlanned >= totalVolume) {
+      const remaining = totalVolume - totalPlanned
+      formError.value = `Tổng khối lượng hoạch định đã đủ (${totalPlanned.toLocaleString('vi-VN')}/${totalVolume.toLocaleString('vi-VN')}). Khối lượng còn lại: ${remaining.toLocaleString('vi-VN')}. Không thể thêm kế hoạch mới!`
       const endDateField = document.querySelector('[name="expectedCompletionDate"]') || document.querySelector('input[type="date"]:last-of-type')
       if (endDateField) {
         endDateField.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -387,6 +442,41 @@ const handleClose = () => {
           </option>
         </select>
         <div class="invalid-feedback">{{ errors.constructionItemID }}</div>
+        
+        <!-- Hiển thị thông tin khối lượng khi chọn hạng mục -->
+        <div v-if="formData.constructionItemID && props.mode === 'create'" class="mt-2">
+          <div v-if="volumeInfo.loading" class="text-muted small">
+            <i class="fas fa-spinner fa-spin me-1"></i> Đang tải thông tin...
+          </div>
+          <div v-else-if="volumeInfo.totalVolume > 0" class="small">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="text-muted">Tổng khối lượng:</span>
+              <span class="fw-bold">{{ volumeInfo.totalVolume.toLocaleString('vi-VN') }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-1">
+              <span class="text-muted">Đã hoạch định:</span>
+              <span class="fw-bold text-warning">{{ volumeInfo.totalPlanned.toLocaleString('vi-VN') }}</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span class="text-muted">Còn lại:</span>
+              <span 
+                class="fw-bold"
+                :class="{
+                  'text-success': volumeInfo.remaining > 0,
+                  'text-danger': volumeInfo.remaining <= 0
+                }"
+              >
+                {{ volumeInfo.remaining.toLocaleString('vi-VN') }}
+              </span>
+            </div>
+            <div v-if="volumeInfo.remaining <= 0" class="alert alert-warning py-1 mt-2 mb-0">
+              <small><i class="fas fa-exclamation-triangle me-1"></i> Khối lượng hoạch định đã đủ, không thể thêm kế hoạch mới!</small>
+            </div>
+          </div>
+          <div v-else-if="formData.constructionItemID" class="text-muted small mt-1">
+            <i class="fas fa-info-circle me-1"></i> Hạng mục chưa có tổng khối lượng
+          </div>
+        </div>
       </div>
 
       <!-- Chỉ huy phụ trách -->
