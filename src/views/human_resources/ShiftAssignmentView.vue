@@ -872,10 +872,13 @@ const shiftData = computed(() => {
       return timeA > timeB ? a : b
     }) : '--:--'
 
-    // Tính số lượng nhân viên đã được phân cho ca này
-    const employeeCount = shiftAssignments.value.filter(assignment => 
+    // Tính số lượng nhân viên duy nhất đã được phân cho ca này
+    const matchingAssignments = shiftAssignments.value.filter(assignment => 
       assignment.workShiftID === shift.id || assignment.workShiftID === shift.code
-    ).length
+    )
+    // Lấy danh sách employeeID duy nhất
+    const uniqueEmployeeIds = new Set(matchingAssignments.map(assignment => assignment.employeeID))
+    const employeeCount = uniqueEmployeeIds.size
 
     return {
       stt: index + 1,
