@@ -10,7 +10,6 @@ import IncidentReportListView from '../views/construction_management/IncidentRep
 import MaterialManagementView from '../views/construction_management/MaterialManagementView.vue'
 import WarehouseEntryView from '../views/construction_management/WarehouseEntryView.vue'
 import StockOutView from '../views/construction_management/StockOutView.vue'
-import TaskDetailView from '../views/construction_management/TaskDetailView.vue'
 import TaskStatusView from '../views/construction_management/TaskStatusView.vue'
 import ProposalApprovalView from '../views/director/ProposalApprovalView.vue'
 import ConstructionPlanManagementView from '@/views/technical_staff/ConstructionPlanManagementView.vue'
@@ -99,12 +98,6 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/task-detail',
-      name: 'TaskDetail',
-      component: TaskDetailView,
-      meta: { requiresAuth: true }
-    },
-    {
       path: '/incident-report',
       name: 'IncidentReportList',
       component: IncidentReportListView,
@@ -172,11 +165,6 @@ const router = createRouter({
     {
       path: '/Overtime',
       component: () => import('../views/human_resources/Overtime.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/permission-management',
-      component: () => import('../views/system/PermissionManagementView.vue'),
       meta: { requiresAuth: true }
     },
     {

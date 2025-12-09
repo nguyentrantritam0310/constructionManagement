@@ -36,10 +36,10 @@ const formData = ref({
 const regexPatterns = {
     // ID nhân viên: chữ cái, số, dấu gạch ngang và gạch dưới, độ dài 1-20
     id: /^[A-Za-z0-9_-]{1,20}$/,
-    // Họ và tên đệm: chữ cái, dấu tiếng Việt, khoảng trắng, độ dài 1-50
-    lastName: /^[a-zA-ZàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s]{1,50}$/,
-    // Tên nhân viên: chữ cái, dấu tiếng Việt, độ dài 1-30
-    firstName: /^[a-zA-ZàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]{1,30}$/,
+    // Họ và tên đệm (firstName): chữ cái, dấu tiếng Việt, khoảng trắng, không giới hạn độ dài
+    firstName: /^[a-zA-ZàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ\s]+$/,
+    // Tên nhân viên (lastName): chữ cái, dấu tiếng Việt, độ dài 1-30
+    lastName: /^[a-zA-ZàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]{1,30}$/,
     // Ngày sinh: định dạng YYYY-MM-DD
     date: /^\d{4}-\d{2}-\d{2}$/,
     // Số điện thoại Việt Nam: 10 số, bắt đầu bằng 0
@@ -91,8 +91,8 @@ watch(() => props.employee, (newEmployee) => {
         
         formData.value = {
             id: newEmployee.id ?? newEmployee.employeeCode ?? '',
-            lastName: newEmployee.lastName ?? '',
-            firstName: newEmployee.firstName ?? '',
+            firstName: newEmployee.lastName ?? '',
+            lastName: newEmployee.firstName ?? '',
             birthday: formatDateForInput(newEmployee.birthday),
             joinDate: formatDateForInput(newEmployee.joinDate),
             phone: newEmployee.phone ?? '',
@@ -151,31 +151,31 @@ const validateID = () => {
     return true
 }
 
-const validateLastName = () => {
-    const value = formData.value.lastName?.trim()
-    if (!value) {
-        errors.value.lastName = 'Họ và tên đệm không được để trống'
-        return false
-    }
-    if (!regexPatterns.lastName.test(value)) {
-        errors.value.lastName = 'Họ và tên đệm chỉ được chứa chữ cái, dấu tiếng Việt và khoảng trắng (tối đa 50 ký tự)'
-        return false
-    }
-    errors.value.lastName = ''
-    return true
-}
-
 const validateFirstName = () => {
     const value = formData.value.firstName?.trim()
     if (!value) {
-        errors.value.firstName = 'Tên nhân viên không được để trống'
+        errors.value.firstName = 'Họ và tên đệm không được để trống'
         return false
     }
     if (!regexPatterns.firstName.test(value)) {
-        errors.value.firstName = 'Tên nhân viên chỉ được chứa chữ cái và dấu tiếng Việt (tối đa 30 ký tự)'
+        errors.value.firstName = 'Họ và tên đệm chỉ được chứa chữ cái, dấu tiếng Việt và khoảng trắng'
         return false
     }
     errors.value.firstName = ''
+    return true
+}
+
+const validateLastName = () => {
+    const value = formData.value.lastName?.trim()
+    if (!value) {
+        errors.value.lastName = 'Tên nhân viên không được để trống'
+        return false
+    }
+    if (!regexPatterns.lastName.test(value)) {
+        errors.value.lastName = 'Tên nhân viên chỉ được chứa chữ cái và dấu tiếng Việt (tối đa 30 ký tự)'
+        return false
+    }
+    errors.value.lastName = ''
     return true
 }
 
@@ -399,8 +399,8 @@ const handleSubmit = () => {
     emit('submit', {
         ...formData.value,
         id: formData.value.id.trim(),
-        lastName: formData.value.lastName.trim(),
         firstName: formData.value.firstName.trim(),
+        lastName: formData.value.lastName.trim(),
         phone: formData.value.phone.trim().replace(/[\s-]/g, ''),
         email: formData.value.email.trim()
     })
@@ -438,28 +438,27 @@ const handleClose = () => emit('close')
                         <input 
                             type="text" 
                             class="form-control" 
-                            :class="{ 'is-invalid': errors.lastName }"
-                            v-model="formData.lastName"
-                            @blur="validateField('lastName')"
-                            @input="validateField('lastName')"
-                            maxlength="50"
+                            :class="{ 'is-invalid': errors.firstName }"
+                            v-model="formData.firstName"
+                            @blur="validateField('firstName')"
+                            @input="validateField('firstName')"
                             placeholder="VD: Nguyễn Văn"
                         />
-                        <div class="invalid-feedback">{{ errors.lastName }}</div>
+                        <div class="invalid-feedback">{{ errors.firstName }}</div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Tên nhân viên <span class="text-danger">*</span></label>
                         <input 
                             type="text" 
                             class="form-control" 
-                            :class="{ 'is-invalid': errors.firstName }"
-                            v-model="formData.firstName"
-                            @blur="validateField('firstName')"
-                            @input="validateField('firstName')"
+                            :class="{ 'is-invalid': errors.lastName }"
+                            v-model="formData.lastName"
+                            @blur="validateField('lastName')"
+                            @input="validateField('lastName')"
                             maxlength="30"
                             placeholder="VD: An"
                         />
-                        <div class="invalid-feedback">{{ errors.firstName }}</div>
+                        <div class="invalid-feedback">{{ errors.lastName }}</div>
                     </div>
                 </div>
             </div>

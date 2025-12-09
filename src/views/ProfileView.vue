@@ -272,7 +272,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useEmployee } from '../composables/useEmployee'
 import { useContract } from '../composables/useContract'
-import TourGuide from '../components/common/TourGuide.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -496,7 +495,6 @@ const getValidityStatusText = (contract) => {
   return endDate > today ? 'Còn hiệu lực' : 'Hết hiệu lực'
 }
 
-const showTourGuide = ref(false)
 </script>
 
 <style scoped>

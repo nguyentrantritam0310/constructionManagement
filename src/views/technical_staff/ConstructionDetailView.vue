@@ -17,7 +17,6 @@ import StatusChangeDialog from '../../components/common/StatusChangeDialog.vue'
 import { useStatusTransition, STATUS_TYPES, STATUS } from '../../composables/useStatusTransition'
 import { useConstructionItem } from '../../composables/useConstructionItem'
 import Pagination from '../../components/common/Pagination.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 import api from '../../api.js'
 
 const route = useRoute()
@@ -282,7 +281,6 @@ onMounted(() => {
 
 const showImageModal = ref(false)
 const selectedImage = ref(null)
-const showTourGuide = ref(false)
 
 const downloadDesign = async () => {
   try {

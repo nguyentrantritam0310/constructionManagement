@@ -672,6 +672,9 @@ const exportToExcel = async () => {
         :data="paginatedAdjustmentData"
         @row-click="openDetailForm"
       >
+        <template #voucherNo="{ item }">
+          <span class="voucher-code">{{ item.voucherNo }}</span>
+        </template>
         <template #actions="{ item }">
           <div data-tour="actions">
           <div class="d-flex justify-content-start gap-2">
@@ -888,6 +891,13 @@ const exportToExcel = async () => {
 .slide-fade-leave-from {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* Voucher code styling - màu xanh, in đậm */
+.voucher-code {
+  color: #0d6efd;
+  font-weight: 700;
+  font-size: 0.95rem;
 }
 </style>
 

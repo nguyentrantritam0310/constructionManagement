@@ -13,7 +13,6 @@ import Pagination from '../../components/common/Pagination.vue'
 import MaterialPlanApprovalList from '@/components/proposal-approval/MaterialPlanApprovalList.vue'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
-import TourGuide from '../../components/common/TourGuide.vue'
 
 const { showMessage } = useGlobalMessage()
 
@@ -300,7 +299,6 @@ const handleNoteConfirm = async () => {
   }
 }
 
-const showTourGuide = ref(false)
 </script>
 
 <template>

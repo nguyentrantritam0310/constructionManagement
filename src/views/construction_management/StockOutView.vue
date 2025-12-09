@@ -16,7 +16,6 @@ import { useMaterialExportOrder } from '../../composables/useMaterialExportOrder
 import { useAuth } from '../../composables/useAuth'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import StockOutDetail from '../../components/warehouse/StockOutDetail.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 
 const { showMessage } = useGlobalMessage()
 
@@ -359,7 +358,6 @@ const formatDate = (date, isActualCompletion = false) => {
   return new Date(date).toLocaleDateString('vi-VN')
 }
 
-const showTourGuide = ref(false)
 </script>
 
 <template>

@@ -10,7 +10,6 @@ import { useMaterialPlan } from '../../composables/useMaterialPlan'
 import WarehouseEntryForm from '../../components/warehouse/WarehouseEntryForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import StatusBadge from '@/components/common/StatusBadge.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 
 const { showMessage } = useGlobalMessage()
 const searchQuery = ref('')
@@ -180,7 +179,6 @@ const getStatusLabel = (status) => {
   return statusMap[status] || status
 }
 
-const showTourGuide = ref(false)
 </script>
 
 <template>

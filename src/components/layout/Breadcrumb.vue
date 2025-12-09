@@ -112,10 +112,6 @@ const breadcrumbs = computed(() => {
         text = 'Hợp đồng lao động'
         icon = 'fas fa-file-contract'
         break
-      case 'permission-management':
-        text = 'Quản lý phân quyền'
-        icon = 'fas fa-shield-alt'
-        break
       default:
         text = item.charAt(0).toUpperCase() + item.slice(1)
         icon = 'fas fa-folder'

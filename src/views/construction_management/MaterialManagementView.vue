@@ -10,7 +10,6 @@ import { useMaterialManagement } from '../../composables/useMaterialManagement'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
-import TourGuide from '../../components/common/TourGuide.vue'
 
 const {
   materials,
@@ -267,7 +266,6 @@ const unitPriceBounds = computed(() => {
   }
 })
 
-const showTourGuide = ref(false)
 </script>
 
 <template>

@@ -158,12 +158,6 @@ export function usePermissions() {
     // Trang dự báo thời tiết
     'weather-forecast': {
       'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
-    },
-    
-    // Trang quản lý phân quyền
-    'permission-management': {
-      'hr_manager': ['view', 'create', 'edit', 'delete'],
-      'director': ['view', 'create', 'edit', 'delete'] // Giám đốc: toàn quyền
     }
   }
 

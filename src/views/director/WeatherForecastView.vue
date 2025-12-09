@@ -523,7 +523,6 @@ const weatherAverages = computed(() => {
   }
 })
 
-const showTourGuide = ref(false)
 </script>
 
 <style scoped>

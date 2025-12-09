@@ -449,6 +449,20 @@ const autoFitColumns = (worksheet) => {
   })
 }
 
+const formatDateTime = (dateTime) => {
+  if (!dateTime) return { date: '', time: '' }
+  const date = new Date(dateTime)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return {
+    date: `${day}/${month}/${year}`,
+    time: `${hours}:${minutes}`
+  }
+}
+
 const formatDateTimeForExport = (dateTime) => {
   if (!dateTime) return ''
   return new Date(dateTime).toLocaleString('vi-VN')
@@ -562,6 +576,15 @@ const exportToExcel = async () => {
     
     <div class="table-responsive adjustment-table" data-tour="table">
       <DataTable :columns="overtimeColumns" :data="paginatedOvertimeData" @row-click="openDetailForm">
+        <template #voucherCode="{ item }">
+          <span class="voucher-code">{{ item.voucherCode }}</span>
+        </template>
+        <template #employeeID="{ item }">
+          <strong>{{ item.employeeID }}</strong>
+        </template>
+        <template #userName="{ item }">
+          <strong>{{ item.userName }}</strong>
+        </template>
         <template #actions="{ item }">
           <div data-tour="actions">
           <div class="d-flex justify-content-start gap-2">
@@ -626,10 +649,16 @@ const exportToExcel = async () => {
           </span>
         </template>
         <template #startDateTime="{ item }">
-          {{ new Date(item.startDateTime).toLocaleString('vi-VN') }}
+          <div class="date-time-wrapper">
+            <span class="date-part">{{ formatDateTime(item.startDateTime).date }}</span>
+            <span class="time-part">{{ formatDateTime(item.startDateTime).time }}</span>
+          </div>
         </template>
         <template #endDateTime="{ item }">
-          {{ new Date(item.endDateTime).toLocaleString('vi-VN') }}
+          <div class="date-time-wrapper">
+            <span class="date-part">{{ formatDateTime(item.endDateTime).date }}</span>
+            <span class="time-part">{{ formatDateTime(item.endDateTime).time }}</span>
+          </div>
         </template>
       </DataTable>
     </div>
@@ -794,6 +823,40 @@ const exportToExcel = async () => {
 .slide-fade-leave-from {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* Voucher code styling - màu xanh, in đậm */
+.voucher-code {
+  color: #0d6efd;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+/* Employee ID và User Name - in đậm */
+:deep(.table td) strong {
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+/* Date time styling - định dạng đẹp và gọn */
+.date-time-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.date-part {
+  color: #2c3e50;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.time-part {
+  color: #6c757d;
+  font-weight: 500;
+  white-space: nowrap;
 }
 </style>
 

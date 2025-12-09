@@ -13,7 +13,6 @@ import Pagination from '../../components/common/Pagination.vue'
 import UpdateReportForm from '../../components/incident-report/UpdateReportForm.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -424,7 +423,6 @@ const isResubmitMode = computed(() => {
   return false
 })
 
-const showTourGuide = ref(false)
 </script>
 
 <template>

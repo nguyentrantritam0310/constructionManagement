@@ -14,7 +14,6 @@ import { useManagementReport } from '../../composables/useManagementReport'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ReportDetailDialog from '../../components/common/ReportDetailDialog.vue'
 import TechnicalReportForm from '../../components/technical-report/TechnicalReportForm.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -451,84 +450,6 @@ const isResubmitMode = computed(() => {
   return false
 })
 
-const showTourGuide = ref(false)
-const tourSteps = [
-  {
-    target: '[data-tour="title"]',
-    message: 'Xin chào! Tôi là trợ lý robot hướng dẫn của bạn. Đây là trang quản lý báo cáo vấn đề kỹ thuật. Tại đây bạn có thể tạo, xem, cập nhật và quản lý các báo cáo kỹ thuật.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Đây là thanh công cụ với các chức năng chính. Hãy để tôi giới thiệu từng nút cho bạn!'
-  },
-  {
-    target: '[data-tour="create-form"]',
-    message: 'Đây là form tạo báo cáo kỹ thuật mới. Bạn có thể chọn công trình, mô tả vấn đề, chọn mức độ nghiêm trọng và đính kèm hình ảnh. Sau khi điền đầy đủ, bấm "Tạo báo cáo" để gửi.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:first-child'
-    }
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Lọc" cho phép bạn tìm kiếm và lọc báo cáo theo trạng thái, mức độ và khoảng thời gian.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:nth-child(2)'
-    }
-  },
-  {
-    target: '[data-tour="filter"]',
-    message: 'Đây là phần bộ lọc. Bạn có thể tìm kiếm theo mã, tên công trình, mô tả. Chọn trạng thái và mức độ từ dropdown. Chọn khoảng thời gian từ ngày đến ngày. Bấm "Đặt lại" để xóa bộ lọc.'
-  },
-  {
-    target: '[data-tour="toolbar"]',
-    message: 'Nút "Xuất Excel" cho phép bạn xuất danh sách báo cáo ra file Excel để lưu trữ hoặc xử lý thêm.'
-  },
-  {
-    target: '[data-tour="import-modal"]',
-    message: 'Đây là modal nhập Excel. Bạn có thể tải file mẫu, điền thông tin báo cáo vào file Excel, sau đó chọn file và bấm "Xử lý nhập" để import vào hệ thống.',
-    action: {
-      type: 'click',
-      selector: '[data-tour="toolbar"] button:last-child'
-    }
-  },
-  {
-    target: '[data-tour="table"]',
-    message: 'Đây là bảng danh sách báo cáo kỹ thuật. Bạn có thể xem thông tin chi tiết của từng báo cáo. Click vào một hàng để xem chi tiết báo cáo. Cột "Thao tác" chứa các nút để cập nhật và đổi trạng thái báo cáo.'
-  },
-  {
-    target: '[data-tour="pagination"]',
-    message: 'Phần phân trang ở cuối trang cho phép bạn chuyển đổi giữa các trang để xem nhiều báo cáo hơn. Đó là tất cả những gì tôi muốn giới thiệu với bạn!',
-    action: {
-      type: 'function',
-      func: async () => {
-        if (showImportModal.value) {
-          showImportModal.value = false
-        }
-        if (showCreateForm.value) {
-          showCreateForm.value = false
-        }
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
-    }
-  }
-]
-
-const handleTourComplete = () => {
-  showTourGuide.value = false
-}
-
-const startTour = () => {
-  // Mở filter section nếu chưa mở
-  if (!showFilter.value) {
-    showFilter.value = true
-  }
-  // Đợi một chút để UI render xong
-  setTimeout(() => {
-    showTourGuide.value = true
-  }, 300)
-}
 
 
 

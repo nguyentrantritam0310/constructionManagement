@@ -12,7 +12,6 @@ import { useMaterialPlan } from '../../composables/useMaterialPlan'
 import { useUser } from '../../composables/useUser'
 import { useAuth } from '../../composables/useAuth'
 import { useImportOrderEmployee } from '../../composables/useImportOrderEmployee'
-import TourGuide from '../../components/common/TourGuide.vue'
 
 const selectedConstruction = ref(null)
 const showConfirmDialog = ref(false)
@@ -335,7 +334,6 @@ const handleMaterialPageChange = (page) => {
   currentMaterialPage.value = page
 }
 
-const showTourGuide = ref(false)
 </script>
 
 <template>

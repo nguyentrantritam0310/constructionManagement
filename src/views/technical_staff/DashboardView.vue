@@ -6,7 +6,6 @@ import { useManagementReport } from '../../composables/useManagementReport'
 import { useAuth } from '../../composables/useAuth'
 import { useMaterialPlan } from '../../composables/useMaterialPlan'
 import { useImportOrder } from '../../composables/useImportOrder'
-import TourGuide from '../../components/common/TourGuide.vue'
 
 const { constructions, fetchConstructions } = useConstructionManagement()
 const { materials, fetchMaterials } = useMaterialManagement()
@@ -187,7 +186,6 @@ const formatCurrency = (value) => {
   }).format(value)
 }
 
-const showTourGuide = ref(false)
 </script>
 
 <template>

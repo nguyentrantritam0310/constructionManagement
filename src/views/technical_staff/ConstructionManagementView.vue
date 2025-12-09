@@ -10,7 +10,6 @@ import ConstructionForm from '../../components/construction/ConstructionForm.vue
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ActionButton from '@/components/common/ActionButton.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import * as XLSX from 'xlsx'
@@ -322,7 +321,6 @@ watch([searchQuery, statusFilter, dateRangeFilter], () => {
   currentPage.value = 1
 }, { deep: true })
 
-const showTourGuide = ref(false)
 </script>
 
 <template>

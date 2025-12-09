@@ -6,7 +6,6 @@ import StatusBadge from '../../components/common/StatusBadge.vue'
 import { useConstructionManagement } from '../../composables/useConstructionManagement'
 import Pagination from '../../components/common/Pagination.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 
 const router = useRouter()
 
@@ -22,7 +21,6 @@ onMounted(() => {
 })
 
 const showFilter = ref(false)
-const showTourGuide = ref(false)
 
 // Filter variables
 const searchQuery = ref('')

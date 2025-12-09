@@ -95,6 +95,9 @@
           @row-click="handleRowClick"
           data-tour="table"
         >
+          <template #contractNumber="{ item }">
+            <span class="voucher-code">{{ item.contractNumber }}</span>
+          </template>
           <template #actions="{ item }">
             <div class="d-flex justify-content-start gap-2">
               <!-- Tab: Tất cả hợp đồng -->
@@ -192,10 +195,16 @@
             </span>
           </template>
           <template #startDate="{ item }">
-            <span class="date-display">{{ item.startDateFormatted }}</span>
+            {{ formatDate(item.startDate) }}
           </template>
           <template #endDate="{ item }">
-            <span class="date-display">{{ item.endDateFormatted }}</span>
+            <span v-if="item.endDateFormatted !== 'Vĩnh viễn'">
+              {{ formatDate(item.endDate) }}
+            </span>
+            <span v-else class="days-to-expire days-indefinite">
+              <i class="fas fa-infinity me-1"></i>
+              Vĩnh viễn
+            </span>
           </template>
           <template #daysToExpire="{ item }">
             <span v-if="item.daysToExpire !== null" :class="getDaysToExpireClass(item.daysToExpire)" class="days-to-expire">
@@ -630,16 +639,29 @@ const contractsData = computed(() => {
   })
 })
 
-// Format date to dd/mm/yyyy HH:mm
-const formatDateTime = (dateString) => {
+// Format date to dd/mm/yyyy
+const formatDate = (dateString) => {
   if (!dateString) return ''
+  const date = new Date(dateString)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  return `${day}/${month}/${year}`
+}
+
+// Format date to { date: "dd/mm/yyyy", time: "HH:mm" }
+const formatDateTime = (dateString) => {
+  if (!dateString) return { date: '', time: '' }
   const date = new Date(dateString)
   const day = String(date.getDate()).padStart(2, '0')
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const year = date.getFullYear()
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `${day}/${month}/${year} ${hours}:${minutes}`
+  return {
+    date: `${day}/${month}/${year}`,
+    time: `${hours}:${minutes}`
+  }
 }
 
 // Get validity status class and icon
@@ -1838,6 +1860,13 @@ const exportContract = async (contract) => {
 .slide-fade-leave-from {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* Voucher code styling - màu xanh, in đậm */
+.voucher-code {
+  color: #0d6efd;
+  font-weight: 700;
+  font-size: 0.95rem;
 }
 </style>
 

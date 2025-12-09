@@ -5,7 +5,6 @@ import PlanForm from '../../components/construction-plan/PlanForm.vue'
 import ModalDialog from '../../components/common/ModalDialog.vue'
 import ActionButton from '../../components/common/ActionButton.vue'
 import Pagination from '../../components/common/Pagination.vue'
-import TourGuide from '../../components/common/TourGuide.vue'
 import { useConstructionPlan } from '../../composables/useConstructionPlan'
 import { useGlobalMessage } from '../../composables/useGlobalMessage'
 import ExcelJS from 'exceljs'
@@ -71,7 +70,6 @@ const filteredPlans = computed(() => {
 })
 
 const showFilter = ref(false)
-const showTourGuide = ref(false)
 const resetFilters = () => {
   searchQuery.value = ''
   statusFilter.value = ''
