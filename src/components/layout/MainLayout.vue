@@ -200,12 +200,9 @@ const constructionMenuItems = computed(() => {
             { icon: 'fas fa-tachometer-alt', text: 'Bảng điều khiển', route: '/' },
             { icon: 'fas fa-check-circle', text: 'Phê duyệt đề xuất', route: '/proposal-approval' },
             // Menu của nhân viên kỹ thuật/công nhân
-            { icon: 'fas fa-project-diagram', text: 'Quản lý Công trình', route: '/construction-management' },
             { icon: 'fas fa-tasks', text: 'Quản lý kế hoạch thi công', route: '/construction-plan-management' },
-            { icon: 'fas fa-file-alt', text: 'Báo cáo kỹ thuật', route: '/technical-reports' },
             // Menu của chỉ huy công trình
-            { icon: 'fas fa-tasks', text: 'Quản lý công trình', route: '/task-status' },
-            { icon: 'fas fa-exclamation-triangle', text: 'Báo cáo sự cố thi công', route: '/incident-report' }
+            { icon: 'fas fa-tasks', text: 'Quản lý công trình', route: '/task-status' }
           ]
         },
         {

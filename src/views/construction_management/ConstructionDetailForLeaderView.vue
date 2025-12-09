@@ -54,6 +54,7 @@ const currentPlanPage = ref(1)
 const plansPerPage = 5
 const showPlanModal = ref(false)
 const showTourGuide = ref(false)
+const showItemDetailModal = ref(false)
 
 const { selectedConstruction, fetchConstructionDetail } = useConstructionManagement()
 const { plans, loading: plansLoading, error: plansError, fetchPlans } = useConstructionPlan()
@@ -153,6 +154,11 @@ const handleStatusSubmit = (newStatus) => {
   }
   showStatusDialog.value = false
   selectedItem.value = null
+}
+
+const handleItemClick = (item) => {
+  selectedItem.value = item
+  showItemDetailModal.value = true
 }
 
 const handlePlanClick = async (plan) => {
@@ -1278,7 +1284,7 @@ const startTour = () => {
                   </h2>
                 </div>
                 <DataTable :columns="constructionItemColumns" :data="paginatedItems"
-                  class="custom-table" data-tour="items-table">
+                  class="custom-table" data-tour="items-table" @row-click="handleItemClick">
                   <template #id="{ item }">
                     <div class="fw-medium text-primary">HM-{{ item.id }}</div>
                   </template>
@@ -1750,6 +1756,65 @@ const startTour = () => {
       </div>
     </ModalDialog>
     
+    <!-- Item Detail Modal -->
+    <ModalDialog 
+      :show="showItemDetailModal" 
+      @update:show="showItemDetailModal = $event"
+      title="Chi tiết hạng mục" 
+      size="lg"
+    >
+      <div v-if="selectedItem" class="item-detail-content">
+        <div class="card border-0">
+          <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">{{ selectedItem.constructionItemName }}</h5>
+            <StatusBadge :status="selectedItem.constructionItemStatusName" />
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="info-group">
+                  <label class="fw-bold">Mã hạng mục:</label>
+                  <p class="text-primary fw-medium">HM-{{ selectedItem.id }}</p>
+                </div>
+                <div class="info-group">
+                  <label class="fw-bold">Ngày bắt đầu:</label>
+                  <p>{{ formatDate(selectedItem.startDate) }}</p>
+                </div>
+                <div class="info-group">
+                  <label class="fw-bold">Ngày kết thúc dự kiến:</label>
+                  <p>{{ formatDate(selectedItem.expectedCompletionDate) }}</p>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="info-group">
+                  <label class="fw-bold">Tổng khối lượng:</label>
+                  <p>{{ selectedItem.totalVolume }} {{ selectedItem.unitName }}</p>
+                </div>
+                <div class="info-group">
+                  <label class="fw-bold">Trạng thái:</label>
+                  <StatusBadge :status="selectedItem.constructionItemStatusName" />
+                </div>
+              </div>
+              <div class="col-12" v-if="selectedItem.completionPercentage !== undefined">
+                <div class="progress-section">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="fw-bold">Tiến độ thực hiện</span>
+                    <span class="badge bg-info">{{ selectedItem.completionPercentage || 0 }}%</span>
+                  </div>
+                  <div class="progress" style="height: 10px;">
+                    <div class="progress-bar" role="progressbar"
+                      :style="{ width: (selectedItem.completionPercentage || 0) + '%' }"
+                      :aria-valuenow="selectedItem.completionPercentage || 0" aria-valuemin="0" aria-valuemax="100">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ModalDialog>
+
     <!-- Tour Guide -->
     <TourGuide 
       :show="showTourGuide" 
@@ -3247,5 +3312,49 @@ const startTour = () => {
   overflow: hidden;
   border-radius: 0.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.item-detail-content {
+  padding: 0.5rem;
+}
+
+.item-detail-content .card {
+  border: 1px solid #dee2e6;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.item-detail-content .info-group {
+  margin-bottom: 1rem;
+}
+
+.item-detail-content .info-group label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #495057;
+  font-size: 0.875rem;
+}
+
+.item-detail-content .info-group p {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 0.9375rem;
+}
+
+.item-detail-content .progress-section {
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+}
+
+.item-detail-content .progress {
+  background-color: #e9ecef;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.item-detail-content .progress-bar {
+  background-color: #3498db;
+  transition: width 0.6s ease;
 }
 </style>
